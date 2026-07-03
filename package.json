@@ -1,0 +1,30 @@
+{
+  "name": "pine",
+  "type": "module",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "bun run --filter @pine/desktop start",
+    "build": "bun run --filter @pine/desktop make",
+    "typecheck": "bun run --filter @pine/desktop typecheck"
+  },
+  "devDependencies": {
+    "@electron-forge/cli": "latest",
+    "@electron-forge/maker-deb": "latest",
+    "@electron-forge/maker-rpm": "latest",
+    "@electron-forge/maker-squirrel": "latest",
+    "@electron-forge/maker-zip": "latest",
+    "@electron-forge/plugin-vite": "latest",
+    "@electron-forge/shared-types": "latest",
+    "@types/bun": "latest",
+    "@vitejs/plugin-vue": "latest",
+    "electron": "latest",
+    "ts-node": "latest",
+    "typescript": "latest",
+    "vite": "latest",
+    "vue-tsc": "latest"
+  }
+}
