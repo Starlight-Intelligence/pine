@@ -26,6 +26,7 @@
 
 - 不要直接把 shadcn Studio / React shadcn 的 `style: "radix-rhea"` 写进 `components.json`。Studio 来源和映射记录在 `apps/desktop/shadcn-studio.json`。
 - 组件添加后保持 shadcn-vue 生成结果，不套用 React shadcn 的 Rhea patch。
+- 当 skill、生成代码与当前 shadcn-vue 官方文档或用例存在分歧时，先核对当前官方用例；以官方用例和项目实际需求为准，并记录偏离原因，不为迎合 skill 机械修改官方生成结果。
 
 - 添加或修改组件后运行：
 

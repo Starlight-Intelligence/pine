@@ -22,17 +22,20 @@
   "dependencies": {
     "@earendil-works/pi-agent-core": "latest",
     "@earendil-works/pi-ai": "latest",
-    "@lucide/vue": "^1.23.0",
+    "@lucide/vue": "^1.24.0",
     "@vue/reactivity": "latest",
     "@vue/runtime-core": "latest",
     "@vue/runtime-dom": "latest",
     "@vue/shared": "latest",
+    "@vueuse/core": "^14.3.0",
     "class-variance-authority": "latest",
     "clsx": "latest",
     "electron-squirrel-startup": "latest",
     "reka-ui": "^2.10.1",
     "tailwind-merge": "latest",
-    "vue": "latest"
+    "vue": "latest",
+    "vue-i18n": "^11.4.6",
+    "vue-sonner": "^2.0.9"
   },
   "devDependencies": {
     "@electron-forge/cli": "latest",
@@ -48,8 +51,8 @@
     "tailwindcss": "latest",
     "ts-node": "latest",
     "tw-animate-css": "latest",
-    "typescript": "latest",
+    "typescript": "6.0.3",
     "vite": "latest",
-    "vue-tsc": "latest"
+    "vue-tsc": "3.3.6"
   }
 }

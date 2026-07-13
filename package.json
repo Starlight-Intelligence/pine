@@ -27,8 +27,8 @@
     "tailwindcss": "latest",
     "ts-node": "latest",
     "tw-animate-css": "latest",
-    "typescript": "latest",
+    "typescript": "6.0.3",
     "vite": "latest",
-    "vue-tsc": "latest"
+    "vue-tsc": "3.3.6"
   }
 }
