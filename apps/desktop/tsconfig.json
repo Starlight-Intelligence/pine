@@ -17,5 +17,10 @@
     "skipLibCheck": true,
     "types": ["vite/client"]
   },
-  "include": ["src/**/*.ts", "src/**/*.vue", "forge.config.ts", "vite.*.config.ts"]
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.vue",
+    "forge.config.ts",
+    "vite.*.config.ts"
+  ]
 }

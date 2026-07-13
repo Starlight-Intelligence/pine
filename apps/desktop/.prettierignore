@@ -1,0 +1,7 @@
+.vite
+coverage
+dist
+node_modules
+out
+src/components/ui
+src/styles/shadcn-vue.css

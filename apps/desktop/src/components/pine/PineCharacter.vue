@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import {
   pineCharacterExpressions,
   type PineCharacterExpressionName,
-} from './pineCharacterExpressions';
+} from "./pineCharacterExpressions";
 
-export type PineCharacterSize = 'sm' | 'md' | 'lg';
+export type PineCharacterSize = "sm" | "md" | "lg";
 
 interface Props {
   autoSleep?: boolean;
@@ -21,10 +21,10 @@ interface Props {
 const props = withDefaults(defineProps<Props>(), {
   autoSleep: true,
   decorative: false,
-  expression: 'idle',
-  label: 'Pine',
+  expression: "idle",
+  label: "Pine",
   paused: false,
-  size: 'md',
+  size: "md",
   sleepAfterMs: 30_000,
   trackPointer: true,
 });
@@ -33,7 +33,9 @@ const characterElement = ref<HTMLElement>();
 const leftPupilElement = ref<HTMLElement>();
 const rightPupilElement = ref<HTMLElement>();
 const frameIndex = ref(0);
-const sleepPhase = ref<'awake' | 'falling-asleep' | 'sleeping' | 'waking'>('awake');
+const sleepPhase = ref<"awake" | "falling-asleep" | "sleeping" | "waking">(
+  "awake",
+);
 const prefersReducedMotion = ref(false);
 const isMounted = ref(false);
 
@@ -50,22 +52,28 @@ let currentGaze = { x: 0, y: 0 };
 let targetGaze = { x: 0, y: 0 };
 
 const effectiveExpression = computed<PineCharacterExpressionName>(() => {
-  if (props.expression !== 'idle') return props.expression;
+  if (props.expression !== "idle") return props.expression;
 
-  if (sleepPhase.value === 'falling-asleep') return 'fallingAsleep';
-  if (sleepPhase.value === 'sleeping') return 'sleeping';
-  if (sleepPhase.value === 'waking') return 'waking';
-  return 'idle';
+  if (sleepPhase.value === "falling-asleep") return "fallingAsleep";
+  if (sleepPhase.value === "sleeping") return "sleeping";
+  if (sleepPhase.value === "waking") return "waking";
+  return "idle";
 });
-const currentExpression = computed(() => pineCharacterExpressions[effectiveExpression.value]);
+const currentExpression = computed(
+  () => pineCharacterExpressions[effectiveExpression.value],
+);
 const currentFrame = computed(
-  () => currentExpression.value.frames[frameIndex.value] ?? currentExpression.value.frames[0],
+  () =>
+    currentExpression.value.frames[frameIndex.value] ??
+    currentExpression.value.frames[0],
 );
 const fixedEyes = computed(() =>
-  currentFrame.value.eyes.mode === 'fixed' ? currentFrame.value.eyes : undefined,
+  currentFrame.value.eyes.mode === "fixed"
+    ? currentFrame.value.eyes
+    : undefined,
 );
 const currentSuffix = computed(() =>
-  'suffix' in currentFrame.value ? currentFrame.value.suffix : '',
+  "suffix" in currentFrame.value ? currentFrame.value.suffix : "",
 );
 
 function clearFrameTimer(): void {
@@ -88,37 +96,42 @@ function scheduleIdleSleep(): void {
   if (
     !isMounted.value ||
     !props.autoSleep ||
-    props.expression !== 'idle' ||
-    sleepPhase.value !== 'awake'
+    props.expression !== "idle" ||
+    sleepPhase.value !== "awake"
   ) {
     return;
   }
 
   idleTimer = window.setTimeout(() => {
     idleTimer = undefined;
-    sleepPhase.value = prefersReducedMotion.value ? 'sleeping' : 'falling-asleep';
+    sleepPhase.value = prefersReducedMotion.value
+      ? "sleeping"
+      : "falling-asleep";
     resetGaze();
   }, props.sleepAfterMs);
 }
 
 function wake(): void {
-  if (props.expression !== 'idle') return;
+  if (props.expression !== "idle") return;
 
   clearIdleTimer();
 
-  if (sleepPhase.value === 'sleeping' || sleepPhase.value === 'falling-asleep') {
-    sleepPhase.value = prefersReducedMotion.value ? 'awake' : 'waking';
+  if (
+    sleepPhase.value === "sleeping" ||
+    sleepPhase.value === "falling-asleep"
+  ) {
+    sleepPhase.value = prefersReducedMotion.value ? "awake" : "waking";
     return;
   }
 
-  if (sleepPhase.value === 'awake') scheduleIdleSleep();
+  if (sleepPhase.value === "awake") scheduleIdleSleep();
 }
 
 function completeTransition(): void {
-  if (effectiveExpression.value === 'fallingAsleep') {
-    sleepPhase.value = 'sleeping';
-  } else if (effectiveExpression.value === 'waking') {
-    sleepPhase.value = 'awake';
+  if (effectiveExpression.value === "fallingAsleep") {
+    sleepPhase.value = "sleeping";
+  } else if (effectiveExpression.value === "waking") {
+    sleepPhase.value = "awake";
     scheduleIdleSleep();
   }
 }
@@ -152,8 +165,10 @@ function scheduleNextFrame(): void {
 function handleReducedMotionChange(event: MediaQueryListEvent): void {
   prefersReducedMotion.value = event.matches;
   frameIndex.value = 0;
-  if (event.matches && sleepPhase.value === 'falling-asleep') sleepPhase.value = 'sleeping';
-  if (event.matches && sleepPhase.value === 'waking') sleepPhase.value = 'awake';
+  if (event.matches && sleepPhase.value === "falling-asleep")
+    sleepPhase.value = "sleeping";
+  if (event.matches && sleepPhase.value === "waking")
+    sleepPhase.value = "awake";
   resetGaze();
   scheduleNextFrame();
 }
@@ -161,8 +176,10 @@ function handleReducedMotionChange(event: MediaQueryListEvent): void {
 function applyPupilOffset(offsetX: number, offsetY: number): void {
   const transform = `translate3d(${offsetX.toFixed(2)}px, ${offsetY.toFixed(2)}px, 0)`;
 
-  if (leftPupilElement.value) leftPupilElement.value.style.transform = transform;
-  if (rightPupilElement.value) rightPupilElement.value.style.transform = transform;
+  if (leftPupilElement.value)
+    leftPupilElement.value.style.transform = transform;
+  if (rightPupilElement.value)
+    rightPupilElement.value.style.transform = transform;
 }
 
 function calculateGazeTarget(): void {
@@ -172,7 +189,7 @@ function calculateGazeTarget(): void {
     !props.trackPointer ||
     prefersReducedMotion.value ||
     !pointerPosition ||
-    currentFrame.value.eyes.mode !== 'tracking' ||
+    currentFrame.value.eyes.mode !== "tracking" ||
     !characterElement.value
   ) {
     targetGaze = { x: 0, y: 0 };
@@ -255,13 +272,10 @@ function handleOperationPointerOver(event: PointerEvent): void {
   }
 }
 
-watch(
-  effectiveExpression,
-  () => {
-    frameIndex.value = 0;
-    scheduleNextFrame();
-  },
-);
+watch(effectiveExpression, () => {
+  frameIndex.value = 0;
+  scheduleNextFrame();
+});
 
 watch(currentFrame, () => {
   gazeTargetDirty = true;
@@ -271,7 +285,7 @@ watch(currentFrame, () => {
 watch(
   () => props.expression,
   () => {
-    sleepPhase.value = 'awake';
+    sleepPhase.value = "awake";
     scheduleIdleSleep();
   },
 );
@@ -295,20 +309,24 @@ watch(
 
 onMounted(() => {
   isMounted.value = true;
-  reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+  reducedMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
   prefersReducedMotion.value = reducedMotionQuery.matches;
-  reducedMotionQuery.addEventListener('change', handleReducedMotionChange);
+  reducedMotionQuery.addEventListener("change", handleReducedMotionChange);
   resizeObserver = new ResizeObserver(invalidateCharacterBounds);
   resizeObserver.observe(characterElement.value!);
   if (characterElement.value?.parentElement) {
     resizeObserver.observe(characterElement.value.parentElement);
   }
-  window.addEventListener('blur', resetGaze);
-  window.addEventListener('click', wake);
-  window.addEventListener('pointermove', handlePointerMove, { passive: true });
-  window.addEventListener('resize', invalidateCharacterBounds, { passive: true });
-  document.addEventListener('pointerover', handleOperationPointerOver, { passive: true });
-  document.documentElement.addEventListener('pointerleave', resetGaze);
+  window.addEventListener("blur", resetGaze);
+  window.addEventListener("click", wake);
+  window.addEventListener("pointermove", handlePointerMove, { passive: true });
+  window.addEventListener("resize", invalidateCharacterBounds, {
+    passive: true,
+  });
+  document.addEventListener("pointerover", handleOperationPointerOver, {
+    passive: true,
+  });
+  document.documentElement.addEventListener("pointerleave", resetGaze);
   scheduleNextFrame();
   scheduleIdleSleep();
 });
@@ -320,14 +338,14 @@ onUnmounted(() => {
   if (gazeAnimationFrame !== undefined) {
     window.cancelAnimationFrame(gazeAnimationFrame);
   }
-  reducedMotionQuery?.removeEventListener('change', handleReducedMotionChange);
+  reducedMotionQuery?.removeEventListener("change", handleReducedMotionChange);
   resizeObserver?.disconnect();
-  window.removeEventListener('blur', resetGaze);
-  window.removeEventListener('click', wake);
-  window.removeEventListener('pointermove', handlePointerMove);
-  window.removeEventListener('resize', invalidateCharacterBounds);
-  document.removeEventListener('pointerover', handleOperationPointerOver);
-  document.documentElement.removeEventListener('pointerleave', resetGaze);
+  window.removeEventListener("blur", resetGaze);
+  window.removeEventListener("click", wake);
+  window.removeEventListener("pointermove", handlePointerMove);
+  window.removeEventListener("resize", invalidateCharacterBounds);
+  document.removeEventListener("pointerover", handleOperationPointerOver);
+  document.documentElement.removeEventListener("pointerleave", resetGaze);
 });
 </script>
 
@@ -353,7 +371,9 @@ onUnmounted(() => {
       <span class="pine-character__fixed-eye">{{ fixedEyes?.right }}</span>
     </span>
     <span>)</span>
-    <span class="pine-character__suffix" aria-hidden="true">{{ currentSuffix }}</span>
+    <span class="pine-character__suffix" aria-hidden="true">{{
+      currentSuffix
+    }}</span>
   </span>
 </template>
 
@@ -397,11 +417,11 @@ onUnmounted(() => {
   opacity: 0;
 }
 
-.pine-character[data-tracking='false'] .pine-character__pupil {
+.pine-character[data-tracking="false"] .pine-character__pupil {
   opacity: 0;
 }
 
-.pine-character[data-tracking='false'] .pine-character__fixed-eye {
+.pine-character[data-tracking="false"] .pine-character__fixed-eye {
   opacity: 1;
 }
 
@@ -424,11 +444,11 @@ onUnmounted(() => {
   text-align: left;
 }
 
-.pine-character[data-size='sm'] {
+.pine-character[data-size="sm"] {
   font-size: 1rem;
 }
 
-.pine-character[data-size='lg'] {
+.pine-character[data-size="lg"] {
   font-size: 1.75rem;
 }
 </style>

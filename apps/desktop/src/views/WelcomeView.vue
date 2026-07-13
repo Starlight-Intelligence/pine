@@ -1,9 +1,19 @@
 <script setup lang="ts">
-import { FolderOpen, Loader2, Monitor, Moon, Settings2, Sun } from '@lucide/vue';
-import { useI18n } from 'vue-i18n';
-import { isAppLocale, persistAppLocale } from '@/app/i18n';
-import { PineCharacter } from '@/components/pine';
-import { Button } from '@/components/ui/button';
+import {
+  FolderOpen,
+  Loader2,
+  Monitor,
+  Moon,
+  Settings2,
+  Sun,
+} from "@lucide/vue";
+import { storeToRefs } from "pinia";
+import { useI18n } from "vue-i18n";
+import { useRouter } from "vue-router";
+import { handleError } from "@/app/errors/errorHandler";
+import { isAppLocale, persistAppLocale } from "@/app/i18n";
+import { PineCharacter } from "@/components/pine";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,28 +22,39 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { Empty, EmptyContent, EmptyHeader, EmptyTitle } from '@/components/ui/empty';
+} from "@/components/ui/dropdown-menu";
 import {
-  isThemePreference,
-  type ThemePreference,
-} from '@/composables/useColorScheme';
-
-interface Props {
-  isOpening: boolean;
-  themePreference: ThemePreference;
-}
-
-const props = defineProps<Props>();
-const emit = defineEmits<{
-  openFolder: [];
-  'update:themePreference': [preference: ThemePreference];
-}>();
+  Empty,
+  EmptyContent,
+  EmptyHeader,
+  EmptyTitle,
+} from "@/components/ui/empty";
+import { ROUTE_NAMES } from "@/router/routes";
+import { isThemePreference, useAppearanceStore } from "@/stores/appearance";
+import { useWorkspaceStore } from "@/stores/workspace";
 
 const { locale, t } = useI18n();
+const router = useRouter();
+const appearanceStore = useAppearanceStore();
+const workspaceStore = useWorkspaceStore();
+const { themePreference } = storeToRefs(appearanceStore);
+const { isOpeningWorkspace } = storeToRefs(workspaceStore);
+
+async function openWorkspace(): Promise<void> {
+  try {
+    const workspace = await workspaceStore.openWorkspace();
+    if (workspace) await router.replace({ name: ROUTE_NAMES.workspace });
+  } catch (error) {
+    handleError(error, {
+      id: "workspace.open",
+      title: t("errors.workspaceOpen.title"),
+      description: t("errors.workspaceOpen.description"),
+    });
+  }
+}
 
 function selectLocale(value: unknown): void {
-  if (typeof value !== 'string' || !isAppLocale(value)) return;
+  if (typeof value !== "string" || !isAppLocale(value)) return;
 
   locale.value = value;
   document.documentElement.lang = value;
@@ -41,14 +62,17 @@ function selectLocale(value: unknown): void {
 }
 
 function selectTheme(value: unknown): void {
-  if (typeof value === 'string' && isThemePreference(value)) {
-    emit('update:themePreference', value);
+  if (typeof value === "string" && isThemePreference(value)) {
+    appearanceStore.setThemePreference(value);
   }
 }
 </script>
 
 <template>
-  <section class="relative flex min-h-full bg-background" aria-labelledby="welcome-title">
+  <section
+    class="relative flex min-h-full bg-background"
+    aria-labelledby="welcome-title"
+  >
     <DropdownMenu>
       <DropdownMenuTrigger as-child>
         <Button
@@ -63,34 +87,37 @@ function selectTheme(value: unknown): void {
       </DropdownMenuTrigger>
 
       <DropdownMenuContent class="w-56" align="end">
-        <DropdownMenuLabel>{{ t('welcome.language') }}</DropdownMenuLabel>
-        <DropdownMenuRadioGroup :model-value="locale" @update:model-value="selectLocale">
+        <DropdownMenuLabel>{{ t("welcome.language") }}</DropdownMenuLabel>
+        <DropdownMenuRadioGroup
+          :model-value="locale"
+          @update:model-value="selectLocale"
+        >
           <DropdownMenuRadioItem value="zh-CN">
-            {{ t('welcome.languageChinese') }}
+            {{ t("welcome.languageChinese") }}
           </DropdownMenuRadioItem>
           <DropdownMenuRadioItem value="en-US">
-            {{ t('welcome.languageEnglish') }}
+            {{ t("welcome.languageEnglish") }}
           </DropdownMenuRadioItem>
         </DropdownMenuRadioGroup>
 
         <DropdownMenuSeparator />
 
-        <DropdownMenuLabel>{{ t('welcome.appearance') }}</DropdownMenuLabel>
+        <DropdownMenuLabel>{{ t("welcome.appearance") }}</DropdownMenuLabel>
         <DropdownMenuRadioGroup
-          :model-value="props.themePreference"
+          :model-value="themePreference"
           @update:model-value="selectTheme"
         >
           <DropdownMenuRadioItem value="system">
             <Monitor aria-hidden="true" />
-            {{ t('welcome.themeSystem') }}
+            {{ t("welcome.themeSystem") }}
           </DropdownMenuRadioItem>
           <DropdownMenuRadioItem value="light">
             <Sun aria-hidden="true" />
-            {{ t('welcome.themeLight') }}
+            {{ t("welcome.themeLight") }}
           </DropdownMenuRadioItem>
           <DropdownMenuRadioItem value="dark">
             <Moon aria-hidden="true" />
-            {{ t('welcome.themeDark') }}
+            {{ t("welcome.themeDark") }}
           </DropdownMenuRadioItem>
         </DropdownMenuRadioGroup>
       </DropdownMenuContent>
@@ -100,7 +127,7 @@ function selectTheme(value: unknown): void {
       <EmptyHeader>
         <PineCharacter decorative size="lg" />
         <EmptyTitle id="welcome-title" role="heading" aria-level="1">
-          {{ t('welcome.title') }}
+          {{ t("welcome.title") }}
         </EmptyTitle>
       </EmptyHeader>
 
@@ -109,13 +136,17 @@ function selectTheme(value: unknown): void {
           <Button
             class="w-full sm:w-auto"
             size="lg"
-            :aria-busy="props.isOpening"
-            :disabled="props.isOpening"
-            @click="emit('openFolder')"
+            :aria-busy="isOpeningWorkspace"
+            :disabled="isOpeningWorkspace"
+            @click="openWorkspace"
           >
-            <Loader2 v-if="props.isOpening" class="animate-spin" aria-hidden="true" />
+            <Loader2
+              v-if="isOpeningWorkspace"
+              class="animate-spin"
+              aria-hidden="true"
+            />
             <FolderOpen v-else aria-hidden="true" />
-            {{ t('welcome.openFolder') }}
+            {{ t("welcome.openFolder") }}
           </Button>
         </div>
       </EmptyContent>

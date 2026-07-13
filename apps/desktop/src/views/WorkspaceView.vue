@@ -1,17 +1,17 @@
 <script setup lang="ts">
-import type { PineWorkspaceSummary } from '@/shared/projects';
+import { storeToRefs } from "pinia";
+import { useWorkspaceStore } from "@/stores/workspace";
 
-interface Props {
-  workspace: PineWorkspaceSummary;
-}
-
-defineProps<Props>();
+const workspaceStore = useWorkspaceStore();
+const { currentWorkspace } = storeToRefs(workspaceStore);
 </script>
 
 <template>
-  <section class="flex min-h-full items-center justify-center bg-background px-6">
+  <section
+    class="flex min-h-full items-center justify-center bg-background px-6"
+  >
     <p class="break-all text-center text-sm text-muted-foreground">
-      {{ workspace.rootPath }}
+      {{ currentWorkspace?.rootPath }}
     </p>
   </section>
 </template>

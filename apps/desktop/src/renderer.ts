@@ -1,8 +1,15 @@
-import { createApp } from 'vue';
-import App from './App.vue';
-import { APP_LOCALE_STORAGE_KEY, createAppI18n, resolveAppLocale } from './app/i18n';
-import './index.css';
-import 'vue-sonner/style.css';
+import { createPinia } from "pinia";
+import { createApp } from "vue";
+import App from "./App.vue";
+import {
+  APP_LOCALE_STORAGE_KEY,
+  createAppI18n,
+  resolveAppLocale,
+} from "./app/i18n";
+import { createAppRouter } from "./router";
+import { useAppearanceStore } from "./stores/appearance";
+import "./index.css";
+import "vue-sonner/style.css";
 
 let storedLocale: string | null = null;
 
@@ -14,8 +21,14 @@ try {
 
 const locale = resolveAppLocale(navigator.languages, storedLocale);
 const app = createApp(App);
+const pinia = createPinia();
+const i18n = createAppI18n(locale);
+const router = createAppRouter(pinia);
 
 document.documentElement.lang = locale;
+useAppearanceStore(pinia).initialize();
 
-app.use(createAppI18n(locale));
-app.mount('#app');
+app.use(pinia);
+app.use(i18n);
+app.use(router);
+app.mount("#app");

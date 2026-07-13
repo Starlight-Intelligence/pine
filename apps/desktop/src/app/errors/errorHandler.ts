@@ -1,4 +1,4 @@
-import { toast } from 'vue-sonner';
+import { toast } from "vue-sonner";
 
 export interface ErrorNotification {
   description?: string;
@@ -6,7 +6,10 @@ export interface ErrorNotification {
   title: string;
 }
 
-export function handleError(error: unknown, notification: ErrorNotification): void {
+export function handleError(
+  error: unknown,
+  notification: ErrorNotification,
+): void {
   console.error(`[Pine] ${notification.id}`, error);
   toast.error(notification.title, {
     description: notification.description,
