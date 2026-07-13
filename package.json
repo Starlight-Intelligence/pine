@@ -9,7 +9,8 @@
   "scripts": {
     "dev": "bun run --filter @pine/desktop start",
     "build": "bun run --filter @pine/desktop make",
-    "typecheck": "bun run --filter @pine/desktop typecheck"
+    "typecheck": "bun run --filter @pine/desktop typecheck",
+    "shadcn:add": "bun run apps/desktop/scripts/shadcn-add.mjs"
   },
   "devDependencies": {
     "@electron-forge/cli": "latest",
@@ -19,10 +20,13 @@
     "@electron-forge/maker-zip": "latest",
     "@electron-forge/plugin-vite": "latest",
     "@electron-forge/shared-types": "latest",
+    "@tailwindcss/vite": "latest",
     "@types/bun": "latest",
     "@vitejs/plugin-vue": "latest",
     "electron": "latest",
+    "tailwindcss": "latest",
     "ts-node": "latest",
+    "tw-animate-css": "latest",
     "typescript": "latest",
     "vite": "latest",
     "vue-tsc": "latest"

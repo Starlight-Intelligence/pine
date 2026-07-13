@@ -1,0 +1,22 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "source": "https://shadcnstudio.com/r/components.json?style=rhea&iconLibrary=lucide&menuColor=default-translucent&menuAccent=subtle",
+  "name": "components-json",
+  "type": "registry:base",
+  "config": {
+    "style": "radix-rhea",
+    "iconLibrary": "lucide",
+    "menuColor": "default-translucent",
+    "menuAccent": "subtle"
+  },
+  "vueMapping": {
+    "style": "reka-luma",
+    "base": "reka",
+    "font": "inter",
+    "iconLibrary": "lucide",
+    "iconPackage": "@lucide/vue",
+    "menuColor": "default-translucent",
+    "menuAccent": "subtle"
+  },
+  "reactOnlyDependencies": ["lucide-react"]
+}
