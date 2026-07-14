@@ -15,7 +15,9 @@ describe("workspace store", () => {
   });
 
   it("stores a workspace returned by the preload API", async () => {
-    const openWorkspace = vi.fn().mockResolvedValue({ workspace });
+    const openWorkspace = vi.fn().mockResolvedValue({
+      workspace,
+    });
     Object.defineProperty(window, "pine", {
       configurable: true,
       value: { openWorkspace },

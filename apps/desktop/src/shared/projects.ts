@@ -1,3 +1,14 @@
+import type {
+  ResumeSessionRequest,
+  ResumeSessionResult,
+  SearchSessionsRequest,
+  SearchSessionsResult,
+} from "./sessions";
+import type {
+  ListWorkspaceDirectoryRequest,
+  ListWorkspaceDirectoryResult,
+} from "./workspaceFiles";
+
 export const PINE_METADATA_DIRECTORY = ".pine" as const;
 export const PINE_PROJECT_METADATA_FILE = "project.json" as const;
 export const PINE_SESSIONS_DIRECTORY =
@@ -17,5 +28,14 @@ export interface OpenWorkspaceResult {
 }
 
 export interface PineDesktopApi {
+  listWorkspaceDirectory: (
+    request: ListWorkspaceDirectoryRequest,
+  ) => Promise<ListWorkspaceDirectoryResult>;
   openWorkspace: () => Promise<OpenWorkspaceResult>;
+  resumeSession: (
+    request: ResumeSessionRequest,
+  ) => Promise<ResumeSessionResult>;
+  searchSessions: (
+    request: SearchSessionsRequest,
+  ) => Promise<SearchSessionsResult>;
 }

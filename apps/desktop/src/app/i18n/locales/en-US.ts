@@ -11,10 +11,52 @@ export default {
     themeLight: "Light",
     themeDark: "Dark",
   },
+  sessions: {
+    searchTitle: "Search sessions",
+    searchDescription:
+      "Search titles and conversation content in this workspace",
+    searchPlaceholder: "Search session content",
+    searchAction: "Search sessions",
+    searching: "Searching",
+    newSession: "New session",
+    current: "Current",
+    noSessions: "No sessions yet",
+    noResults: "No matching sessions",
+  },
+  workspace: {
+    preferences: "Preferences",
+    contentTabs: {
+      newSession: "New session",
+      sessionNumber: "Session {number}",
+      addTab: "Add session tab",
+      closeTab: "Close {name}",
+    },
+    tabs: {
+      files: "Files",
+      sessions: "Sessions",
+    },
+    files: {
+      loading: "Loading",
+      emptyTitle: "This folder is empty",
+      emptyDescription: "There are no files in this workspace yet",
+    },
+  },
   errors: {
     workspaceOpen: {
       title: "Unable to open folder",
       description: "Check that the folder is accessible and try again",
+    },
+    sessionSearch: {
+      title: "Unable to search sessions",
+      description: "Try again in a moment",
+    },
+    sessionResume: {
+      title: "Unable to open session",
+      description: "The session may have been moved or deleted",
+    },
+    workspaceFiles: {
+      title: "Unable to read files",
+      description: "Check that the workspace is accessible and try again",
     },
   },
 } as const;

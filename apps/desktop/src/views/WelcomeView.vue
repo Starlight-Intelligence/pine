@@ -32,6 +32,7 @@ import {
 import { ROUTE_NAMES } from "@/router/routes";
 import { isThemePreference, useAppearanceStore } from "@/stores/appearance";
 import { useWorkspaceStore } from "@/stores/workspace";
+import WindowTitleBar from "@/components/window/WindowTitleBar.vue";
 
 const { locale, t } = useI18n();
 const router = useRouter();
@@ -70,86 +71,93 @@ function selectTheme(value: unknown): void {
 
 <template>
   <section
-    class="relative flex min-h-full bg-background"
+    class="relative flex min-h-full flex-col bg-background"
     aria-labelledby="welcome-title"
   >
-    <DropdownMenu>
-      <DropdownMenuTrigger as-child>
-        <Button
-          class="absolute top-4 right-4"
-          variant="ghost"
-          size="icon"
-          :aria-label="t('welcome.settings')"
-          :title="t('welcome.settings')"
-        >
-          <Settings2 aria-hidden="true" />
-        </Button>
-      </DropdownMenuTrigger>
+    <WindowTitleBar>
+      <template #trailing>
+        <DropdownMenu>
+          <DropdownMenuTrigger as-child>
+            <Button
+              variant="ghost"
+              size="icon"
+              :aria-label="t('welcome.settings')"
+              :title="t('welcome.settings')"
+            >
+              <Settings2 aria-hidden="true" />
+            </Button>
+          </DropdownMenuTrigger>
 
-      <DropdownMenuContent class="w-56" align="end">
-        <DropdownMenuLabel>{{ t("welcome.language") }}</DropdownMenuLabel>
-        <DropdownMenuRadioGroup
-          :model-value="locale"
-          @update:model-value="selectLocale"
-        >
-          <DropdownMenuRadioItem value="zh-CN">
-            {{ t("welcome.languageChinese") }}
-          </DropdownMenuRadioItem>
-          <DropdownMenuRadioItem value="en-US">
-            {{ t("welcome.languageEnglish") }}
-          </DropdownMenuRadioItem>
-        </DropdownMenuRadioGroup>
+          <DropdownMenuContent class="w-56" align="end">
+            <DropdownMenuLabel>{{ t("welcome.language") }}</DropdownMenuLabel>
+            <DropdownMenuRadioGroup
+              :model-value="locale"
+              @update:model-value="selectLocale"
+            >
+              <DropdownMenuRadioItem value="zh-CN">
+                {{ t("welcome.languageChinese") }}
+              </DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="en-US">
+                {{ t("welcome.languageEnglish") }}
+              </DropdownMenuRadioItem>
+            </DropdownMenuRadioGroup>
 
-        <DropdownMenuSeparator />
+            <DropdownMenuSeparator />
 
-        <DropdownMenuLabel>{{ t("welcome.appearance") }}</DropdownMenuLabel>
-        <DropdownMenuRadioGroup
-          :model-value="themePreference"
-          @update:model-value="selectTheme"
-        >
-          <DropdownMenuRadioItem value="system">
-            <Monitor aria-hidden="true" />
-            {{ t("welcome.themeSystem") }}
-          </DropdownMenuRadioItem>
-          <DropdownMenuRadioItem value="light">
-            <Sun aria-hidden="true" />
-            {{ t("welcome.themeLight") }}
-          </DropdownMenuRadioItem>
-          <DropdownMenuRadioItem value="dark">
-            <Moon aria-hidden="true" />
-            {{ t("welcome.themeDark") }}
-          </DropdownMenuRadioItem>
-        </DropdownMenuRadioGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
+            <DropdownMenuLabel>{{ t("welcome.appearance") }}</DropdownMenuLabel>
+            <DropdownMenuRadioGroup
+              :model-value="themePreference"
+              @update:model-value="selectTheme"
+            >
+              <DropdownMenuRadioItem value="system">
+                <Monitor aria-hidden="true" />
+                {{ t("welcome.themeSystem") }}
+              </DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="light">
+                <Sun aria-hidden="true" />
+                {{ t("welcome.themeLight") }}
+              </DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="dark">
+                <Moon aria-hidden="true" />
+                {{ t("welcome.themeDark") }}
+              </DropdownMenuRadioItem>
+            </DropdownMenuRadioGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </template>
+    </WindowTitleBar>
 
-    <Empty class="mx-auto max-w-md px-6">
-      <EmptyHeader>
-        <PineCharacter decorative size="lg" />
-        <EmptyTitle id="welcome-title" role="heading" aria-level="1">
-          {{ t("welcome.title") }}
-        </EmptyTitle>
-      </EmptyHeader>
+    <div
+      class="flex min-h-0 flex-1 [padding-top:var(--window-titlebar-height)]"
+    >
+      <Empty class="mx-auto max-w-md px-6">
+        <EmptyHeader>
+          <PineCharacter decorative size="lg" />
+          <EmptyTitle id="welcome-title" role="heading" aria-level="1">
+            {{ t("welcome.title") }}
+          </EmptyTitle>
+        </EmptyHeader>
 
-      <EmptyContent>
-        <div class="flex w-full flex-col items-center gap-2">
-          <Button
-            class="w-full sm:w-auto"
-            size="lg"
-            :aria-busy="isOpeningWorkspace"
-            :disabled="isOpeningWorkspace"
-            @click="openWorkspace"
-          >
-            <Loader2
-              v-if="isOpeningWorkspace"
-              class="animate-spin"
-              aria-hidden="true"
-            />
-            <FolderOpen v-else aria-hidden="true" />
-            {{ t("welcome.openFolder") }}
-          </Button>
-        </div>
-      </EmptyContent>
-    </Empty>
+        <EmptyContent>
+          <div class="flex w-full flex-col items-center gap-2">
+            <Button
+              class="w-full sm:w-auto"
+              size="lg"
+              :aria-busy="isOpeningWorkspace"
+              :disabled="isOpeningWorkspace"
+              @click="openWorkspace"
+            >
+              <Loader2
+                v-if="isOpeningWorkspace"
+                class="animate-spin"
+                aria-hidden="true"
+              />
+              <FolderOpen v-else aria-hidden="true" />
+              {{ t("welcome.openFolder") }}
+            </Button>
+          </div>
+        </EmptyContent>
+      </Empty>
+    </div>
   </section>
 </template>

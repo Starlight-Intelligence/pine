@@ -2,11 +2,32 @@
 
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "shadcn-vue/tailwind.css";
 @import "./styles/shadcn-vue.css";
+@import "./styles/scroll-fade.css";
 
 @custom-variant dark (&:is(.dark *));
 
+@utility window-drag {
+  -webkit-app-region: drag;
+  app-region: drag;
+  user-select: none;
+}
+
+@utility window-no-drag {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
 :root {
+  --window-titlebar-control-height: 2rem;
+  --window-titlebar-padding-block: 0.75rem;
+  --window-titlebar-leading-offset: 5.5625rem;
+  --window-titlebar-height: calc(
+    var(--window-titlebar-control-height) +
+      var(--window-titlebar-padding-block) +
+      var(--window-titlebar-padding-block)
+  );
   --background: oklch(1 0 0);
   --foreground: oklch(0.153 0.006 107.1);
   --card: oklch(1 0 0);
@@ -111,6 +132,7 @@
   --font-heading: var(--font-inter);
   --font-sans: var(--font-inter);
   --font-mono: var(--font-jetbrains-mono);
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);

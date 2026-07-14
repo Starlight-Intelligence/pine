@@ -1,8 +1,10 @@
 import { acceptHMRUpdate, defineStore } from "pinia";
 import { ref, shallowRef } from "vue";
 import type { PineWorkspaceSummary } from "@/shared/projects";
+import { useSessionStore } from "./session";
 
 export const useWorkspaceStore = defineStore("workspace", () => {
+  const sessionStore = useSessionStore();
   const currentWorkspace = shallowRef<PineWorkspaceSummary | null>(null);
   const isOpeningWorkspace = ref(false);
 
@@ -13,7 +15,10 @@ export const useWorkspaceStore = defineStore("workspace", () => {
 
     try {
       const result = await window.pine.openWorkspace();
-      if (result.workspace) currentWorkspace.value = result.workspace;
+      if (result.workspace) {
+        sessionStore.reset();
+        currentWorkspace.value = result.workspace;
+      }
       return result.workspace;
     } finally {
       isOpeningWorkspace.value = false;
@@ -22,6 +27,7 @@ export const useWorkspaceStore = defineStore("workspace", () => {
 
   function closeWorkspace(): void {
     currentWorkspace.value = null;
+    sessionStore.reset();
   }
 
   return {
