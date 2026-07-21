@@ -20,6 +20,15 @@
 - 单元测试使用 Vitest；Vue 组件使用 Vue Test Utils，Pinia store 测试可使用 `@pinia/testing`。测试统一放在相邻模块的 `__tests__/` 目录。
 - shadcn-vue 生成的 `src/components/ui/` 与 `src/styles/shadcn-vue.css` 不做全局格式化改写；组件升级继续以 CLI 生成结果为准。
 - 提交前运行 `bun run check`，统一执行格式、Lint、类型和单元测试检查；需要覆盖率报告时运行 `bun run test:coverage`。
+- 当 Bun 长时间停在 `Resolving dependencies`，且请求经过本地代理时，临时绕过代理并降低网络并发后重试：
+
+  ```sh
+  env -u http_proxy -u https_proxy -u all_proxy \
+    -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY \
+    bun install --network-concurrency 8
+  ```
+
+- 依赖安装默认不使用 `--force`；项目包含较多 `latest` 依赖，强制安装会重新解析并可能更新无关包。仅在确认需要完整重建依赖时使用。
 
 ## shadcn-vue 组件流程
 
