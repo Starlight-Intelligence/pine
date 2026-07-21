@@ -6,13 +6,14 @@ import {
   SquareTerminalIcon,
   XIcon,
 } from "@lucide/vue";
-import { ref, shallowRef } from "vue";
+import { computed, ref, shallowRef } from "vue";
 import { useI18n } from "vue-i18n";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { useSidebar } from "@/components/ui/sidebar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
+import WorkspaceSessionView from "./WorkspaceSessionView.vue";
 
 interface WorkspaceContentTab {
   id: string;
@@ -22,7 +23,10 @@ interface WorkspaceContentTab {
 }
 
 const { t } = useI18n();
-const { state: sidebarState } = useSidebar();
+const { state: sidebarState, isMobile } = useSidebar();
+const shouldReserveWindowControlsSpace = computed(
+  () => sidebarState.value === "collapsed" || isMobile.value,
+);
 
 const tabs = shallowRef<WorkspaceContentTab[]>([
   {
@@ -92,13 +96,14 @@ function closeTab(tabId: string): void {
 <template>
   <Tabs v-model="activeTab" class="h-full min-h-0 gap-0 bg-background">
     <div
-      class="pointer-events-none relative z-30 flex h-[var(--window-titlebar-height)] shrink-0 items-center gap-2 px-2 transition-[padding] duration-500 ease-out-expo"
-      :style="{
-        paddingLeft:
-          sidebarState === 'collapsed'
-            ? 'calc(var(--window-titlebar-leading-offset) + var(--window-titlebar-control-height) + 0.75rem)'
-            : undefined,
-      }"
+      data-slot="workspace-content-tabs-titlebar"
+      :class="
+        cn(
+          'pointer-events-none relative z-30 flex h-[var(--window-titlebar-height)] shrink-0 items-center gap-2 px-2 transition-[padding] duration-500 ease-out-expo',
+          shouldReserveWindowControlsSpace &&
+            'pl-[calc(var(--window-titlebar-leading-offset)+var(--window-titlebar-control-height)+0.75rem)]',
+        )
+      "
     >
       <TabsList
         variant="line"
@@ -164,6 +169,8 @@ function closeTab(tabId: string): void {
       :key="tab.id"
       :value="tab.id"
       class="min-h-0 overflow-hidden"
-    />
+    >
+      <WorkspaceSessionView v-if="tab.sessionNumber !== undefined" />
+    </TabsContent>
   </Tabs>
 </template>

@@ -30,6 +30,27 @@ export default {
       addTab: "新建会话标签页",
       closeTab: "关闭 {name}",
     },
+    composer: {
+      label: "会话消息",
+      placeholder: "描述任务或提出问题…",
+      addContext: "添加上下文",
+      send: "发送消息",
+      model: "模型",
+      reasoningEffort: "推理强度",
+      models: {
+        lightweight: "轻快响应，适合简单和日常任务",
+        balanced: "速度与能力均衡，适合大多数任务",
+        advanced: "深入分析，适合复杂和高要求任务",
+      },
+      approval: {
+        askForPermissionLabel: "让我审批",
+        askForPermission: "每次工具调用前都请求确认",
+        agentDecidesLabel: "帮我决定",
+        agentDecides: "由 Agent 判断哪些操作需要确认",
+        yoloLabel: "干就完了",
+        yolo: "自主执行，仅在出错时通知",
+      },
+    },
     tabs: {
       files: "文件",
       sessions: "会话",

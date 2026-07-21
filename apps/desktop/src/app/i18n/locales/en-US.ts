@@ -31,6 +31,27 @@ export default {
       addTab: "Add session tab",
       closeTab: "Close {name}",
     },
+    composer: {
+      label: "Session message",
+      placeholder: "Describe a task or ask a question…",
+      addContext: "Add context",
+      send: "Send message",
+      model: "Model",
+      reasoningEffort: "Reasoning effort",
+      models: {
+        lightweight: "Fast and nimble for simple, everyday tasks",
+        balanced: "A capable balance of speed and depth for most tasks",
+        advanced: "Deeper analysis for complex and demanding tasks",
+      },
+      approval: {
+        askForPermissionLabel: "Ask for Permission",
+        askForPermission: "Confirm every tool call before it runs",
+        agentDecidesLabel: "Agent Decides",
+        agentDecides: "Let the agent decide which actions need confirmation",
+        yoloLabel: "YOLO",
+        yolo: "Run autonomously and notify only when something fails",
+      },
+    },
     tabs: {
       files: "Files",
       sessions: "Sessions",
