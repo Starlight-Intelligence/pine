@@ -81,13 +81,13 @@
 
 Pi 仓库是 monorepo，包含 5 个包：
 
-| 包 | 职责 | Pine 是否使用 |
-|---|---|---|
-| `@earendil-works/pi-agent-core` | `AgentHarness` / `Agent` / `NodeExecutionEnv` / `Session` / skill 加载 / compaction | **核心依赖** |
-| `@earendil-works/pi-ai` | providers、模型发现、`Models` 集合、streaming/complete API、auth | **核心依赖** |
-| `@earendil-works/pi-coding-agent` | CLI/TUI 包装、内置 read/bash/edit/write/grep/find/ls 工具 | **不直接依赖** |
-| `@earendil-works/pi-tui` | 终端 UI 组件 | **不使用** |
-| `@earendil-works/pi-orchestrator` | 多 Agent 编排 | 第一版不需要 |
+| 包                                | 职责                                                                                | Pine 是否使用  |
+| --------------------------------- | ----------------------------------------------------------------------------------- | -------------- |
+| `@earendil-works/pi-agent-core`   | `AgentHarness` / `Agent` / `NodeExecutionEnv` / `Session` / skill 加载 / compaction | **核心依赖**   |
+| `@earendil-works/pi-ai`           | providers、模型发现、`Models` 集合、streaming/complete API、auth                    | **核心依赖**   |
+| `@earendil-works/pi-coding-agent` | CLI/TUI 包装、内置 read/bash/edit/write/grep/find/ls 工具                           | **不直接依赖** |
+| `@earendil-works/pi-tui`          | 终端 UI 组件                                                                        | **不使用**     |
+| `@earendil-works/pi-orchestrator` | 多 Agent 编排                                                                       | 第一版不需要   |
 
 **关键结论**：
 
@@ -117,34 +117,34 @@ Pine 主进程只需要初始化一次 `AgentHarness`，然后把它的事件通
 
 ### 4.3 总体分层
 
-| 层 | 技术选择 | 理由 |
-|---|---|---|
-| 桌面壳 | **Electron + electron-vite** | 跨平台、成熟、能真正本地读写文件与调用 shell；electron-vite 官方提供 Vue + TS 模板 |
-| 打包/更新 | **electron-builder + electron-updater** | 主流 Electron 打包方案，支持 mac/Win/Linux 自动更新 |
-| 前端框架 | **Vue 3 + TypeScript** | 用户指定 Vue 生态 |
-| UI 组件 | **shadcn-vue / reka-ui (radix-vue)** | shadcn-vue 基于 reka-ui 原子组件，可定制、现代化 |
-| 样式 | **Tailwind CSS v4 + @tailwindcss/vite** | v4 推荐 Vite 原生插件，与 shadcn-vue 配合 |
-| 图标 | **lucide-vue-next** | shadcn-vue 生态默认图标 |
-| 前端状态 | **Pinia** | Vue 官方推荐状态管理 |
-| Electron 工具 | **@vueuse/electron** | 将 Electron renderer API 封装为 Composition API |
-| 设置持久化 | **electron-store** | 简单 JSON-backed 配置存储 |
-| 编辑器 | **Monaco Editor** | VS Code 同款，文件树、语法高亮、diff、批注都成熟 |
-| Monaco Vue 封装 | **@guolao/vue-monaco-editor** 或自封装 | 社区有现成封装，但 Electron 下可能需要自定义 loader |
-| Agent Loop | **@earendil-works/pi-agent-core** | 已提供 `AgentHarness`、事件流、session、skill、compaction |
-| 模型接入 | **@earendil-works/pi-ai** | BYOI，自定义 provider；内置 OpenAI/Anthropic/Google/DeepSeek 等 |
-| 工具实现 | 参考 `pi-coding-agent` 的 `core/tools` 重写 | read / write / edit / bash / grep / find / ls / ask_question / create_skill |
-| 版本控制 | **isomorphic-git** | 纯 JS Git 实现，Electron 主进程可用；先做本地 checkpoint |
-| 文件监听 | **chokidar** | 监听项目文件变化，更新文件树 |
-| 文件搜索 | **fast-glob + minimatch + Fuse.js** | 目录遍历、glob 过滤、文件树内模糊搜索 |
-| diff / patch | **diff** | edit 工具生成 diff/patch、UI 展示变更 |
-| 文件类型检测 | **file-type** | 根据文件头检测 MIME，用于预览路由 |
-| 文本预览 | **Monaco Editor** | 代码、文本、CSV、JSON 等 |
-| Markdown 预览 | **marked** 或 **unified(remark-rehype)** | 渲染 Markdown，必要时做语法高亮 |
-| PDF 预览 | **pdfjs-dist / react-pdf** | 基于 Mozilla PDF.js |
-| Office 预览 | **mammoth (docx) + xlsx (SheetJS)** | 解析为 HTML/表格展示 |
-| 媒体预览 | 原生 `<img>` / `<video>` / `<audio>` | 无需额外库 |
-| 日期/国际化 | **Intl.DateTimeFormat** | 原生支持，无需 moment/dayjs |
-| 未来向量检索 | **sqlite-vec / better-sqlite3** | 本地向量搜索，P2 再考虑 |
+| 层              | 技术选择                                    | 理由                                                                               |
+| --------------- | ------------------------------------------- | ---------------------------------------------------------------------------------- |
+| 桌面壳          | **Electron + electron-vite**                | 跨平台、成熟、能真正本地读写文件与调用 shell；electron-vite 官方提供 Vue + TS 模板 |
+| 打包/更新       | **electron-builder + electron-updater**     | 主流 Electron 打包方案，支持 mac/Win/Linux 自动更新                                |
+| 前端框架        | **Vue 3 + TypeScript**                      | 用户指定 Vue 生态                                                                  |
+| UI 组件         | **shadcn-vue / reka-ui (radix-vue)**        | shadcn-vue 基于 reka-ui 原子组件，可定制、现代化                                   |
+| 样式            | **Tailwind CSS v4 + @tailwindcss/vite**     | v4 推荐 Vite 原生插件，与 shadcn-vue 配合                                          |
+| 图标            | **lucide-vue-next**                         | shadcn-vue 生态默认图标                                                            |
+| 前端状态        | **Pinia**                                   | Vue 官方推荐状态管理                                                               |
+| Electron 工具   | **@vueuse/electron**                        | 将 Electron renderer API 封装为 Composition API                                    |
+| 设置持久化      | **electron-store**                          | 简单 JSON-backed 配置存储                                                          |
+| 编辑器          | **Monaco Editor**                           | VS Code 同款，文件树、语法高亮、diff、批注都成熟                                   |
+| Monaco Vue 封装 | **@guolao/vue-monaco-editor** 或自封装      | 社区有现成封装，但 Electron 下可能需要自定义 loader                                |
+| Agent Loop      | **@earendil-works/pi-agent-core**           | 已提供 `AgentHarness`、事件流、session、skill、compaction                          |
+| 模型接入        | **@earendil-works/pi-ai**                   | BYOI，自定义 provider；内置 OpenAI/Anthropic/Google/DeepSeek 等                    |
+| 工具实现        | 参考 `pi-coding-agent` 的 `core/tools` 重写 | read / write / edit / bash / grep / find / ls / ask_question / create_skill        |
+| 版本控制        | **isomorphic-git**                          | 纯 JS Git 实现，Electron 主进程可用；先做本地 checkpoint                           |
+| 文件监听        | **chokidar**                                | 监听项目文件变化，更新文件树                                                       |
+| 文件搜索        | **fast-glob + minimatch + Fuse.js**         | 目录遍历、glob 过滤、文件树内模糊搜索                                              |
+| diff / patch    | **diff**                                    | edit 工具生成 diff/patch、UI 展示变更                                              |
+| 文件类型检测    | **file-type**                               | 根据文件头检测 MIME，用于预览路由                                                  |
+| 文本预览        | **Monaco Editor**                           | 代码、文本、CSV、JSON 等                                                           |
+| Markdown 预览   | **marked** 或 **unified(remark-rehype)**    | 渲染 Markdown，必要时做语法高亮                                                    |
+| PDF 预览        | **pdfjs-dist / react-pdf**                  | 基于 Mozilla PDF.js                                                                |
+| Office 预览     | **mammoth (docx) + xlsx (SheetJS)**         | 解析为 HTML/表格展示                                                               |
+| 媒体预览        | 原生 `<img>` / `<video>` / `<audio>`        | 无需额外库                                                                         |
+| 日期/国际化     | **Intl.DateTimeFormat**                     | 原生支持，无需 moment/dayjs                                                        |
+| 未来向量检索    | **sqlite-vec / better-sqlite3**             | 本地向量搜索，P2 再考虑                                                            |
 
 ### 4.4 依赖策略
 
@@ -158,30 +158,30 @@ Pine 主进程只需要初始化一次 `AgentHarness`，然后把它的事件通
 
 ### 5.1 Electron 主进程（`src/main/`）
 
-| 模块 | 职责 |
-|---|---|
-| `agent-engine.ts` | 每个窗口对应一个 `AgentHarness`；配置 `NodeExecutionEnv`、`Models`、session；管理模型切换、API key |
-| `toolkit/` | Pine 的原子工具实现：`read`、`write`、`edit`、`bash`、`grep`、`find`、`ls`、`ask_question`、`preview_file`、`create_checkpoint`、`create_skill`、`list_annotations`、`add_external_folder` |
-| `project-service.ts` | 创建/打开/导入项目；读写 `.pine/` 元数据；管理项目级外部白名单 |
-| `fs-service.ts` | 基于 `NodeExecutionEnv` 的安全文件操作；路径边界检查 |
-| `checkpoint-service.ts` | 基于 `isomorphic-git` 的自动 snapshot / checkpoint；支持回滚 |
-| `preview-service.ts` | 文件类型检测与预览内容生成（文本/pdf/图片/office/音视频） |
-| `ipc-router.ts` | 向渲染进程暴露安全 API：读取项目树、发 prompt、订阅事件、创建 checkpoint |
-| `window.ts` | 主窗口创建、菜单、生命周期；每项目一窗口 |
+| 模块                    | 职责                                                                                                                                                                                       |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `agent-engine.ts`       | 每个窗口对应一个 `AgentHarness`；配置 `NodeExecutionEnv`、`Models`、session；管理模型切换、API key                                                                                         |
+| `toolkit/`              | Pine 的原子工具实现：`read`、`write`、`edit`、`bash`、`grep`、`find`、`ls`、`ask_question`、`preview_file`、`create_checkpoint`、`create_skill`、`list_annotations`、`add_external_folder` |
+| `project-service.ts`    | 创建/打开/导入项目；读写 `.pine/` 元数据；管理项目级外部白名单                                                                                                                             |
+| `fs-service.ts`         | 基于 `NodeExecutionEnv` 的安全文件操作；路径边界检查                                                                                                                                       |
+| `checkpoint-service.ts` | 基于 `isomorphic-git` 的自动 snapshot / checkpoint；支持回滚                                                                                                                               |
+| `preview-service.ts`    | 文件类型检测与预览内容生成（文本/pdf/图片/office/音视频）                                                                                                                                  |
+| `ipc-router.ts`         | 向渲染进程暴露安全 API：读取项目树、发 prompt、订阅事件、创建 checkpoint                                                                                                                   |
+| `window.ts`             | 主窗口创建、菜单、生命周期；每项目一窗口                                                                                                                                                   |
 
 ### 5.2 Electron 渲染进程 / 前端（`src/renderer/`）
 
-| 模块 | 职责 |
-|---|---|
-| `app.vue` / `workspace/` | 三栏布局、项目切换、状态栏 |
-| `components/file-tree/` | 文件树、新建/重命名/删除、搜索过滤、拖拽导入 |
-| `components/editor-pane/` | Monaco 编辑器、diff 视图、文件内批注组件 |
-| `components/preview-pane/` | 非代码文件预览容器（pdf/图片/office/media/markdown） |
-| `components/chat-pane/` | Agent 对话流、工具调用展示、Human-in-the-loop 确认框 |
-| `components/annotation-layer/` | 管理编辑器内批注，把批注序列化为 Agent 上下文 |
-| `components/skill-manager/` | 展示、启用/禁用、让 Agent 生成新 skill |
-| `stores/` | Pinia stores：项目、会话、文件树、设置 |
-| `composables/` | 复用逻辑：IPC 调用、Monaco 实例、批注状态 |
+| 模块                           | 职责                                                 |
+| ------------------------------ | ---------------------------------------------------- |
+| `app.vue` / `workspace/`       | 三栏布局、项目切换、状态栏                           |
+| `components/file-tree/`        | 文件树、新建/重命名/删除、搜索过滤、拖拽导入         |
+| `components/editor-pane/`      | Monaco 编辑器、diff 视图、文件内批注组件             |
+| `components/preview-pane/`     | 非代码文件预览容器（pdf/图片/office/media/markdown） |
+| `components/chat-pane/`        | Agent 对话流、工具调用展示、Human-in-the-loop 确认框 |
+| `components/annotation-layer/` | 管理编辑器内批注，把批注序列化为 Agent 上下文        |
+| `components/skill-manager/`    | 展示、启用/禁用、让 Agent 生成新 skill               |
+| `stores/`                      | Pinia stores：项目、会话、文件树、设置               |
+| `composables/`                 | 复用逻辑：IPC 调用、Monaco 实例、批注状态            |
 
 ### 5.3 共享类型与配置（`src/shared/`）
 
@@ -199,22 +199,22 @@ Pine 主进程只需要初始化一次 `AgentHarness`，然后把它的事件通
 ```yaml
 project:
   id: uuid
-  name: string               # 用户可见名称
-  rootPath: string           # 本地目录（用户默认不可见）
+  name: string # 用户可见名称
+  rootPath: string # 本地目录（用户默认不可见）
   createdAt: timestamp
   updatedAt: timestamp
   settings:
-    activeModel: { providerId, modelId }  # 覆盖全局默认模型
+    activeModel: { providerId, modelId } # 覆盖全局默认模型
     thinkingLevel: off | minimal | low | medium | high | xhigh
-    autoCheckpoint: boolean               # 是否在关键节点自动保存快照
-    confirmBeforeTool: boolean            # 是否默认工具执行前确认
+    autoCheckpoint: boolean # 是否在关键节点自动保存快照
+    confirmBeforeTool: boolean # 是否默认工具执行前确认
     readOnlyMode: boolean
-    externalFolders: [string]             # 项目级外部 context 白名单
+    externalFolders: [string] # 项目级外部 context 白名单
   skills:
-    global: [skillRef]       # ~/.pine/skills/ 下启用的
-    project: [skillRef]        # .pine/skills/ 下启用的
+    global: [skillRef] # ~/.pine/skills/ 下启用的
+    project: [skillRef] # .pine/skills/ 下启用的
   annotations: [annotation]
-  sessionPath: string        # pi-agent-core JsonlSession 文件路径
+  sessionPath: string # pi-agent-core JsonlSession 文件路径
 ```
 
 ### 6.2 批注（Annotation）
@@ -223,11 +223,11 @@ project:
 annotation:
   id: uuid
   filePath: string
-  range: { startLine, startChar, endLine, endChar }  # 字符级精确范围
-  text: string               # 批注内容
+  range: { startLine, startChar, endLine, endChar } # 字符级精确范围
+  text: string # 批注内容
   createdAt: timestamp
   resolved: boolean
-  context: string            # 选中的原文片段（可选）
+  context: string # 选中的原文片段（可选）
 ```
 
 ### 6.4 AGENTS.md（项目约定）
@@ -236,10 +236,12 @@ annotation:
 # Project Instructions
 
 ## 用户偏好
+
 - 回复保持简洁，不要过度解释。
 - 每次修改文件前创建 checkpoint。
 
 ## 项目约定
+
 - 使用 TypeScript 严格模式。
 - 测试文件放在 `__tests__/` 目录。
 ```
@@ -257,7 +259,7 @@ annotation:
 [引用批注 #a1] 文件 src/index.ts 第 12-15 行：
 "这里是否应该加一个错误处理？"
 
-```
+````
 
 ### 6.3 Checkpoint
 
@@ -443,7 +445,7 @@ interface PineAPI {
   createCheckpoint(projectId: string, label?: string): Promise<void>;
   restoreCheckpoint(projectId: string, checkpointId: string): Promise<void>;
 }
-```
+````
 
 ### 8.3 Agent 工具安全
 
@@ -457,16 +459,16 @@ interface PineAPI {
 
 ## 9. 文件预览器策略
 
-| 文件类型 | 预览实现 | 库 |
-|---|---|---|
-| 代码 / 文本 / CSV / JSON / YAML | Monaco Editor | `monaco-editor` |
-| Markdown | 渲染为 HTML（安全 sanitized） | `marked` + DOMPurify |
-| PDF | 基于 PDF.js 的 canvas 渲染 | `pdfjs-dist` |
-| DOCX | 转换为 HTML | `mammoth` |
-| XLSX / XLS / CSV | 解析为表格数据 | `xlsx` (SheetJS) |
-| 图片 | `<img>` | 原生 |
-| 视频 / 音频 | `<video>` / `<audio>` | 原生 |
-| 未知 / 二进制 | 文件信息卡片 + 十六进制/下载 | 自研 |
+| 文件类型                        | 预览实现                      | 库                   |
+| ------------------------------- | ----------------------------- | -------------------- |
+| 代码 / 文本 / CSV / JSON / YAML | Monaco Editor                 | `monaco-editor`      |
+| Markdown                        | 渲染为 HTML（安全 sanitized） | `marked` + DOMPurify |
+| PDF                             | 基于 PDF.js 的 canvas 渲染    | `pdfjs-dist`         |
+| DOCX                            | 转换为 HTML                   | `mammoth`            |
+| XLSX / XLS / CSV                | 解析为表格数据                | `xlsx` (SheetJS)     |
+| 图片                            | `<img>`                       | 原生                 |
+| 视频 / 音频                     | `<video>` / `<audio>`         | 原生                 |
+| 未知 / 二进制                   | 文件信息卡片 + 十六进制/下载  | 自研                 |
 
 预览器在渲染层以组件形式实现；主进程只负责读取文件 buffer 和检测 MIME。
 
@@ -543,15 +545,15 @@ interface PineAPI {
 
 ## 12. 风险与待定问题
 
-| 风险 | 说明 | 缓解方案 |
-|---|---|---|
-| Pi SDK 的 API 稳定性 | 仍在 0.x 版本，接口可能变化 | 锁定版本；封装自己的 `AgentEngine` 适配层隔离 |
-| Monaco 包体积 | Monaco 语法包、worker、字体很大 | 只注册常用语言；使用 `monaco-editor-webpack-plugin` / Vite 等效插件做 tree-shaking；延迟加载 |
-| bash 工具安全 | 用户可能误执行危险命令 | 默认确认 + 危险命令黑名单 + 路径沙盒 + 只读模式 |
-| isomorphic-git 对大文件/二进制支持有限 | 大仓库 checkpoint 可能慢 | 先做小项目；对二进制/大文件做特殊处理 |
-| Skill 发现与冲突 | 用户生成大量 skill 后如何管理 | 项目级 vs 用户级 skill；启用/禁用开关；命名空间 |
-| Electron 原生模块重建 | better-sqlite3 等需要对应 Electron ABI | P2 再引入；P0/P1 使用纯 JS / JSON 存储 |
-| 模型能力差异 | 不同 OpenAI-compatible 模型对 tool calling 支持不同 | 提供兼容性设置；推荐模型清单 |
+| 风险                                   | 说明                                                | 缓解方案                                                                                     |
+| -------------------------------------- | --------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| Pi SDK 的 API 稳定性                   | 仍在 0.x 版本，接口可能变化                         | 锁定版本；封装自己的 `AgentEngine` 适配层隔离                                                |
+| Monaco 包体积                          | Monaco 语法包、worker、字体很大                     | 只注册常用语言；使用 `monaco-editor-webpack-plugin` / Vite 等效插件做 tree-shaking；延迟加载 |
+| bash 工具安全                          | 用户可能误执行危险命令                              | 默认确认 + 危险命令黑名单 + 路径沙盒 + 只读模式                                              |
+| isomorphic-git 对大文件/二进制支持有限 | 大仓库 checkpoint 可能慢                            | 先做小项目；对二进制/大文件做特殊处理                                                        |
+| Skill 发现与冲突                       | 用户生成大量 skill 后如何管理                       | 项目级 vs 用户级 skill；启用/禁用开关；命名空间                                              |
+| Electron 原生模块重建                  | better-sqlite3 等需要对应 Electron ABI              | P2 再引入；P0/P1 使用纯 JS / JSON 存储                                                       |
+| 模型能力差异                           | 不同 OpenAI-compatible 模型对 tool calling 支持不同 | 提供兼容性设置；推荐模型清单                                                                 |
 
 ---
 

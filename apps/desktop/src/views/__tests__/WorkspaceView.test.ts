@@ -1,4 +1,4 @@
-import { shallowMount } from "@vue/test-utils";
+import { mount } from "@vue/test-utils";
 import { describe, expect, it, vi } from "vitest";
 import WorkspaceView from "../WorkspaceView.vue";
 
@@ -32,7 +32,7 @@ vi.mock("@/components/ui/sidebar", () => ({
 
 describe("WorkspaceView", () => {
   it("starts with session search closed", () => {
-    const wrapper = shallowMount(WorkspaceView);
+    const wrapper = mount(WorkspaceView);
 
     expect(
       wrapper.get('[data-testid="session-search"]').attributes("data-open"),

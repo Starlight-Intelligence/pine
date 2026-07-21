@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { History, Plus } from "@lucide/vue";
+import { History } from "@lucide/vue";
 import { useDebounceFn } from "@vueuse/core";
 import { storeToRefs } from "pinia";
 import { computed, ref, watch } from "vue";
@@ -11,7 +11,6 @@ import {
   CommandGroup,
   CommandItem,
   CommandList,
-  CommandSeparator,
   CommandShortcut,
 } from "@/components/ui/command";
 import { Spinner } from "@/components/ui/spinner";
@@ -95,11 +94,6 @@ async function resumeSession(sessionId: string): Promise<void> {
     });
   }
 }
-
-function startTransientSession(): void {
-  sessionStore.startTransientSession();
-  emit("update:open", false);
-}
 </script>
 
 <template>
@@ -117,7 +111,7 @@ function startTransientSession(): void {
     />
 
     <CommandList
-      class="min-h-52 [&>[role=presentation]]:flex [&>[role=presentation]]:min-h-52 [&>[role=presentation]]:flex-col"
+      class="min-h-72 [&>[role=presentation]]:flex [&>[role=presentation]]:min-h-72 [&>[role=presentation]]:flex-col"
     >
       <CommandEmpty class="flex flex-1 items-center justify-center py-0">
         <span v-if="isSearching" class="inline-flex items-center gap-2">
@@ -127,22 +121,7 @@ function startTransientSession(): void {
         <template v-else>{{ t("sessions.noResults") }}</template>
       </CommandEmpty>
 
-      <CommandGroup
-        v-if="!query || searchResults.length > 0"
-        :key="filterRefreshToken"
-      >
-        <CommandItem
-          v-if="!query"
-          value="pine:new-session"
-          class="data-[highlighted]:bg-muted data-[highlighted]:text-foreground data-[highlighted]:*:[svg]:text-foreground"
-          @select="startTransientSession"
-        >
-          <Plus aria-hidden="true" />
-          <span>{{ t("sessions.newSession") }}</span>
-        </CommandItem>
-
-        <CommandSeparator v-if="!query && searchResults.length > 0" />
-
+      <CommandGroup v-if="searchResults.length > 0" :key="filterRefreshToken">
         <CommandItem
           v-for="session in searchResults"
           :key="session.id"
