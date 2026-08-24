@@ -1,14 +1,14 @@
 import { JsonlSessionRepo } from "@earendil-works/pi-agent-core";
 import { NodeExecutionEnv } from "@earendil-works/pi-agent-core/node";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { WorkspaceSessionService } from "../sessions";
+import { ProjectSessionService } from "../sessions";
 
 const temporaryDirectories: string[] = [];
 
-async function createTemporaryWorkspace(): Promise<string> {
+async function createTemporaryProjectData(): Promise<string> {
   const directory = await mkdtemp(path.join(os.tmpdir(), "pine-sessions-"));
   temporaryDirectories.push(directory);
   return directory;
@@ -22,10 +22,20 @@ afterEach(async () => {
   );
 });
 
-describe("WorkspaceSessionService", () => {
+function serviceOptions(rootPath: string) {
+  return {
+    cacheRoot: path.join(rootPath, "cache"),
+    cwd: path.join(rootPath, "source"),
+    sessionsRoot: path.join(rootPath, "sessions"),
+  };
+}
+
+describe("ProjectSessionService", () => {
   it("creates a new persistent Pi session", async () => {
-    const rootPath = await createTemporaryWorkspace();
-    const service = await WorkspaceSessionService.create(rootPath);
+    const rootPath = await createTemporaryProjectData();
+    const options = serviceOptions(rootPath);
+    await mkdir(options.cwd, { recursive: true });
+    const service = await ProjectSessionService.create(options);
 
     try {
       const { session, summary } = await service.createSession();
@@ -39,14 +49,16 @@ describe("WorkspaceSessionService", () => {
   });
 
   it("searches session names and message content in English and Chinese", async () => {
-    const rootPath = await createTemporaryWorkspace();
-    const environment = new NodeExecutionEnv({ cwd: rootPath });
+    const rootPath = await createTemporaryProjectData();
+    const options = serviceOptions(rootPath);
+    await mkdir(options.cwd, { recursive: true });
+    const environment = new NodeExecutionEnv({ cwd: options.cwd });
     const repository = new JsonlSessionRepo({
       fs: environment,
-      sessionsRoot: path.join(rootPath, ".pine", "sessions"),
+      sessionsRoot: options.sessionsRoot,
     });
-    await repository.create({ cwd: rootPath });
-    const session = await repository.create({ cwd: rootPath });
+    await repository.create({ cwd: path.join(rootPath, "other-source") });
+    const session = await repository.create({ cwd: options.cwd });
     await session.appendSessionName("Search architecture");
     await session.appendMessage({
       role: "user",
@@ -54,13 +66,13 @@ describe("WorkspaceSessionService", () => {
       timestamp: Date.now(),
     });
     const metadata = await session.getMetadata();
-    const service = await WorkspaceSessionService.create(rootPath);
+    const service = await ProjectSessionService.create(options);
 
     try {
       await expect(service.search("")).resolves.toEqual([
         expect.objectContaining({ id: metadata.id }),
       ]);
-      await expect(repository.list({ cwd: rootPath })).resolves.toEqual([
+      await expect(repository.list()).resolves.toEqual([
         expect.objectContaining({ id: metadata.id }),
       ]);
       await expect(service.search("SQLite")).resolves.toEqual([

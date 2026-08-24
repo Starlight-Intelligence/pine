@@ -8,17 +8,12 @@ import { NodeExecutionEnv } from "@earendil-works/pi-agent-core/node";
 import { mkdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import {
-  PINE_METADATA_DIRECTORY,
-  PINE_SESSIONS_DIRECTORY,
-} from "../shared/projects";
 import type {
   PineSessionSummary,
   SessionSearchResult,
 } from "../shared/sessions";
 
 const SEARCH_RESULT_LIMIT = 50;
-const SEARCH_INDEX_DIRECTORY = "cache";
 const SEARCH_INDEX_FILE = "session-search.sqlite";
 const SNIPPET_START = "\u0001";
 const SNIPPET_END = "\u0002";
@@ -27,6 +22,12 @@ const SEARCH_INDEX_SCHEMA_VERSION = 2;
 export interface PineSessionHandle {
   session: Session<JsonlSessionMetadata>;
   summary: PineSessionSummary;
+}
+
+export interface ProjectSessionServiceOptions {
+  cacheRoot: string;
+  cwd: string;
+  sessionsRoot: string;
 }
 
 interface SessionDocument extends PineSessionSummary {
@@ -174,20 +175,21 @@ function quoteFtsQuery(query: string): string {
   return `"${query.replaceAll('"', '""')}"`;
 }
 
-export class WorkspaceSessionService {
+export class ProjectSessionService {
   private readonly database: DatabaseSync;
   private readonly environment: NodeExecutionEnv;
   private readonly liveSessionIds = new Set<string>();
   private readonly repository: JsonlSessionRepo;
 
   private constructor(
-    private readonly rootPath: string,
+    private readonly cwd: string,
+    sessionsRoot: string,
     databasePath: string,
   ) {
-    this.environment = new NodeExecutionEnv({ cwd: rootPath });
+    this.environment = new NodeExecutionEnv({ cwd });
     this.repository = new JsonlSessionRepo({
       fs: this.environment,
-      sessionsRoot: path.join(rootPath, PINE_SESSIONS_DIRECTORY),
+      sessionsRoot,
     });
     this.database = new DatabaseSync(databasePath, { timeout: 5_000 });
     const schemaVersion = this.database.prepare("PRAGMA user_version").get() as
@@ -214,22 +216,22 @@ export class WorkspaceSessionService {
     `);
   }
 
-  static async create(rootPath: string): Promise<WorkspaceSessionService> {
-    const cacheDirectory = path.join(
-      rootPath,
-      PINE_METADATA_DIRECTORY,
-      SEARCH_INDEX_DIRECTORY,
-    );
+  static async create(
+    options: ProjectSessionServiceOptions,
+  ): Promise<ProjectSessionService> {
+    const cacheDirectory = options.cacheRoot;
     await mkdir(cacheDirectory, { recursive: true });
+    await mkdir(options.sessionsRoot, { recursive: true });
 
-    return new WorkspaceSessionService(
-      rootPath,
+    return new ProjectSessionService(
+      options.cwd,
+      options.sessionsRoot,
       path.join(cacheDirectory, SEARCH_INDEX_FILE),
     );
   }
 
   async createSession(): Promise<PineSessionHandle> {
-    const session = await this.repository.create({ cwd: this.rootPath });
+    const session = await this.repository.create({ cwd: this.cwd });
     const metadata = await session.getMetadata();
     this.liveSessionIds.add(metadata.id);
 
@@ -245,11 +247,10 @@ export class WorkspaceSessionService {
   }
 
   async resumeSession(sessionId: string): Promise<PineSessionHandle> {
-    const metadata = (await this.repository.list({ cwd: this.rootPath })).find(
+    const metadata = (await this.repository.list()).find(
       (session) => session.id === sessionId,
     );
-    if (!metadata)
-      throw new Error("Session not found in the active workspace.");
+    if (!metadata) throw new Error("Session not found in the active project.");
 
     const session = await this.repository.open(metadata);
     this.liveSessionIds.add(metadata.id);
@@ -329,7 +330,7 @@ export class WorkspaceSessionService {
   }
 
   private async refreshIndex(): Promise<void> {
-    const metadataList = await this.repository.list({ cwd: this.rootPath });
+    const metadataList = await this.repository.list();
     const indexedRows = this.database
       .prepare(
         "SELECT session_id, source_mtime_ms, message_count FROM session_search",

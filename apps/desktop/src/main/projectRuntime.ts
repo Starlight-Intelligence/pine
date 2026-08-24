@@ -1,41 +1,58 @@
-import type { PineWorkspaceSummary } from "../shared/projects";
 import type {
   JsonlSessionMetadata,
   Session,
 } from "@earendil-works/pi-agent-core";
+import type { ProjectEntry } from "../shared/projectFiles";
+import type { PineProject, PineProjectFolder } from "../shared/projects";
 import type {
   PineSessionSummary,
   SessionSearchResult,
 } from "../shared/sessions";
-import { type PineSessionHandle, WorkspaceSessionService } from "./sessions";
-import { listWorkspaceDirectory } from "./workspaceFiles";
-import type { WorkspaceEntry } from "../shared/workspaceFiles";
+import { listProjectDirectory } from "./projectFiles";
+import type { ProjectDataPaths } from "./projects/projectRepository";
+import { type PineSessionHandle, ProjectSessionService } from "./sessions";
 
-interface WorkspaceRuntime {
+interface ProjectRuntime {
   activeSession: Session<JsonlSessionMetadata> | null;
   activeSessionSummary: PineSessionSummary | null;
+  project: PineProject;
   sessionCreation: Promise<PineSessionHandle> | null;
-  sessions: WorkspaceSessionService;
-  workspace: PineWorkspaceSummary;
+  sessions: ProjectSessionService;
 }
 
-export class WorkspaceRuntimeRegistry {
-  private readonly runtimes = new Map<number, WorkspaceRuntime>();
+export class ProjectRuntimeRegistry {
+  private readonly runtimes = new Map<number, ProjectRuntime>();
 
   async open(
     webContentsId: number,
-    workspace: PineWorkspaceSummary,
+    project: PineProject,
+    dataPaths: ProjectDataPaths,
   ): Promise<void> {
+    const defaultFolder = project.folders.find(
+      (folder) => folder.id === project.defaultFolderId,
+    );
+    if (!defaultFolder?.isAvailable) {
+      throw new Error("The project's default folder is unavailable.");
+    }
+
     await this.dispose(webContentsId);
 
-    const sessions = await WorkspaceSessionService.create(workspace.rootPath);
+    const sessions = await ProjectSessionService.create({
+      cacheRoot: dataPaths.cacheRoot,
+      cwd: defaultFolder.path,
+      sessionsRoot: dataPaths.sessionsRoot,
+    });
     this.runtimes.set(webContentsId, {
       activeSession: null,
       activeSessionSummary: null,
+      project,
       sessionCreation: null,
       sessions,
-      workspace,
     });
+  }
+
+  isOpen(webContentsId: number, projectId: string): boolean {
+    return this.runtimes.get(webContentsId)?.project.id === projectId;
   }
 
   async search(
@@ -47,10 +64,14 @@ export class WorkspaceRuntimeRegistry {
 
   async listDirectory(
     webContentsId: number,
+    folderId: string,
     relativePath: string,
-  ): Promise<WorkspaceEntry[]> {
+  ): Promise<ProjectEntry[]> {
     const runtime = this.get(webContentsId);
-    return listWorkspaceDirectory(runtime.workspace.rootPath, relativePath);
+    return listProjectDirectory(
+      this.getFolder(runtime.project, folderId),
+      relativePath,
+    );
   }
 
   async resume(
@@ -80,9 +101,7 @@ export class WorkspaceRuntimeRegistry {
     try {
       const handle = await runtime.sessionCreation;
       if (this.runtimes.get(webContentsId) !== runtime) {
-        throw new Error(
-          "The active workspace changed while creating a session.",
-        );
+        throw new Error("The active project changed while creating a session.");
       }
 
       runtime.activeSession = handle.session;
@@ -104,9 +123,17 @@ export class WorkspaceRuntimeRegistry {
     await runtime.sessions.dispose();
   }
 
-  private get(webContentsId: number): WorkspaceRuntime {
+  private get(webContentsId: number): ProjectRuntime {
     const runtime = this.runtimes.get(webContentsId);
-    if (!runtime) throw new Error("No workspace is open in this window.");
+    if (!runtime) throw new Error("No project is open in this window.");
     return runtime;
+  }
+
+  private getFolder(project: PineProject, folderId: string): PineProjectFolder {
+    const folder = project.folders.find(
+      (candidate) => candidate.id === folderId,
+    );
+    if (!folder) throw new Error("Folder not found in the active project.");
+    return folder;
   }
 }

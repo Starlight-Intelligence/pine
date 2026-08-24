@@ -1,0 +1,87 @@
+import { createPinia, setActivePinia } from "pinia";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { PineProject } from "@/shared/projects";
+import { useProjectStore } from "../project";
+
+const project: PineProject = {
+  createdAt: "2026-08-19T12:00:00.000Z",
+  defaultFolderId: "cde9a86c-7632-43ac-96d6-c41ddeddce0e",
+  folders: [
+    {
+      access: "read-write",
+      id: "cde9a86c-7632-43ac-96d6-c41ddeddce0e",
+      isAvailable: true,
+      name: "pine",
+      path: "/projects/pine",
+    },
+  ],
+  id: "9ab0b15f-331f-4aa6-8056-cd2be3bf7414",
+  name: "pine",
+  schemaVersion: 1,
+  updatedAt: "2026-08-19T12:00:00.000Z",
+};
+
+describe("project store", () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+  });
+
+  it("loads the Project Library", async () => {
+    Object.defineProperty(window, "pine", {
+      configurable: true,
+      value: {
+        listProjects: vi.fn().mockResolvedValue({ projects: [project] }),
+      },
+    });
+    const store = useProjectStore();
+
+    await store.loadProjects();
+    expect(store.projects).toEqual([project]);
+    expect(store.isLoadingProjects).toBe(false);
+  });
+
+  it("opens a project and stores it as active", async () => {
+    const openProject = vi.fn().mockResolvedValue({ project });
+    Object.defineProperty(window, "pine", {
+      configurable: true,
+      value: { openProject },
+    });
+    const store = useProjectStore();
+
+    await expect(store.openProject(project.id)).resolves.toEqual(project);
+    expect(openProject).toHaveBeenCalledWith({ id: project.id });
+    expect(store.activeProject).toEqual(project);
+    expect(store.isOpeningProject).toBe(false);
+  });
+
+  it("clears its opening state when opening fails", async () => {
+    Object.defineProperty(window, "pine", {
+      configurable: true,
+      value: { openProject: vi.fn().mockRejectedValue(new Error("failed")) },
+    });
+    const store = useProjectStore();
+
+    await expect(store.openProject(project.id)).rejects.toThrow("failed");
+    expect(store.activeProject).toBeNull();
+    expect(store.isOpeningProject).toBe(false);
+  });
+
+  it("deletes a project through the desktop API and removes it from state", async () => {
+    const deleteProject = vi.fn().mockResolvedValue({ deleted: true });
+    Object.defineProperty(window, "pine", {
+      configurable: true,
+      value: {
+        deleteProject,
+        listProjects: vi.fn().mockResolvedValue({ projects: [project] }),
+      },
+    });
+    const store = useProjectStore();
+    await store.loadProjects();
+
+    await store.deleteProject(project.id);
+
+    expect(deleteProject).toHaveBeenCalledWith({ id: project.id });
+    expect(store.projects).toEqual([]);
+    expect(store.isSavingProject).toBe(false);
+  });
+});

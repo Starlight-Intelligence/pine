@@ -2,9 +2,22 @@
 // https://www.electronjs.org/docs/latest/tutorial/process-model#preload-scripts
 import { contextBridge, ipcRenderer } from "electron";
 import {
-  OPEN_WORKSPACE_CHANNEL,
-  type OpenWorkspaceResult,
+  CREATE_PROJECT_CHANNEL,
+  CLOSE_PROJECT_CHANNEL,
+  DELETE_PROJECT_CHANNEL,
+  LIST_PROJECTS_CHANNEL,
+  OPEN_PROJECT_CHANNEL,
+  PICK_PROJECT_FOLDERS_CHANNEL,
+  UPDATE_PROJECT_CHANNEL,
+  type CreateProjectRequest,
+  type DeleteProjectResult,
+  type ListProjectsResult,
   type PineDesktopApi,
+  type PickProjectFoldersRequest,
+  type PickProjectFoldersResult,
+  type ProjectIdRequest,
+  type ProjectResult,
+  type UpdateProjectRequest,
 } from "./shared/projects";
 import {
   RESUME_SESSION_CHANNEL,
@@ -15,18 +28,29 @@ import {
   type SearchSessionsResult,
 } from "./shared/sessions";
 import {
-  LIST_WORKSPACE_DIRECTORY_CHANNEL,
-  type ListWorkspaceDirectoryRequest,
-  type ListWorkspaceDirectoryResult,
-} from "./shared/workspaceFiles";
+  LIST_PROJECT_DIRECTORY_CHANNEL,
+  type ListProjectDirectoryRequest,
+  type ListProjectDirectoryResult,
+} from "./shared/projectFiles";
 
 const pineApi: PineDesktopApi = {
-  listWorkspaceDirectory: (
-    request: ListWorkspaceDirectoryRequest,
-  ): Promise<ListWorkspaceDirectoryResult> =>
-    ipcRenderer.invoke(LIST_WORKSPACE_DIRECTORY_CHANNEL, request),
-  openWorkspace: (): Promise<OpenWorkspaceResult> =>
-    ipcRenderer.invoke(OPEN_WORKSPACE_CHANNEL),
+  closeProject: (): Promise<void> => ipcRenderer.invoke(CLOSE_PROJECT_CHANNEL),
+  createProject: (request: CreateProjectRequest): Promise<ProjectResult> =>
+    ipcRenderer.invoke(CREATE_PROJECT_CHANNEL, request),
+  deleteProject: (request: ProjectIdRequest): Promise<DeleteProjectResult> =>
+    ipcRenderer.invoke(DELETE_PROJECT_CHANNEL, request),
+  listProjectDirectory: (
+    request: ListProjectDirectoryRequest,
+  ): Promise<ListProjectDirectoryResult> =>
+    ipcRenderer.invoke(LIST_PROJECT_DIRECTORY_CHANNEL, request),
+  listProjects: (): Promise<ListProjectsResult> =>
+    ipcRenderer.invoke(LIST_PROJECTS_CHANNEL),
+  openProject: (request: ProjectIdRequest): Promise<ProjectResult> =>
+    ipcRenderer.invoke(OPEN_PROJECT_CHANNEL, request),
+  pickProjectFolders: (
+    request: PickProjectFoldersRequest,
+  ): Promise<PickProjectFoldersResult> =>
+    ipcRenderer.invoke(PICK_PROJECT_FOLDERS_CHANNEL, request),
   resumeSession: (
     request: ResumeSessionRequest,
   ): Promise<ResumeSessionResult> =>
@@ -35,6 +59,8 @@ const pineApi: PineDesktopApi = {
     request: SearchSessionsRequest,
   ): Promise<SearchSessionsResult> =>
     ipcRenderer.invoke(SEARCH_SESSIONS_CHANNEL, request),
+  updateProject: (request: UpdateProjectRequest): Promise<ProjectResult> =>
+    ipcRenderer.invoke(UPDATE_PROJECT_CHANNEL, request),
 };
 
 contextBridge.exposeInMainWorld("pine", pineApi);
