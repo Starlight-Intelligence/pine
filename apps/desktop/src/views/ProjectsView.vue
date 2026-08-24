@@ -196,7 +196,9 @@ onMounted(() => {
         data-testid="project-list-container"
         class="mx-auto my-auto flex max-h-full min-h-0 w-full max-w-lg flex-col gap-6 overflow-hidden"
       >
-        <header class="flex shrink-0 flex-col items-center gap-2 text-center">
+        <header
+          class="flex shrink-0 flex-col items-center gap-2 pt-2 text-center"
+        >
           <PineCharacter decorative size="lg" />
           <h1 class="text-lg font-semibold">
             {{ t("projects.welcomeTitle") }}
