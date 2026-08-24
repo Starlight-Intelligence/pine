@@ -1,4 +1,5 @@
 import { createPinia, setActivePinia } from "pinia";
+import { SettingsIcon } from "@lucide/vue";
 import { mount } from "@vue/test-utils";
 import { beforeEach, describe, expect, it } from "vitest";
 import { APP_LOCALE_STORAGE_KEY, createAppI18n } from "@/app/i18n";
@@ -45,6 +46,7 @@ describe("PinePreferencesDialog", () => {
     expect(
       wrapper.get('button[aria-label="打开 Pine 设置"]').attributes("title"),
     ).toBe("打开 Pine 设置");
+    expect(wrapper.findComponent(SettingsIcon).exists()).toBe(true);
     expect(wrapper.text()).toContain("Pine 设置");
     expect(wrapper.text()).toContain("语言");
     expect(wrapper.text()).toContain("外观");

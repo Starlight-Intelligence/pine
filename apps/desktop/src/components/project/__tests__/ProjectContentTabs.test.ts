@@ -24,6 +24,8 @@ vi.mock("../ProjectSessionView.vue", () => ({
 
 const windowControlsPaddingClass =
   "pl-[calc(var(--window-titlebar-leading-offset)+var(--window-titlebar-control-height)+0.75rem)]";
+const preferencesPaddingClass =
+  "pr-[calc(var(--window-titlebar-control-height)+1.25rem)]";
 
 function mountTabs() {
   return mount(ProjectContentTabs, {
@@ -74,5 +76,14 @@ describe("ProjectContentTabs", () => {
     expect(closeButton.classes()).toContain("my-auto");
     expect(closeButton.classes()).not.toContain("top-1/2");
     expect(closeButton.classes()).not.toContain("-translate-y-1/2");
+  });
+
+  it("keeps tabs and the add action clear of global preferences", () => {
+    const wrapper = mountTabs();
+    const titlebar = wrapper.get('[data-slot="project-content-tabs-titlebar"]');
+    const tabList = wrapper.get('[data-slot="tabs-list"]');
+
+    expect(titlebar.classes()).toContain(preferencesPaddingClass);
+    expect(tabList.classes()).toContain("flex-1");
   });
 });

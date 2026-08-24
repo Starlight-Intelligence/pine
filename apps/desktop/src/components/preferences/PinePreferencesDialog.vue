@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Settings2Icon } from "@lucide/vue";
+import { SettingsIcon } from "@lucide/vue";
 import { storeToRefs } from "pinia";
 import { useI18n } from "vue-i18n";
 import { isAppLocale, persistAppLocale } from "@/app/i18n";
@@ -43,7 +43,7 @@ function updateTheme(value: unknown): void {
         :aria-label="t('preferences.open')"
         :title="t('preferences.open')"
       >
-        <Settings2Icon />
+        <SettingsIcon />
       </Button>
     </DialogTrigger>
 
