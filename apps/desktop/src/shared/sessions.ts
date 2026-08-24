@@ -1,5 +1,13 @@
 export const SEARCH_SESSIONS_CHANNEL = "sessions:search" as const;
 export const RESUME_SESSION_CHANNEL = "sessions:resume" as const;
+export const LOAD_SESSION_MESSAGES_CHANNEL = "sessions:messages" as const;
+
+export interface PineTextMessage {
+  createdAt: string;
+  id: string;
+  role: "assistant" | "user";
+  text: string;
+}
 
 export interface PineSessionSummary {
   createdAt: string;
@@ -28,4 +36,16 @@ export interface ResumeSessionRequest {
 
 export interface ResumeSessionResult {
   session: PineSessionSummary;
+}
+
+export interface LoadSessionMessagesRequest {
+  before?: string;
+  limit?: number;
+  sessionId: string;
+}
+
+export interface LoadSessionMessagesResult {
+  hasMore: boolean;
+  messages: PineTextMessage[];
+  nextBefore?: string;
 }

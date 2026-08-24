@@ -1,27 +1,35 @@
-import type {
-  JsonlSessionMetadata,
-  Session,
-} from "@earendil-works/pi-agent-core";
 import type { ProjectEntry } from "../shared/projectFiles";
 import type { PineProject, PineProjectFolder } from "../shared/projects";
 import type {
+  PromptSessionRequest,
+  PromptSessionResult,
+} from "../shared/agent";
+import type {
+  LoadSessionMessagesResult,
   PineSessionSummary,
   SessionSearchResult,
 } from "../shared/sessions";
 import { listProjectDirectory } from "./projectFiles";
 import type { ProjectDataPaths } from "./projects/projectRepository";
-import { type PineSessionHandle, ProjectSessionService } from "./sessions";
+import { ProjectSessionService } from "./sessions";
+import type { AgentHost } from "./agentProcessHost";
 
 interface ProjectRuntime {
-  activeSession: Session<JsonlSessionMetadata> | null;
+  activeSessionId: string | null;
   activeSessionSummary: PineSessionSummary | null;
+  dataPaths: ProjectDataPaths;
   project: PineProject;
-  sessionCreation: Promise<PineSessionHandle> | null;
+  sessionCreation: Promise<PineSessionSummary> | null;
   sessions: ProjectSessionService;
 }
 
 export class ProjectRuntimeRegistry {
   private readonly runtimes = new Map<number, ProjectRuntime>();
+
+  constructor(
+    private readonly agentHost: AgentHost,
+    private readonly agentDir: string,
+  ) {}
 
   async open(
     webContentsId: number,
@@ -43,8 +51,9 @@ export class ProjectRuntimeRegistry {
       sessionsRoot: dataPaths.sessionsRoot,
     });
     this.runtimes.set(webContentsId, {
-      activeSession: null,
+      activeSessionId: null,
       activeSessionSummary: null,
+      dataPaths,
       project,
       sessionCreation: null,
       sessions,
@@ -60,6 +69,19 @@ export class ProjectRuntimeRegistry {
     query: string,
   ): Promise<SessionSearchResult[]> {
     return this.get(webContentsId).sessions.search(query);
+  }
+
+  async loadMessages(
+    webContentsId: number,
+    sessionId: string,
+    before?: string,
+    limit?: number,
+  ): Promise<LoadSessionMessagesResult> {
+    return this.get(webContentsId).sessions.loadMessages(
+      sessionId,
+      before,
+      limit,
+    );
   }
 
   async listDirectory(
@@ -79,24 +101,34 @@ export class ProjectRuntimeRegistry {
     sessionId: string,
   ): Promise<PineSessionSummary> {
     const runtime = this.get(webContentsId);
-    const session = await runtime.sessions.resumeSession(sessionId);
-    runtime.activeSession = session.session;
-    runtime.activeSessionSummary = session.summary;
-    return session.summary;
+    if (runtime.activeSessionId === sessionId && runtime.activeSessionSummary) {
+      return runtime.activeSessionSummary;
+    }
+
+    const descriptor = await runtime.sessions.describeSession(sessionId);
+    if (runtime.activeSessionId) {
+      await this.agentHost.disposeSession(runtime.activeSessionId);
+    }
+    const opened = await this.agentHost.openSession(
+      this.location(runtime),
+      descriptor.sessionFile,
+    );
+    runtime.activeSessionId = opened.session.id;
+    runtime.activeSessionSummary = opened.session;
+    return opened.session;
   }
 
   async getOrCreateActiveSession(
     webContentsId: number,
-  ): Promise<PineSessionHandle> {
+  ): Promise<PineSessionSummary> {
     const runtime = this.get(webContentsId);
-    if (runtime.activeSession && runtime.activeSessionSummary) {
-      return {
-        session: runtime.activeSession,
-        summary: runtime.activeSessionSummary,
-      };
+    if (runtime.activeSessionId && runtime.activeSessionSummary) {
+      return runtime.activeSessionSummary;
     }
 
-    runtime.sessionCreation ??= runtime.sessions.createSession();
+    runtime.sessionCreation ??= this.agentHost
+      .createSession(this.location(runtime))
+      .then(({ session }) => session);
 
     try {
       const handle = await runtime.sessionCreation;
@@ -104,12 +136,46 @@ export class ProjectRuntimeRegistry {
         throw new Error("The active project changed while creating a session.");
       }
 
-      runtime.activeSession = handle.session;
-      runtime.activeSessionSummary = handle.summary;
+      runtime.activeSessionId = handle.id;
+      runtime.activeSessionSummary = handle;
       return handle;
     } finally {
       runtime.sessionCreation = null;
     }
+  }
+
+  async prompt(
+    webContentsId: number,
+    request: PromptSessionRequest,
+  ): Promise<PromptSessionResult> {
+    const runtime = this.get(webContentsId);
+    const activeSession = await this.getOrCreateActiveSession(webContentsId);
+    const result = await this.agentHost.prompt(
+      activeSession.id,
+      request.message,
+      request.streamingBehavior === "follow-up"
+        ? "followUp"
+        : request.streamingBehavior,
+    );
+    runtime.activeSessionSummary = result.session;
+    return { accepted: result.accepted, session: result.session };
+  }
+
+  async abort(webContentsId: number): Promise<{
+    aborted: boolean;
+    sessionId?: string;
+  }> {
+    const runtime = this.get(webContentsId);
+    if (!runtime.activeSessionId) return { aborted: false };
+    const result = await this.agentHost.abort(runtime.activeSessionId);
+    return { ...result, sessionId: runtime.activeSessionId };
+  }
+
+  ownerOfSession(sessionId: string): number | undefined {
+    for (const [webContentsId, runtime] of this.runtimes) {
+      if (runtime.activeSessionId === sessionId) return webContentsId;
+    }
+    return undefined;
   }
 
   async dispose(webContentsId: number): Promise<void> {
@@ -117,8 +183,15 @@ export class ProjectRuntimeRegistry {
     if (!runtime) return;
 
     this.runtimes.delete(webContentsId);
+    let createdSessionId: string | undefined;
     if (runtime.sessionCreation) {
-      await runtime.sessionCreation.catch(() => undefined);
+      createdSessionId = await runtime.sessionCreation
+        .then((session) => session.id)
+        .catch(() => undefined);
+    }
+    const sessionId = runtime.activeSessionId ?? createdSessionId;
+    if (sessionId) {
+      await this.agentHost.disposeSession(sessionId);
     }
     await runtime.sessions.dispose();
   }
@@ -135,5 +208,17 @@ export class ProjectRuntimeRegistry {
     );
     if (!folder) throw new Error("Folder not found in the active project.");
     return folder;
+  }
+
+  private location(runtime: ProjectRuntime) {
+    const defaultFolder = this.getFolder(
+      runtime.project,
+      runtime.project.defaultFolderId,
+    );
+    return {
+      agentDir: this.agentDir,
+      cwd: defaultFolder.path,
+      sessionsRoot: runtime.dataPaths.sessionsRoot,
+    };
   }
 }

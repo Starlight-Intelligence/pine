@@ -9,7 +9,9 @@ import { mkdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type {
+  LoadSessionMessagesResult,
   PineSessionSummary,
+  PineTextMessage,
   SessionSearchResult,
 } from "../shared/sessions";
 
@@ -21,6 +23,11 @@ const SEARCH_INDEX_SCHEMA_VERSION = 2;
 
 export interface PineSessionHandle {
   session: Session<JsonlSessionMetadata>;
+  summary: PineSessionSummary;
+}
+
+export interface PineSessionDescriptor {
+  sessionFile: string;
   summary: PineSessionSummary;
 }
 
@@ -80,6 +87,32 @@ function textFromMessage(
   }
 
   return "";
+}
+
+function textMessages(entries: SessionTreeEntry[]): PineTextMessage[] {
+  return entries.flatMap((entry) => {
+    if (
+      entry.type !== "message" ||
+      (entry.message.role !== "user" && entry.message.role !== "assistant")
+    ) {
+      return [];
+    }
+
+    const text = textFromMessage(entry).trim();
+    if (!text) return [];
+    const messageTimestamp = entry.message.timestamp;
+    return [
+      {
+        createdAt:
+          typeof messageTimestamp === "number"
+            ? new Date(messageTimestamp).toISOString()
+            : entry.timestamp,
+        id: entry.id,
+        role: entry.message.role,
+        text,
+      } satisfies PineTextMessage,
+    ];
+  });
 }
 
 function firstUserMessage(entries: SessionTreeEntry[]): string | undefined {
@@ -257,6 +290,44 @@ export class ProjectSessionService {
     return {
       session,
       summary: await this.readSessionDocument(metadata, undefined, session),
+    };
+  }
+
+  async describeSession(sessionId: string): Promise<PineSessionDescriptor> {
+    const metadata = (await this.repository.list()).find(
+      (session) => session.id === sessionId,
+    );
+    if (!metadata) throw new Error("Session not found in the active project.");
+
+    return {
+      sessionFile: metadata.path,
+      summary: await this.readSessionDocument(metadata),
+    };
+  }
+
+  async loadMessages(
+    sessionId: string,
+    before?: string,
+    limit = 50,
+  ): Promise<LoadSessionMessagesResult> {
+    const metadata = (await this.repository.list()).find(
+      (session) => session.id === sessionId,
+    );
+    if (!metadata) throw new Error("Session not found in the active project.");
+
+    const session = await this.repository.open(metadata);
+    const messages = textMessages(await session.getEntries());
+    const end = before
+      ? messages.findIndex((message) => message.id === before)
+      : messages.length;
+    if (end < 0) throw new Error("Session message cursor not found.");
+
+    const start = Math.max(0, end - limit);
+    const page = messages.slice(start, end);
+    return {
+      hasMore: start > 0,
+      messages: page,
+      ...(start > 0 && page[0] ? { nextBefore: page[0].id } : {}),
     };
   }
 

@@ -1,8 +1,16 @@
 import type {
+  AbortSessionResult,
+  PromptSessionRequest,
+  PromptSessionResult,
+  SessionEventListener,
+} from "./agent";
+import type {
   ListProjectDirectoryRequest,
   ListProjectDirectoryResult,
 } from "./projectFiles";
 import type {
+  LoadSessionMessagesRequest,
+  LoadSessionMessagesResult,
   ResumeSessionRequest,
   ResumeSessionResult,
   SearchSessionsRequest,
@@ -83,6 +91,7 @@ export interface PickProjectFoldersRequest {
 }
 
 export interface PineDesktopApi {
+  abortSession: () => Promise<AbortSessionResult>;
   closeProject: () => Promise<void>;
   createProject: (request: CreateProjectRequest) => Promise<ProjectResult>;
   deleteProject: (request: ProjectIdRequest) => Promise<DeleteProjectResult>;
@@ -90,15 +99,22 @@ export interface PineDesktopApi {
     request: ListProjectDirectoryRequest,
   ) => Promise<ListProjectDirectoryResult>;
   listProjects: () => Promise<ListProjectsResult>;
+  loadSessionMessages: (
+    request: LoadSessionMessagesRequest,
+  ) => Promise<LoadSessionMessagesResult>;
   openProject: (request: ProjectIdRequest) => Promise<ProjectResult>;
   pickProjectFolders: (
     request: PickProjectFoldersRequest,
   ) => Promise<PickProjectFoldersResult>;
+  promptSession: (
+    request: PromptSessionRequest,
+  ) => Promise<PromptSessionResult>;
   resumeSession: (
     request: ResumeSessionRequest,
   ) => Promise<ResumeSessionResult>;
   searchSessions: (
     request: SearchSessionsRequest,
   ) => Promise<SearchSessionsResult>;
+  onSessionEvent: (listener: SessionEventListener) => () => void;
   updateProject: (request: UpdateProjectRequest) => Promise<ProjectResult>;
 }

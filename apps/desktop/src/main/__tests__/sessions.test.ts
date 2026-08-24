@@ -95,4 +95,48 @@ describe("ProjectSessionService", () => {
       await environment.cleanup();
     }
   });
+
+  it("loads text messages backwards with a stable cursor", async () => {
+    const rootPath = await createTemporaryProjectData();
+    const options = serviceOptions(rootPath);
+    await mkdir(options.cwd, { recursive: true });
+    const environment = new NodeExecutionEnv({ cwd: options.cwd });
+    const repository = new JsonlSessionRepo({
+      fs: environment,
+      sessionsRoot: options.sessionsRoot,
+    });
+    const session = await repository.create({ cwd: options.cwd });
+    for (const content of ["one", "two", "three", "four"]) {
+      await session.appendMessage({
+        role: "user",
+        content,
+        timestamp: Date.now(),
+      });
+    }
+    const metadata = await session.getMetadata();
+    const service = await ProjectSessionService.create(options);
+
+    try {
+      const newest = await service.loadMessages(metadata.id, undefined, 2);
+      expect(newest.messages.map((message) => message.text)).toEqual([
+        "three",
+        "four",
+      ]);
+      expect(newest.hasMore).toBe(true);
+
+      const earlier = await service.loadMessages(
+        metadata.id,
+        newest.nextBefore,
+        2,
+      );
+      expect(earlier.messages.map((message) => message.text)).toEqual([
+        "one",
+        "two",
+      ]);
+      expect(earlier.hasMore).toBe(false);
+    } finally {
+      await service.dispose();
+      await environment.cleanup();
+    }
+  });
 });

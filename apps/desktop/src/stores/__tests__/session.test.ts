@@ -1,5 +1,6 @@
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { PineAgentEvent } from "@/shared/agent";
 import type { PineSessionSummary } from "@/shared/sessions";
 import { useSessionStore } from "../session";
 
@@ -44,6 +45,10 @@ describe("session store", () => {
     Object.defineProperty(window, "pine", {
       configurable: true,
       value: {
+        loadSessionMessages: vi.fn().mockResolvedValue({
+          hasMore: false,
+          messages: [],
+        }),
         resumeSession: vi.fn().mockResolvedValue({ session }),
       },
     });
@@ -73,6 +78,10 @@ describe("session store", () => {
     Object.defineProperty(window, "pine", {
       configurable: true,
       value: {
+        loadSessionMessages: vi.fn().mockResolvedValue({
+          hasMore: false,
+          messages: [],
+        }),
         resumeSession: vi.fn().mockResolvedValue({ session }),
       },
     });
@@ -82,5 +91,56 @@ describe("session store", () => {
     store.startTransientSession();
 
     expect(store.activeSession).toBeNull();
+  });
+
+  it("builds a text transcript from streaming agent events", () => {
+    let listener: ((event: PineAgentEvent) => void) | undefined;
+    Object.defineProperty(window, "pine", {
+      configurable: true,
+      value: {
+        onSessionEvent: vi.fn((nextListener) => {
+          listener = nextListener;
+          return () => undefined;
+        }),
+      },
+    });
+    const store = useSessionStore();
+    store.connectAgentEvents();
+
+    listener?.({
+      type: "run-state",
+      sessionId: session.id,
+      state: "running",
+    });
+    listener?.({
+      type: "message-start",
+      sessionId: session.id,
+      messageId: "019cfe51-7166-79b9-a5b9-c652fcca9eac",
+      message: {
+        role: "assistant",
+        timestamp: 1_784_000_000_000,
+        content: [{ type: "text", text: "Hello" }],
+      },
+    });
+    listener?.({
+      type: "message-end",
+      sessionId: session.id,
+      messageId: "019cfe51-7166-79b9-a5b9-c652fcca9eac",
+      message: {
+        role: "assistant",
+        timestamp: 1_784_000_000_000,
+        content: [{ type: "text", text: "Hello, world" }],
+      },
+    });
+
+    expect(store.messages).toEqual([
+      expect.objectContaining({
+        id: "019cfe51-7166-79b9-a5b9-c652fcca9eac",
+        role: "assistant",
+        status: "complete",
+        text: "Hello, world",
+      }),
+    ]);
+    expect(store.isRunning).toBe(true);
   });
 });

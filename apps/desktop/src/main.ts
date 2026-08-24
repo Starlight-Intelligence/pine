@@ -4,6 +4,7 @@ import {
   dialog,
   ipcMain,
   nativeTheme,
+  webContents,
   type OpenDialogOptions,
 } from "electron";
 import started from "electron-squirrel-startup";
@@ -11,7 +12,15 @@ import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { z } from "zod";
 import { ProjectRuntimeRegistry } from "./main/projectRuntime";
+import { AgentProcessHost } from "./main/agentProcessHost";
 import { ProjectRepository } from "./main/projects/projectRepository";
+import {
+  ABORT_SESSION_CHANNEL,
+  PROMPT_SESSION_CHANNEL,
+  SESSION_EVENT_CHANNEL,
+  type AbortSessionResult,
+  type PromptSessionResult,
+} from "./shared/agent";
 import {
   CREATE_PROJECT_CHANNEL,
   CLOSE_PROJECT_CHANNEL,
@@ -27,8 +36,10 @@ import {
   type ProjectResult,
 } from "./shared/projects";
 import {
+  LOAD_SESSION_MESSAGES_CHANNEL,
   RESUME_SESSION_CHANNEL,
   SEARCH_SESSIONS_CHANNEL,
+  type LoadSessionMessagesResult,
   type ResumeSessionResult,
   type SearchSessionsResult,
 } from "./shared/sessions";
@@ -49,7 +60,8 @@ if (started) {
 
 nativeTheme.themeSource = "system";
 
-const projectRuntimes = new ProjectRuntimeRegistry();
+let agentHost: AgentProcessHost | null = null;
+let projectRuntimes: ProjectRuntimeRegistry | null = null;
 let projectRepository: ProjectRepository | null = null;
 
 const ProjectFolderInputSchema = z.object({
@@ -89,6 +101,15 @@ const SearchSessionsRequestSchema = z.object({
 const ResumeSessionRequestSchema = z.object({
   sessionId: z.uuid(),
 });
+const LoadSessionMessagesRequestSchema = z.object({
+  before: z.uuid().optional(),
+  limit: z.number().int().min(1).max(100).optional(),
+  sessionId: z.uuid(),
+});
+const PromptSessionRequestSchema = z.object({
+  message: z.string().trim().min(1).max(100_000),
+  streamingBehavior: z.enum(["follow-up", "steer"]).optional(),
+});
 const ListProjectDirectoryRequestSchema = z.object({
   folderId: z.uuid(),
   relativePath: z.string().max(4_096),
@@ -97,6 +118,11 @@ const ListProjectDirectoryRequestSchema = z.object({
 function getProjectRepository(): ProjectRepository {
   if (!projectRepository) throw new Error("Project storage is not ready.");
   return projectRepository;
+}
+
+function getProjectRuntimes(): ProjectRuntimeRegistry {
+  if (!projectRuntimes) throw new Error("Project runtime is not ready.");
+  return projectRuntimes;
 }
 
 const createWindow = () => {
@@ -126,7 +152,7 @@ const createWindow = () => {
     mainWindow.show();
   });
   mainWindow.webContents.once("destroyed", () => {
-    void projectRuntimes.dispose(webContentsId);
+    void projectRuntimes?.dispose(webContentsId);
   });
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
 
@@ -193,7 +219,7 @@ ipcMain.handle(
 );
 
 ipcMain.handle(CLOSE_PROJECT_CHANNEL, async (event): Promise<void> => {
-  await projectRuntimes.dispose(event.sender.id);
+  await getProjectRuntimes().dispose(event.sender.id);
 });
 
 ipcMain.handle(
@@ -202,7 +228,7 @@ ipcMain.handle(
     const { id } = ProjectIdRequestSchema.parse(request);
     const repository = getProjectRepository();
     const project = await repository.open(id);
-    await projectRuntimes.open(
+    await getProjectRuntimes().open(
       event.sender.id,
       project,
       repository.dataPaths(id),
@@ -217,8 +243,8 @@ ipcMain.handle(
     const { id, ...input } = UpdateProjectRequestSchema.parse(request);
     const repository = getProjectRepository();
     const project = await repository.update(id, input);
-    if (projectRuntimes.isOpen(event.sender.id, id)) {
-      await projectRuntimes.open(
+    if (getProjectRuntimes().isOpen(event.sender.id, id)) {
+      await getProjectRuntimes().open(
         event.sender.id,
         project,
         repository.dataPaths(id),
@@ -232,8 +258,8 @@ ipcMain.handle(
   DELETE_PROJECT_CHANNEL,
   async (event, request: unknown): Promise<DeleteProjectResult> => {
     const { id } = ProjectIdRequestSchema.parse(request);
-    if (projectRuntimes.isOpen(event.sender.id, id)) {
-      await projectRuntimes.dispose(event.sender.id);
+    if (getProjectRuntimes().isOpen(event.sender.id, id)) {
+      await getProjectRuntimes().dispose(event.sender.id);
     }
     return { deleted: await getProjectRepository().delete(id) };
   },
@@ -245,7 +271,7 @@ ipcMain.handle(
     const { folderId, relativePath } =
       ListProjectDirectoryRequestSchema.parse(request);
     return {
-      entries: await projectRuntimes.listDirectory(
+      entries: await getProjectRuntimes().listDirectory(
         event.sender.id,
         folderId,
         relativePath,
@@ -259,7 +285,7 @@ ipcMain.handle(
   async (event, request: unknown): Promise<SearchSessionsResult> => {
     const { query } = SearchSessionsRequestSchema.parse(request);
     return {
-      sessions: await projectRuntimes.search(event.sender.id, query),
+      sessions: await getProjectRuntimes().search(event.sender.id, query),
     };
   },
 );
@@ -269,19 +295,62 @@ ipcMain.handle(
   async (event, request: unknown): Promise<ResumeSessionResult> => {
     const { sessionId } = ResumeSessionRequestSchema.parse(request);
     return {
-      session: await projectRuntimes.resume(event.sender.id, sessionId),
+      session: await getProjectRuntimes().resume(event.sender.id, sessionId),
     };
   },
+);
+
+ipcMain.handle(
+  LOAD_SESSION_MESSAGES_CHANNEL,
+  async (event, request: unknown): Promise<LoadSessionMessagesResult> => {
+    const { before, limit, sessionId } =
+      LoadSessionMessagesRequestSchema.parse(request);
+    return getProjectRuntimes().loadMessages(
+      event.sender.id,
+      sessionId,
+      before,
+      limit,
+    );
+  },
+);
+
+ipcMain.handle(
+  PROMPT_SESSION_CHANNEL,
+  async (event, request: unknown): Promise<PromptSessionResult> =>
+    getProjectRuntimes().prompt(
+      event.sender.id,
+      PromptSessionRequestSchema.parse(request),
+    ),
+);
+
+ipcMain.handle(
+  ABORT_SESSION_CHANNEL,
+  async (event): Promise<AbortSessionResult> =>
+    getProjectRuntimes().abort(event.sender.id),
 );
 
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.on("ready", () => {
+  agentHost = AgentProcessHost.createDefault();
   projectRepository = new ProjectRepository(
     path.join(app.getPath("userData"), PROJECTS_DIRECTORY),
   );
+  projectRuntimes = new ProjectRuntimeRegistry(
+    agentHost,
+    path.join(app.getPath("userData"), "agent"),
+  );
+  agentHost.subscribe((agentEvent) => {
+    const ownerId = projectRuntimes?.ownerOfSession(agentEvent.sessionId);
+    if (ownerId === undefined) return;
+    webContents.fromId(ownerId)?.send(SESSION_EVENT_CHANNEL, agentEvent);
+  });
   createWindow();
+});
+
+app.on("will-quit", () => {
+  void agentHost?.dispose();
 });
 
 // Quit when all windows are closed, except on macOS. There, it's common
