@@ -2,7 +2,7 @@ import { mount } from "@vue/test-utils";
 import { computed } from "vue";
 import { describe, expect, it, vi } from "vitest";
 import { createAppI18n } from "@/app/i18n";
-import WorkspaceContentTabs from "../WorkspaceContentTabs.vue";
+import ProjectContentTabs from "../ProjectContentTabs.vue";
 
 const sidebar = vi.hoisted(() => ({
   state: "expanded",
@@ -16,7 +16,7 @@ vi.mock("@/components/ui/sidebar", () => ({
   }),
 }));
 
-vi.mock("../WorkspaceSessionView.vue", () => ({
+vi.mock("../ProjectSessionView.vue", () => ({
   default: {
     template: "<div />",
   },
@@ -26,14 +26,14 @@ const windowControlsPaddingClass =
   "pl-[calc(var(--window-titlebar-leading-offset)+var(--window-titlebar-control-height)+0.75rem)]";
 
 function mountTabs() {
-  return mount(WorkspaceContentTabs, {
+  return mount(ProjectContentTabs, {
     global: {
       plugins: [createAppI18n("en-US")],
     },
   });
 }
 
-describe("WorkspaceContentTabs", () => {
+describe("ProjectContentTabs", () => {
   it("does not reserve window controls space beside an expanded desktop sidebar", () => {
     sidebar.state = "expanded";
     sidebar.isMobile = false;
@@ -41,7 +41,7 @@ describe("WorkspaceContentTabs", () => {
     const wrapper = mountTabs();
 
     expect(
-      wrapper.get('[data-slot="workspace-content-tabs-titlebar"]').classes(),
+      wrapper.get('[data-slot="project-content-tabs-titlebar"]').classes(),
     ).not.toContain(windowControlsPaddingClass);
   });
 
@@ -52,7 +52,7 @@ describe("WorkspaceContentTabs", () => {
     const wrapper = mountTabs();
 
     expect(
-      wrapper.get('[data-slot="workspace-content-tabs-titlebar"]').classes(),
+      wrapper.get('[data-slot="project-content-tabs-titlebar"]').classes(),
     ).toContain(windowControlsPaddingClass);
   });
 
@@ -62,7 +62,17 @@ describe("WorkspaceContentTabs", () => {
     const wrapper = mountTabs();
 
     expect(
-      wrapper.get('[data-slot="workspace-content-tabs-titlebar"]').classes(),
+      wrapper.get('[data-slot="project-content-tabs-titlebar"]').classes(),
     ).toContain(windowControlsPaddingClass);
+  });
+
+  it("centers close buttons without conflicting with the button pressed state", () => {
+    const wrapper = mountTabs();
+    const closeButton = wrapper.get('button[aria-label^="Close"]');
+
+    expect(closeButton.classes()).toContain("inset-y-0");
+    expect(closeButton.classes()).toContain("my-auto");
+    expect(closeButton.classes()).not.toContain("top-1/2");
+    expect(closeButton.classes()).not.toContain("-translate-y-1/2");
   });
 });

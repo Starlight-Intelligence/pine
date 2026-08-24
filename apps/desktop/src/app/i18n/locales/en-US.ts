@@ -1,8 +1,14 @@
 export default {
-  welcome: {
-    title: "Let's get things done",
-    openFolder: "Open folder",
-    settings: "Settings",
+  common: {
+    cancel: "Cancel",
+    delete: "Delete",
+    edit: "Edit",
+    save: "Save",
+    saving: "Saving",
+  },
+  preferences: {
+    title: "Pine Settings",
+    open: "Open Pine settings",
     language: "Language",
     languageChinese: "简体中文",
     languageEnglish: "English",
@@ -11,10 +17,50 @@ export default {
     themeLight: "Light",
     themeDark: "Dark",
   },
+  projects: {
+    title: "Projects",
+    welcomeTitle: "Let's get things done",
+    description:
+      "Organize sessions and choose exactly which folders AI can access.",
+    createAction: "New Project",
+    createDescription: "Choose folders that AI can access",
+    createTitle: "New Project",
+    editTitle: "Edit Project",
+    openAction: "Open",
+    emptyTitle: "No projects yet",
+    emptyDescription:
+      "Create a Project and select the folders AI may access for its tasks.",
+    folderCount: "{count} folders",
+    unavailable: "Unavailable",
+    lastOpened: "Last opened: {date}",
+    projectActions: "Actions for {name}",
+    deleteTitle: "Delete Project?",
+    deleteDescription:
+      "This deletes Pine metadata and sessions for “{name}”. Your added files are never deleted.",
+    searchLabel: "Search projects",
+    searchPlaceholder: "Search projects…",
+    access: {
+      readOnly: "Read only",
+      readWrite: "Read and write",
+    },
+    editor: {
+      nameLabel: "Project name",
+      namePlaceholder: "My new project",
+      defaultFolderLabel: "Default folder",
+      defaultFolderDescription:
+        "New sessions and shells start from this folder.",
+      chooseDefaultFolder: "Choose default folder",
+      changeDefaultFolder: "Change",
+      contextFoldersLabel: "Additional context folders (optional)",
+      addContextFolders: "Add folders",
+      removeFolder: "Remove folder",
+      folderName: "Display name",
+      folderAccess: "Access for {name}",
+    },
+  },
   sessions: {
     searchTitle: "Search sessions",
-    searchDescription:
-      "Search titles and conversation content in this workspace",
+    searchDescription: "Search titles and conversation content in this Project",
     searchPlaceholder: "Search session content",
     searchAction: "Search sessions",
     searching: "Searching",
@@ -23,8 +69,8 @@ export default {
     noSessions: "No sessions yet",
     noResults: "No matching sessions",
   },
-  workspace: {
-    preferences: "Preferences",
+  project: {
+    preferences: "Project settings",
     contentTabs: {
       newSession: "New session",
       sessionNumber: "Session {number}",
@@ -33,8 +79,7 @@ export default {
     },
     composer: {
       label: "Session message",
-      placeholder: "Describe a task or ask a question…",
-      addContext: "Add context",
+      placeholder: "Imagine what’s possible…",
       send: "Send message",
       model: "Model",
       reasoningEffort: "Reasoning effort",
@@ -58,14 +103,30 @@ export default {
     },
     files: {
       loading: "Loading",
-      emptyTitle: "This folder is empty",
-      emptyDescription: "There are no files in this workspace yet",
+      emptyTitle: "No accessible folders",
+      emptyDescription: "Add a folder in Project settings.",
     },
   },
   errors: {
-    workspaceOpen: {
-      title: "Unable to open folder",
-      description: "Check that the folder is accessible and try again",
+    projectList: {
+      title: "Unable to load Projects",
+      description: "Try again in a moment",
+    },
+    projectCreate: {
+      title: "Unable to create Project",
+      description: "Check the name and folders, then try again",
+    },
+    projectUpdate: {
+      title: "Unable to update Project",
+      description: "Check that the selected folders are accessible",
+    },
+    projectOpen: {
+      title: "Unable to open Project",
+      description: "The default folder may have moved or become unavailable",
+    },
+    projectDelete: {
+      title: "Unable to delete Project",
+      description: "Try again in a moment",
     },
     sessionSearch: {
       title: "Unable to search sessions",
@@ -75,9 +136,9 @@ export default {
       title: "Unable to open session",
       description: "The session may have been moved or deleted",
     },
-    workspaceFiles: {
+    projectFiles: {
       title: "Unable to read files",
-      description: "Check that the workspace is accessible and try again",
+      description: "Check that the Project folder is accessible",
     },
   },
 } as const;

@@ -6,30 +6,34 @@ import {
   type Router,
   type RouterHistory,
 } from "vue-router";
-import { useWorkspaceStore } from "@/stores/workspace";
+import { useProjectStore } from "@/stores/project";
 import { ROUTE_NAMES } from "./routes";
 
 declare module "vue-router" {
   interface RouteMeta {
-    requiresWorkspace?: boolean;
+    requiresProject?: boolean;
   }
 }
 
 const routes: RouteRecordRaw[] = [
   {
     path: "/",
-    name: ROUTE_NAMES.welcome,
-    component: () => import("@/views/WelcomeView.vue"),
+    redirect: { name: ROUTE_NAMES.projects },
   },
   {
-    path: "/workspace",
-    name: ROUTE_NAMES.workspace,
-    component: () => import("@/views/WorkspaceView.vue"),
-    meta: { requiresWorkspace: true },
+    path: "/projects",
+    name: ROUTE_NAMES.projects,
+    component: () => import("@/views/ProjectsView.vue"),
+  },
+  {
+    path: "/projects/:projectId",
+    name: ROUTE_NAMES.project,
+    component: () => import("@/views/ProjectView.vue"),
+    meta: { requiresProject: true },
   },
   {
     path: "/:pathMatch(.*)*",
-    redirect: { name: ROUTE_NAMES.welcome },
+    redirect: { name: ROUTE_NAMES.projects },
   },
 ];
 
@@ -43,17 +47,20 @@ export function createAppRouter(
   });
 
   router.beforeEach((to) => {
-    const workspaceStore = useWorkspaceStore(pinia);
+    if (!to.meta.requiresProject) return true;
 
-    if (to.meta.requiresWorkspace && !workspaceStore.currentWorkspace) {
-      return { name: ROUTE_NAMES.welcome };
+    const projectId = to.params.projectId;
+    if (typeof projectId !== "string") {
+      return { name: ROUTE_NAMES.projects };
     }
 
-    if (to.name === ROUTE_NAMES.welcome && workspaceStore.currentWorkspace) {
-      return { name: ROUTE_NAMES.workspace };
-    }
+    const projectStore = useProjectStore(pinia);
+    if (projectStore.activeProject?.id === projectId) return true;
 
-    return true;
+    return projectStore
+      .openProject(projectId)
+      .then(() => true)
+      .catch(() => ({ name: ROUTE_NAMES.projects }));
   });
 
   return router;

@@ -1,12 +1,12 @@
 export interface WindowTitleParts {
+  projectName?: string;
   sessionName?: string;
-  workspaceName?: string;
 }
 
 export function formatWindowTitle({
   sessionName,
-  workspaceName,
+  projectName,
 }: WindowTitleParts = {}): string {
-  const workspaceTitle = workspaceName ? `Pine @ ${workspaceName}` : "Pine";
-  return sessionName ? `${sessionName} - ${workspaceTitle}` : workspaceTitle;
+  const projectTitle = projectName ? `Pine @ ${projectName}` : "Pine";
+  return sessionName ? `${sessionName} - ${projectTitle}` : projectTitle;
 }

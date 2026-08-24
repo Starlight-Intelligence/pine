@@ -3,7 +3,6 @@ import type { Component } from "vue";
 import {
   ArrowUpIcon,
   ChevronDownIcon,
-  PlusIcon,
   ShieldCheckIcon,
   ShieldIcon,
   ShieldOffIcon,
@@ -35,11 +34,11 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import type { Model, ReasoningEffort } from "./workspaceSessionComposerOptions";
+import type { Model, ReasoningEffort } from "./projectSessionComposerOptions";
 import {
   modelOptions,
   reasoningEfforts,
-} from "./workspaceSessionComposerOptions";
+} from "./projectSessionComposerOptions";
 
 type ApprovalMode = "ask-for-permission" | "agent-decides" | "yolo";
 
@@ -62,7 +61,6 @@ interface ApprovalModeOption {
 }
 
 const emit = defineEmits<{
-  addContext: [];
   submit: [message: string];
 }>();
 
@@ -81,27 +79,27 @@ const canSubmit = computed(() => message.value.trim().length > 0);
 const approvalModes = computed<ApprovalModeOption[]>(() => [
   {
     value: "ask-for-permission",
-    label: t("workspace.composer.approval.askForPermissionLabel"),
-    description: t("workspace.composer.approval.askForPermission"),
+    label: t("project.composer.approval.askForPermissionLabel"),
+    description: t("project.composer.approval.askForPermission"),
     icon: ShieldIcon,
   },
   {
     value: "agent-decides",
-    label: t("workspace.composer.approval.agentDecidesLabel"),
-    description: t("workspace.composer.approval.agentDecides"),
+    label: t("project.composer.approval.agentDecidesLabel"),
+    description: t("project.composer.approval.agentDecides"),
     icon: ShieldCheckIcon,
   },
   {
     value: "yolo",
-    label: t("workspace.composer.approval.yoloLabel"),
-    description: t("workspace.composer.approval.yolo"),
+    label: t("project.composer.approval.yoloLabel"),
+    description: t("project.composer.approval.yolo"),
     icon: ShieldOffIcon,
   },
 ]);
 const localizedModelOptions = computed(() =>
   modelOptions.map((option) => ({
     ...option,
-    description: t(`workspace.composer.models.${option.value}`),
+    description: t(`project.composer.models.${option.value}`),
   })),
 );
 const selectedApprovalMode = computed(
@@ -137,7 +135,7 @@ function handleKeydown(event: KeyboardEvent): void {
     @submit.prevent="submitMessage"
   >
     <label class="sr-only" :for="messageId">
-      {{ t("workspace.composer.label") }}
+      {{ t("project.composer.label") }}
     </label>
 
     <InputGroup>
@@ -145,27 +143,9 @@ function handleKeydown(event: KeyboardEvent): void {
         :id="messageId"
         v-model="message"
         class="max-h-48 min-h-12 py-3.5 text-sm"
-        :placeholder="t('workspace.composer.placeholder')"
+        :placeholder="t('project.composer.placeholder')"
         @keydown="handleKeydown"
       />
-
-      <InputGroupAddon class="self-end" align="inline-start">
-        <Tooltip>
-          <TooltipTrigger as-child>
-            <InputGroupButton
-              size="icon-sm"
-              variant="outline"
-              :aria-label="t('workspace.composer.addContext')"
-              @click="emit('addContext')"
-            >
-              <PlusIcon />
-            </InputGroupButton>
-          </TooltipTrigger>
-          <TooltipContent side="top">
-            {{ t("workspace.composer.addContext") }}
-          </TooltipContent>
-        </Tooltip>
-      </InputGroupAddon>
 
       <InputGroupAddon class="self-end" align="inline-end">
         <Tooltip>
@@ -174,14 +154,14 @@ function handleKeydown(event: KeyboardEvent): void {
               size="icon-sm"
               variant="default"
               :disabled="!canSubmit"
-              :aria-label="t('workspace.composer.send')"
+              :aria-label="t('project.composer.send')"
               @click="submitMessage"
             >
               <ArrowUpIcon />
             </InputGroupButton>
           </TooltipTrigger>
           <TooltipContent side="top">
-            {{ t("workspace.composer.send") }}
+            {{ t("project.composer.send") }}
           </TooltipContent>
         </Tooltip>
       </InputGroupAddon>
@@ -265,7 +245,7 @@ function handleKeydown(event: KeyboardEvent): void {
 
         <DropdownMenuContent side="top" align="end" class="w-72">
           <DropdownMenuLabel>
-            {{ t("workspace.composer.model") }}
+            {{ t("project.composer.model") }}
           </DropdownMenuLabel>
           <DropdownMenuRadioGroup v-model="model">
             <DropdownMenuRadioItem
@@ -294,7 +274,7 @@ function handleKeydown(event: KeyboardEvent): void {
               <span
                 class="flex min-w-0 flex-1 items-center justify-between gap-3"
               >
-                <span>{{ t("workspace.composer.reasoningEffort") }}</span>
+                <span>{{ t("project.composer.reasoningEffort") }}</span>
                 <span class="text-muted-foreground">
                   {{ reasoningEffort }}
                 </span>

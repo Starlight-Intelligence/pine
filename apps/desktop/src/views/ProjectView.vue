@@ -1,17 +1,22 @@
 <script setup lang="ts">
 import { onKeyStroke } from "@vueuse/core";
 import { ref } from "vue";
+import PinePreferencesDialog from "@/components/preferences/PinePreferencesDialog.vue";
 import SessionSearchOverlay from "@/components/sessions/SessionSearchOverlay.vue";
-import WorkspaceContentTabs from "@/components/workspace/WorkspaceContentTabs.vue";
-import WorkspaceSidebar from "@/components/workspace/WorkspaceSidebar.vue";
+import ProjectContentTabs from "@/components/project/ProjectContentTabs.vue";
+import ProjectDialog from "@/components/project/ProjectDialog.vue";
+import ProjectSidebar from "@/components/project/ProjectSidebar.vue";
 import WindowTitleBar from "@/components/window/WindowTitleBar.vue";
 import {
   SidebarInset,
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
+import { useProjectStore } from "@/stores/project";
 
 const isSessionSearchOpen = ref(false);
+const isProjectSettingsOpen = ref(false);
+const projectStore = useProjectStore();
 
 onKeyStroke("k", (event) => {
   if (!(event.metaKey || event.ctrlKey)) return;
@@ -29,14 +34,25 @@ onKeyStroke("k", (event) => {
       <template #leading>
         <SidebarTrigger />
       </template>
+      <template #trailing>
+        <PinePreferencesDialog />
+      </template>
     </WindowTitleBar>
 
-    <WorkspaceSidebar @search-sessions="isSessionSearchOpen = true" />
+    <ProjectSidebar
+      @edit-project="isProjectSettingsOpen = true"
+      @search-sessions="isSessionSearchOpen = true"
+    />
 
     <SidebarInset class="min-h-0 overflow-hidden">
-      <WorkspaceContentTabs />
+      <ProjectContentTabs />
     </SidebarInset>
 
     <SessionSearchOverlay v-model:open="isSessionSearchOpen" />
+    <ProjectDialog
+      v-if="projectStore.activeProject"
+      v-model:open="isProjectSettingsOpen"
+      :project="projectStore.activeProject"
+    />
   </SidebarProvider>
 </template>

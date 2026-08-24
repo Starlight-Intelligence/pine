@@ -2,15 +2,12 @@ import { mount } from "@vue/test-utils";
 import { describe, expect, it } from "vitest";
 import { createAppI18n } from "@/app/i18n";
 import zhCN from "@/app/i18n/locales/zh-CN";
-import type {
-  Model,
-  ReasoningEffort,
-} from "../workspaceSessionComposerOptions";
+import type { Model, ReasoningEffort } from "../projectSessionComposerOptions";
 import {
   modelOptions,
   reasoningEfforts,
-} from "../workspaceSessionComposerOptions";
-import WorkspaceSessionComposer from "../WorkspaceSessionComposer.vue";
+} from "../projectSessionComposerOptions";
+import ProjectSessionComposer from "../ProjectSessionComposer.vue";
 
 interface ComposerProps {
   approvalMode?: "ask-for-permission" | "agent-decides" | "yolo";
@@ -19,7 +16,7 @@ interface ComposerProps {
 }
 
 function mountComposer(props: ComposerProps = {}) {
-  return mount(WorkspaceSessionComposer, {
+  return mount(ProjectSessionComposer, {
     props,
     global: {
       plugins: [createAppI18n("zh-CN")],
@@ -34,7 +31,7 @@ function mountComposer(props: ComposerProps = {}) {
   });
 }
 
-describe("WorkspaceSessionComposer", () => {
+describe("ProjectSessionComposer", () => {
   it("uses theme-native composer sizing and inline actions", () => {
     const wrapper = mountComposer();
     const form = wrapper.get("form");
@@ -50,17 +47,17 @@ describe("WorkspaceSessionComposer", () => {
     expect(textarea.classes()).toContain("text-sm");
     expect(textarea.classes()).not.toContain("text-base");
     expect(textarea.classes()).toContain("field-sizing-content");
+    expect(textarea.attributes("placeholder")).toBe("不妨大胆想象……");
     expect(addons.map((addon) => addon.attributes("data-align"))).toEqual([
-      "inline-start",
       "inline-end",
     ]);
     expect(
       actionButtons.map((button) => button.attributes("data-variant")),
-    ).toEqual(["outline", "default"]);
+    ).toEqual(["default"]);
     expect(
       actionButtons.map((button) => button.attributes("data-size")),
-    ).toEqual(["icon-sm", "icon-sm"]);
-    expect(wrapper.findAll('[data-slot="tooltip-trigger"]')).toHaveLength(2);
+    ).toEqual(["icon-sm"]);
+    expect(wrapper.findAll('[data-slot="tooltip-trigger"]')).toHaveLength(1);
     expect(addons.every((addon) => addon.classes().includes("self-end"))).toBe(
       true,
     );
@@ -144,7 +141,7 @@ describe("WorkspaceSessionComposer", () => {
       "Folio",
       "Lore",
     ]);
-    expect(zhCN.workspace.composer.models).toEqual({
+    expect(zhCN.project.composer.models).toEqual({
       lightweight: "轻快响应，适合简单和日常任务",
       balanced: "速度与能力均衡，适合大多数任务",
       advanced: "深入分析，适合复杂和高要求任务",
@@ -158,14 +155,6 @@ describe("WorkspaceSessionComposer", () => {
       "max",
       "auto",
     ]);
-  });
-
-  it("exposes the add-context action inside the input", async () => {
-    const wrapper = mountComposer();
-
-    await wrapper.get('button[aria-label="添加上下文"]').trigger("click");
-
-    expect(wrapper.emitted("addContext")).toEqual([[]]);
   });
 
   it("disables sending while the message is blank", async () => {

@@ -1,4 +1,4 @@
 export const ROUTE_NAMES = {
-  welcome: "welcome",
-  workspace: "workspace",
+  project: "project",
+  projects: "projects",
 } as const;

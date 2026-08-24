@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Files, MessagesSquare, Settings2 } from "@lucide/vue";
+import { storeToRefs } from "pinia";
 import { ref } from "vue";
 import { useI18n } from "vue-i18n";
 import {
@@ -13,15 +14,19 @@ import {
   SidebarRail,
 } from "@/components/ui/sidebar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import WorkspaceFileTree from "./WorkspaceFileTree.vue";
-import WorkspaceSessionList from "./WorkspaceSessionList.vue";
+import { useProjectStore } from "@/stores/project";
+import ProjectFileTree from "./ProjectFileTree.vue";
+import ProjectSessionList from "./ProjectSessionList.vue";
 
 type SidebarTab = "files" | "sessions";
 
 const { t } = useI18n();
 const emit = defineEmits<{
+  editProject: [];
   searchSessions: [];
 }>();
+const projectStore = useProjectStore();
+const { activeProject } = storeToRefs(projectStore);
 const activeTab = ref<SidebarTab>("sessions");
 </script>
 
@@ -33,24 +38,27 @@ const activeTab = ref<SidebarTab>("sessions");
     />
     <Tabs v-model="activeTab" class="flex min-h-0 flex-1 flex-col">
       <SidebarHeader>
+        <div class="truncate px-2 text-sm font-medium">
+          {{ activeProject?.name }}
+        </div>
         <TabsList class="w-full">
           <TabsTrigger value="files">
             <Files data-icon="inline-start" aria-hidden="true" />
-            {{ t("workspace.tabs.files") }}
+            {{ t("project.tabs.files") }}
           </TabsTrigger>
           <TabsTrigger value="sessions">
             <MessagesSquare data-icon="inline-start" aria-hidden="true" />
-            {{ t("workspace.tabs.sessions") }}
+            {{ t("project.tabs.sessions") }}
           </TabsTrigger>
         </TabsList>
       </SidebarHeader>
 
       <SidebarContent class="overflow-hidden">
         <TabsContent value="files" class="mt-0 min-h-0 overflow-hidden">
-          <WorkspaceFileTree />
+          <ProjectFileTree />
         </TabsContent>
         <TabsContent value="sessions" class="mt-0 min-h-0 overflow-hidden">
-          <WorkspaceSessionList @search="emit('searchSessions')" />
+          <ProjectSessionList @search="emit('searchSessions')" />
         </TabsContent>
       </SidebarContent>
     </Tabs>
@@ -58,9 +66,9 @@ const activeTab = ref<SidebarTab>("sessions");
     <SidebarFooter>
       <SidebarMenu>
         <SidebarMenuItem>
-          <SidebarMenuButton>
+          <SidebarMenuButton @click="emit('editProject')">
             <Settings2 aria-hidden="true" />
-            <span>{{ t("workspace.preferences") }}</span>
+            <span>{{ t("project.preferences") }}</span>
           </SidebarMenuButton>
         </SidebarMenuItem>
       </SidebarMenu>

@@ -13,9 +13,9 @@ import { Separator } from "@/components/ui/separator";
 import { useSidebar } from "@/components/ui/sidebar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
-import WorkspaceSessionView from "./WorkspaceSessionView.vue";
+import ProjectSessionView from "./ProjectSessionView.vue";
 
-interface WorkspaceContentTab {
+interface ProjectContentTab {
   id: string;
   icon: Component;
   label?: string;
@@ -28,26 +28,26 @@ const shouldReserveWindowControlsSpace = computed(
   () => sidebarState.value === "collapsed" || isMobile.value,
 );
 
-const tabs = shallowRef<WorkspaceContentTab[]>([
+const tabs = shallowRef<ProjectContentTab[]>([
   {
     id: "session-1",
     icon: SquareTerminalIcon,
     sessionNumber: 1,
   },
   {
-    id: "file-workspace-view",
+    id: "file-project-view",
     icon: FileCode2Icon,
-    label: "WorkspaceView.vue",
+    label: "ProjectView.vue",
   },
 ]);
 const activeTab = ref("session-1");
 const nextSessionNumber = ref(2);
 
-function getTabLabel(tab: WorkspaceContentTab): string {
+function getTabLabel(tab: ProjectContentTab): string {
   if (tab.label) return tab.label;
-  if (tab.sessionNumber === 1) return t("workspace.contentTabs.newSession");
+  if (tab.sessionNumber === 1) return t("project.contentTabs.newSession");
 
-  return t("workspace.contentTabs.sessionNumber", {
+  return t("project.contentTabs.sessionNumber", {
     number: tab.sessionNumber,
   });
 }
@@ -96,7 +96,7 @@ function closeTab(tabId: string): void {
 <template>
   <Tabs v-model="activeTab" class="h-full min-h-0 gap-0 bg-background">
     <div
-      data-slot="workspace-content-tabs-titlebar"
+      data-slot="project-content-tabs-titlebar"
       :class="
         cn(
           'pointer-events-none relative z-30 flex h-[var(--window-titlebar-height)] shrink-0 items-center gap-2 px-2 transition-[padding] duration-500 ease-out-expo',
@@ -138,12 +138,12 @@ function closeTab(tabId: string): void {
             </TabsTrigger>
 
             <Button
-              class="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100"
+              class="pointer-events-none absolute inset-y-0 right-2 my-auto opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100"
               variant="ghost"
               size="icon-xs"
               :disabled="tabs.length === 1"
               :aria-label="
-                t('workspace.contentTabs.closeTab', { name: getTabLabel(tab) })
+                t('project.contentTabs.closeTab', { name: getTabLabel(tab) })
               "
               @click.stop="closeTab(tab.id)"
             >
@@ -157,7 +157,7 @@ function closeTab(tabId: string): void {
         class="window-no-drag pointer-events-auto"
         variant="ghost"
         size="icon-sm"
-        :aria-label="t('workspace.contentTabs.addTab')"
+        :aria-label="t('project.contentTabs.addTab')"
         @click="addSessionTab"
       >
         <PlusIcon />
@@ -170,7 +170,7 @@ function closeTab(tabId: string): void {
       :value="tab.id"
       class="min-h-0 overflow-hidden"
     >
-      <WorkspaceSessionView v-if="tab.sessionNumber !== undefined" />
+      <ProjectSessionView v-if="tab.sessionNumber !== undefined" />
     </TabsContent>
   </Tabs>
 </template>

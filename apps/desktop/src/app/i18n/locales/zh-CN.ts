@@ -1,8 +1,14 @@
 export default {
-  welcome: {
-    title: "让我们携手把事情做好",
-    openFolder: "打开文件夹",
-    settings: "设置",
+  common: {
+    cancel: "取消",
+    delete: "删除",
+    edit: "编辑",
+    save: "保存",
+    saving: "正在保存",
+  },
+  preferences: {
+    title: "Pine 设置",
+    open: "打开 Pine 设置",
     language: "语言",
     languageChinese: "简体中文",
     languageEnglish: "English",
@@ -11,9 +17,47 @@ export default {
     themeLight: "浅色",
     themeDark: "深色",
   },
+  projects: {
+    title: "项目",
+    welcomeTitle: "让我们携手把事情做好",
+    description: "组织会话，并明确指定 AI 可以访问的文件夹。",
+    createAction: "新建项目",
+    createDescription: "选择 AI 可访问的文件夹",
+    createTitle: "新建项目",
+    editTitle: "编辑项目",
+    openAction: "打开",
+    emptyTitle: "还没有项目",
+    emptyDescription: "创建一个项目，选择任务中允许 AI 访问的文件夹。",
+    folderCount: "{count} 个文件夹",
+    unavailable: "不可访问",
+    lastOpened: "最近打开：{date}",
+    projectActions: "{name} 操作",
+    deleteTitle: "删除项目？",
+    deleteDescription:
+      "将删除“{name}”的 Pine 元数据和会话，不会删除已添加的用户文件。",
+    searchLabel: "搜索项目",
+    searchPlaceholder: "搜索项目…",
+    access: {
+      readOnly: "只读",
+      readWrite: "读写",
+    },
+    editor: {
+      nameLabel: "项目名称",
+      namePlaceholder: "我的新项目",
+      defaultFolderLabel: "默认文件夹",
+      defaultFolderDescription: "新会话和 shell 从此文件夹开始。",
+      chooseDefaultFolder: "选择默认文件夹",
+      changeDefaultFolder: "更改",
+      contextFoldersLabel: "额外上下文文件夹（可选）",
+      addContextFolders: "添加文件夹",
+      removeFolder: "移除文件夹",
+      folderName: "显示名称",
+      folderAccess: "{name} 的访问权限",
+    },
+  },
   sessions: {
     searchTitle: "搜索会话",
-    searchDescription: "按标题和会话内容搜索当前工作区",
+    searchDescription: "按标题和会话内容搜索当前项目",
     searchPlaceholder: "搜索会话内容",
     searchAction: "搜索会话",
     searching: "正在搜索",
@@ -22,8 +66,8 @@ export default {
     noSessions: "还没有会话",
     noResults: "没有匹配的会话",
   },
-  workspace: {
-    preferences: "偏好设置",
+  project: {
+    preferences: "项目设置",
     contentTabs: {
       newSession: "新会话",
       sessionNumber: "会话 {number}",
@@ -32,8 +76,7 @@ export default {
     },
     composer: {
       label: "会话消息",
-      placeholder: "描述任务或提出问题…",
-      addContext: "添加上下文",
+      placeholder: "不妨大胆想象……",
       send: "发送消息",
       model: "模型",
       reasoningEffort: "推理强度",
@@ -57,26 +100,33 @@ export default {
     },
     files: {
       loading: "正在读取",
-      emptyTitle: "文件夹是空的",
-      emptyDescription: "此工作目录中还没有文件",
+      emptyTitle: "没有可访问文件夹",
+      emptyDescription: "请在项目设置中添加文件夹。",
     },
   },
   errors: {
-    workspaceOpen: {
-      title: "无法打开文件夹",
-      description: "请确认该文件夹可访问后重试",
+    projectList: { title: "无法读取项目", description: "请稍后重试" },
+    projectCreate: {
+      title: "无法创建项目",
+      description: "请检查名称和文件夹后重试",
     },
-    sessionSearch: {
-      title: "无法搜索会话",
-      description: "请稍后重试",
+    projectUpdate: {
+      title: "无法更新项目",
+      description: "请检查文件夹是否可访问",
     },
+    projectOpen: {
+      title: "无法打开项目",
+      description: "默认文件夹可能已移动或不可访问",
+    },
+    projectDelete: { title: "无法删除项目", description: "请稍后重试" },
+    sessionSearch: { title: "无法搜索会话", description: "请稍后重试" },
     sessionResume: {
       title: "无法打开会话",
       description: "该会话可能已被移动或删除",
     },
-    workspaceFiles: {
+    projectFiles: {
       title: "无法读取文件",
-      description: "请确认工作目录可访问后重试",
+      description: "请确认项目文件夹可访问",
     },
   },
 } as const;
