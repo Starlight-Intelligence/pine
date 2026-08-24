@@ -5,6 +5,15 @@ import type {
   SessionEventListener,
 } from "./agent";
 import type {
+  LoginProviderRequest,
+  LogoutProviderRequest,
+  PineModelCatalog,
+  ProviderAuthEventListener,
+  ProviderAuthResponseRequest,
+  ProviderLoginResult,
+  SelectModelRequest,
+} from "./models";
+import type {
   ListProjectDirectoryRequest,
   ListProjectDirectoryResult,
 } from "./projectFiles";
@@ -99,6 +108,22 @@ export interface PineDesktopApi {
     request: ListProjectDirectoryRequest,
   ) => Promise<ListProjectDirectoryResult>;
   listProjects: () => Promise<ListProjectsResult>;
+  getModelCatalog: () => Promise<PineModelCatalog>;
+  loginProvider: (
+    request: LoginProviderRequest,
+  ) => Promise<ProviderLoginResult>;
+  respondToProviderAuth: (
+    request: ProviderAuthResponseRequest,
+  ) => Promise<{ accepted: boolean }>;
+  cancelProviderAuth: (request: {
+    loginId: string;
+  }) => Promise<{ cancelled: boolean }>;
+  logoutProvider: (
+    request: LogoutProviderRequest,
+  ) => Promise<{ disposed: boolean }>;
+  selectModel: (request: SelectModelRequest) => Promise<{ disposed: boolean }>;
+  openProviderAuthUrl: (url: string) => Promise<void>;
+  onProviderAuthEvent: (listener: ProviderAuthEventListener) => () => void;
   loadSessionMessages: (
     request: LoadSessionMessagesRequest,
   ) => Promise<LoadSessionMessagesResult>;

@@ -12,6 +12,24 @@ import {
   type SessionEventListener,
 } from "./shared/agent";
 import {
+  CANCEL_PROVIDER_AUTH_CHANNEL,
+  GET_MODEL_CATALOG_CHANNEL,
+  LOGIN_PROVIDER_CHANNEL,
+  LOGOUT_PROVIDER_CHANNEL,
+  OPEN_PROVIDER_AUTH_URL_CHANNEL,
+  PROVIDER_AUTH_EVENT_CHANNEL,
+  RESPOND_PROVIDER_AUTH_CHANNEL,
+  SELECT_MODEL_CHANNEL,
+  type LoginProviderRequest,
+  type LogoutProviderRequest,
+  type PineModelCatalog,
+  type PineProviderAuthEvent,
+  type ProviderAuthEventListener,
+  type ProviderAuthResponseRequest,
+  type ProviderLoginResult,
+  type SelectModelRequest,
+} from "./shared/models";
+import {
   CREATE_PROJECT_CHANNEL,
   CLOSE_PROJECT_CHANNEL,
   DELETE_PROJECT_CHANNEL,
@@ -60,6 +78,37 @@ const pineApi: PineDesktopApi = {
     ipcRenderer.invoke(LIST_PROJECT_DIRECTORY_CHANNEL, request),
   listProjects: (): Promise<ListProjectsResult> =>
     ipcRenderer.invoke(LIST_PROJECTS_CHANNEL),
+  getModelCatalog: (): Promise<PineModelCatalog> =>
+    ipcRenderer.invoke(GET_MODEL_CATALOG_CHANNEL),
+  loginProvider: (
+    request: LoginProviderRequest,
+  ): Promise<ProviderLoginResult> =>
+    ipcRenderer.invoke(LOGIN_PROVIDER_CHANNEL, request),
+  respondToProviderAuth: (
+    request: ProviderAuthResponseRequest,
+  ): Promise<{ accepted: boolean }> =>
+    ipcRenderer.invoke(RESPOND_PROVIDER_AUTH_CHANNEL, request),
+  cancelProviderAuth: (request: {
+    loginId: string;
+  }): Promise<{ cancelled: boolean }> =>
+    ipcRenderer.invoke(CANCEL_PROVIDER_AUTH_CHANNEL, request),
+  logoutProvider: (
+    request: LogoutProviderRequest,
+  ): Promise<{ disposed: boolean }> =>
+    ipcRenderer.invoke(LOGOUT_PROVIDER_CHANNEL, request),
+  selectModel: (request: SelectModelRequest): Promise<{ disposed: boolean }> =>
+    ipcRenderer.invoke(SELECT_MODEL_CHANNEL, request),
+  openProviderAuthUrl: (url: string): Promise<void> =>
+    ipcRenderer.invoke(OPEN_PROVIDER_AUTH_URL_CHANNEL, url),
+  onProviderAuthEvent: (listener: ProviderAuthEventListener): (() => void) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      event: PineProviderAuthEvent,
+    ) => listener(event);
+    ipcRenderer.on(PROVIDER_AUTH_EVENT_CHANNEL, handler);
+    return () =>
+      ipcRenderer.removeListener(PROVIDER_AUTH_EVENT_CHANNEL, handler);
+  },
   loadSessionMessages: (
     request: LoadSessionMessagesRequest,
   ): Promise<LoadSessionMessagesResult> =>

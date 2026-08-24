@@ -36,6 +36,42 @@ async function handleRequest(request: AgentWorkerRequest): Promise<void> {
     case "session:dispose":
       result = await runtime.disposeSession(request.sessionId);
       break;
+    case "models:catalog":
+      result = await runtime.getModelCatalog(request.agentDir);
+      break;
+    case "provider:login":
+      result = await runtime.loginProvider(
+        request.agentDir,
+        request.loginId,
+        request.providerId,
+        request.authType,
+      );
+      break;
+    case "provider:auth-response":
+      result = runtime.respondToProviderAuth(
+        request.loginId,
+        request.promptId,
+        request.value,
+      );
+      break;
+    case "provider:auth-cancel":
+      result = runtime.cancelProviderAuth(request.loginId);
+      break;
+    case "provider:logout":
+      result = await runtime.logoutProvider(
+        request.agentDir,
+        request.providerId,
+      );
+      break;
+    case "models:select":
+      result = await runtime.selectModel(
+        request.agentDir,
+        request.providerId,
+        request.modelId,
+        request.thinkingLevel,
+        request.sessionId,
+      );
+      break;
     case "runtime:dispose":
       result = await runtime.dispose();
       break;

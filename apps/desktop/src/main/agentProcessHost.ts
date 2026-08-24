@@ -1,7 +1,12 @@
 import { utilityProcess } from "electron";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
-import type { PineAgentEvent } from "../shared/agent";
+import type {
+  LoginProviderRequest,
+  PineModelCatalog,
+  PineThinkingLevel,
+  ProviderLoginResult,
+} from "../shared/models";
 import type {
   AgentSessionLocation,
   AgentWorkerMessage,
@@ -10,6 +15,7 @@ import type {
   AgentWorkerRequestInput,
   AgentWorkerResult,
   AgentWorkerSessionResult,
+  PineRuntimeEvent,
 } from "../agent/protocol";
 
 interface AgentProcess {
@@ -34,7 +40,29 @@ export interface AgentHost {
     message: string,
     streamingBehavior?: "followUp" | "steer",
   ): Promise<AgentWorkerPromptResult>;
-  subscribe(listener: (event: PineAgentEvent) => void): () => void;
+  getModelCatalog(agentDir: string): Promise<PineModelCatalog>;
+  loginProvider(
+    agentDir: string,
+    request: LoginProviderRequest,
+  ): Promise<ProviderLoginResult>;
+  respondToProviderAuth(
+    loginId: string,
+    promptId: string,
+    value: string,
+  ): Promise<{ accepted: boolean }>;
+  cancelProviderAuth(loginId: string): Promise<{ cancelled: boolean }>;
+  logoutProvider(
+    agentDir: string,
+    providerId: string,
+  ): Promise<{ disposed: boolean }>;
+  selectModel(
+    agentDir: string,
+    providerId: string,
+    modelId: string,
+    thinkingLevel: PineThinkingLevel,
+    sessionId?: string,
+  ): Promise<{ disposed: boolean }>;
+  subscribe(listener: (event: PineRuntimeEvent) => void): () => void;
 }
 
 type AgentProcessFactory = () => AgentProcess;
@@ -49,7 +77,7 @@ export class AgentProcessHost implements AgentHost {
   private ready: Promise<void> | null = null;
   private resolveReady: (() => void) | null = null;
   private readonly pending = new Map<string, PendingRequest>();
-  private readonly listeners = new Set<(event: PineAgentEvent) => void>();
+  private readonly listeners = new Set<(event: PineRuntimeEvent) => void>();
 
   constructor(private readonly createProcess: AgentProcessFactory) {}
 
@@ -92,11 +120,63 @@ export class AgentProcessHost implements AgentHost {
     return this.request({ type: "session:abort", sessionId });
   }
 
+  getModelCatalog(agentDir: string): Promise<PineModelCatalog> {
+    return this.request({ type: "models:catalog", agentDir });
+  }
+
+  loginProvider(
+    agentDir: string,
+    request: LoginProviderRequest,
+  ): Promise<ProviderLoginResult> {
+    return this.request({ type: "provider:login", agentDir, ...request });
+  }
+
+  respondToProviderAuth(
+    loginId: string,
+    promptId: string,
+    value: string,
+  ): Promise<{ accepted: boolean }> {
+    return this.request({
+      type: "provider:auth-response",
+      loginId,
+      promptId,
+      value,
+    });
+  }
+
+  cancelProviderAuth(loginId: string): Promise<{ cancelled: boolean }> {
+    return this.request({ type: "provider:auth-cancel", loginId });
+  }
+
+  logoutProvider(
+    agentDir: string,
+    providerId: string,
+  ): Promise<{ disposed: boolean }> {
+    return this.request({ type: "provider:logout", agentDir, providerId });
+  }
+
+  selectModel(
+    agentDir: string,
+    providerId: string,
+    modelId: string,
+    thinkingLevel: PineThinkingLevel,
+    sessionId?: string,
+  ): Promise<{ disposed: boolean }> {
+    return this.request({
+      type: "models:select",
+      agentDir,
+      providerId,
+      modelId,
+      thinkingLevel,
+      ...(sessionId ? { sessionId } : {}),
+    });
+  }
+
   disposeSession(sessionId: string): Promise<{ disposed: boolean }> {
     return this.request({ type: "session:dispose", sessionId });
   }
 
-  subscribe(listener: (event: PineAgentEvent) => void): () => void {
+  subscribe(listener: (event: PineRuntimeEvent) => void): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
   }

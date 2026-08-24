@@ -8,19 +8,16 @@ import {
   ShieldOffIcon,
   SquareIcon,
 } from "@lucide/vue";
-import { computed, useId } from "vue";
+import { storeToRefs } from "pinia";
+import { computed, onMounted, ref, useId } from "vue";
 import { useI18n } from "vue-i18n";
+import ModelPickerDialog from "@/components/models/ModelPickerDialog.vue";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
-  DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -35,11 +32,8 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import type { Model, ReasoningEffort } from "./projectSessionComposerOptions";
-import {
-  modelOptions,
-  reasoningEfforts,
-} from "./projectSessionComposerOptions";
+import type { PineThinkingLevel } from "@/shared/models";
+import { useModelsStore } from "@/stores/models";
 
 type ApprovalMode = "ask-for-permission" | "agent-decides" | "yolo";
 
@@ -48,12 +42,6 @@ const approvalModeColorClasses: Record<ApprovalMode, string> = {
   "agent-decides": "text-foreground",
   yolo: "text-destructive",
 };
-const modelColorClasses: Record<Model, string> = {
-  lightweight: "text-composer-model-lightweight",
-  balanced: "text-foreground",
-  advanced: "text-composer-model-advanced",
-};
-
 interface ApprovalModeOption {
   value: ApprovalMode;
   label: string;
@@ -77,15 +65,15 @@ const message = defineModel<string>({ default: "" });
 const approvalMode = defineModel<ApprovalMode>("approvalMode", {
   default: "agent-decides",
 });
-const model = defineModel<Model>("model", { default: "balanced" });
-const reasoningEffort = defineModel<ReasoningEffort>("reasoningEffort", {
-  default: "auto",
-});
-
 const { t } = useI18n();
+const modelsStore = useModelsStore();
+const { selectedModel, selection } = storeToRefs(modelsStore);
 const messageId = useId();
+const isModelPickerOpen = ref(false);
 const canSubmit = computed(
-  () => props.isRunning || message.value.trim().length > 0,
+  () =>
+    props.isRunning ||
+    (message.value.trim().length > 0 && selectedModel.value !== undefined),
 );
 const approvalModes = computed<ApprovalModeOption[]>(() => [
   {
@@ -107,23 +95,16 @@ const approvalModes = computed<ApprovalModeOption[]>(() => [
     icon: ShieldOffIcon,
   },
 ]);
-const localizedModelOptions = computed(() =>
-  modelOptions.map((option) => ({
-    ...option,
-    description: t(`project.composer.models.${option.value}`),
-  })),
-);
 const selectedApprovalMode = computed(
   () =>
     approvalModes.value.find((option) => option.value === approvalMode.value) ??
     approvalModes.value[1],
 );
-const selectedModel = computed(
-  () =>
-    localizedModelOptions.value.find(
-      (option) => option.value === model.value,
-    ) ?? localizedModelOptions.value[1],
+const thinkingLevels = computed(
+  () => selectedModel.value?.supportedThinkingLevels ?? [],
 );
+
+onMounted(() => void modelsStore.load());
 
 function submitMessage(): void {
   if (props.isRunning) {
@@ -141,6 +122,16 @@ function handleKeydown(event: KeyboardEvent): void {
 
   event.preventDefault();
   submitMessage();
+}
+
+function updateThinkingLevel(value: unknown): void {
+  if (
+    typeof value !== "string" ||
+    !thinkingLevels.value.includes(value as PineThinkingLevel)
+  ) {
+    return;
+  }
+  void modelsStore.setThinkingLevel(value as PineThinkingLevel);
 }
 </script>
 
@@ -246,79 +237,53 @@ function handleKeydown(event: KeyboardEvent): void {
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <DropdownMenu>
-        <DropdownMenuTrigger as-child>
-          <Button
-            data-slot="model-selector-trigger"
-            class="min-w-0"
-            type="button"
-            variant="ghost"
-            size="sm"
-          >
-            <span
-              :class="cn('truncate', modelColorClasses[selectedModel.value])"
-            >
-              {{ selectedModel.label }}
-            </span>
-            <span class="shrink-0 text-muted-foreground">
-              · {{ reasoningEffort }}
-            </span>
-            <ChevronDownIcon data-icon="inline-end" />
-          </Button>
-        </DropdownMenuTrigger>
+      <div class="flex min-w-0 items-center">
+        <Button
+          data-slot="model-selector-trigger"
+          class="min-w-0"
+          type="button"
+          variant="ghost"
+          size="sm"
+          @click="isModelPickerOpen = true"
+        >
+          <span class="truncate">
+            {{ selectedModel?.name ?? t("project.composer.selectModel") }}
+          </span>
+        </Button>
 
-        <DropdownMenuContent side="top" align="end" class="w-72">
-          <DropdownMenuLabel>
-            {{ t("project.composer.model") }}
-          </DropdownMenuLabel>
-          <DropdownMenuRadioGroup v-model="model">
-            <DropdownMenuRadioItem
-              v-for="option in localizedModelOptions"
-              :key="option.value"
-              data-slot="model-option"
-              :value="option.value"
+        <DropdownMenu v-if="selectedModel && thinkingLevels.length > 1">
+          <DropdownMenuTrigger as-child>
+            <Button
+              data-slot="reasoning-effort-trigger"
+              type="button"
+              variant="ghost"
+              size="sm"
             >
-              <span class="flex min-w-0 flex-col gap-0.5">
-                <span :class="modelColorClasses[option.value]">
-                  {{ option.label }}
-                </span>
-                <span
-                  class="whitespace-normal text-xs font-normal text-muted-foreground"
-                >
-                  {{ option.description }}
-                </span>
+              <span class="text-muted-foreground">
+                {{ selection?.thinkingLevel }}
               </span>
-            </DropdownMenuRadioItem>
-          </DropdownMenuRadioGroup>
-
-          <DropdownMenuSeparator />
-
-          <DropdownMenuSub>
-            <DropdownMenuSubTrigger data-slot="reasoning-effort-trigger">
-              <span
-                class="flex min-w-0 flex-1 items-center justify-between gap-3"
+              <ChevronDownIcon data-icon="inline-end" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent side="top" align="end" class="w-40">
+            <DropdownMenuRadioGroup
+              :model-value="selection?.thinkingLevel"
+              @update:model-value="updateThinkingLevel"
+            >
+              <DropdownMenuRadioItem
+                v-for="level in thinkingLevels"
+                :key="level"
+                data-slot="reasoning-effort-option"
+                :value="level"
               >
-                <span>{{ t("project.composer.reasoningEffort") }}</span>
-                <span class="text-muted-foreground">
-                  {{ reasoningEffort }}
-                </span>
-              </span>
-            </DropdownMenuSubTrigger>
-            <DropdownMenuSubContent class="w-36">
-              <DropdownMenuRadioGroup v-model="reasoningEffort">
-                <DropdownMenuRadioItem
-                  v-for="effort in reasoningEfforts"
-                  :key="effort"
-                  data-slot="reasoning-effort-option"
-                  :value="effort"
-                >
-                  {{ effort }}
-                </DropdownMenuRadioItem>
-              </DropdownMenuRadioGroup>
-            </DropdownMenuSubContent>
-          </DropdownMenuSub>
-        </DropdownMenuContent>
-      </DropdownMenu>
+                {{ t(`models.thinkingLevels.${level}`) }}
+              </DropdownMenuRadioItem>
+            </DropdownMenuRadioGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
     </div>
+
+    <ModelPickerDialog v-model:open="isModelPickerOpen" />
   </form>
 </template>

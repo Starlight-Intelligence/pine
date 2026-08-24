@@ -7,9 +7,22 @@ import {
   SettingsManager,
   type AgentSession,
 } from "@earendil-works/pi-coding-agent";
+import {
+  getSupportedThinkingLevels,
+  type Api,
+  type AuthPrompt,
+  type Model,
+} from "@earendil-works/pi-ai";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import type { PineAgentEvent } from "../shared/agent";
+import type {
+  PineAuthType,
+  PineModelCatalog,
+  PineProviderAuthEvent,
+  PineThinkingLevel,
+  ProviderLoginResult,
+} from "../shared/models";
 import type { PineSessionSummary } from "../shared/sessions";
 import {
   type AgentSessionLocation,
@@ -29,7 +42,13 @@ interface LiveAgentSession {
 }
 
 export interface PineAgentRuntimeOptions {
-  emit: (event: PineAgentEvent) => void;
+  emit: (event: PineAgentEvent | PineProviderAuthEvent) => void;
+}
+
+interface PendingAuthPrompt {
+  loginId: string;
+  reject: (error: Error) => void;
+  resolve: (value: string) => void;
 }
 
 function encodeCwd(cwd: string): string {
@@ -63,6 +82,8 @@ export class PineAgentRuntime {
   private readonly activeMessageIds = new Map<string, string>();
   private readonly liveSessions = new Map<string, LiveAgentSession>();
   private readonly modelRuntimes = new Map<string, Promise<ModelRuntime>>();
+  private readonly loginControllers = new Map<string, AbortController>();
+  private readonly pendingAuthPrompts = new Map<string, PendingAuthPrompt>();
 
   constructor(private readonly options: PineAgentRuntimeOptions) {}
 
@@ -152,11 +173,164 @@ export class PineAgentRuntime {
   }
 
   async dispose(): Promise<{ disposed: boolean }> {
+    for (const controller of this.loginControllers.values()) controller.abort();
     await Promise.all(
       [...this.liveSessions.keys()].map((sessionId) =>
         this.disposeSession(sessionId),
       ),
     );
+    return { disposed: true };
+  }
+
+  async getModelCatalog(agentDir: string): Promise<PineModelCatalog> {
+    const runtime = await this.getModelRuntime(agentDir);
+    const settings = SettingsManager.create(process.cwd(), agentDir, {
+      projectTrusted: false,
+    });
+    await settings.reload();
+    const models = runtime.getModels();
+    const providers = runtime.getProviders().map((provider) => {
+      const status = runtime.getProviderAuthStatus(provider.id);
+      const authMethods = [];
+      if (provider.auth.apiKey?.login) {
+        authMethods.push({
+          type: "api_key" as const,
+          label: provider.auth.apiKey.name,
+        });
+      }
+      if (provider.auth.oauth) {
+        authMethods.push({
+          type: "oauth" as const,
+          label: provider.auth.oauth.loginLabel ?? provider.auth.oauth.name,
+        });
+      }
+      return {
+        id: provider.id,
+        name: provider.name,
+        configured: status.configured,
+        ...(status.label
+          ? { authSource: status.label }
+          : status.configured
+            ? { authSource: status.source }
+            : {}),
+        authMethods,
+        modelCount: models.filter((model) => model.provider === provider.id)
+          .length,
+      };
+    });
+    const defaultProvider = settings.getDefaultProvider();
+    const defaultModel = settings.getDefaultModel();
+    const defaultThinkingLevel = settings.getDefaultThinkingLevel() ?? "medium";
+
+    return {
+      providers,
+      models: models.map((model) => this.describeModel(model, providers)),
+      ...(defaultProvider &&
+      defaultModel &&
+      runtime.hasConfiguredAuth(defaultProvider) &&
+      runtime.getModel(defaultProvider, defaultModel)
+        ? {
+            selection: {
+              providerId: defaultProvider,
+              modelId: defaultModel,
+              thinkingLevel: defaultThinkingLevel,
+            },
+          }
+        : {}),
+    };
+  }
+
+  async loginProvider(
+    agentDir: string,
+    loginId: string,
+    providerId: string,
+    authType: PineAuthType,
+  ): Promise<ProviderLoginResult> {
+    if (this.loginControllers.has(loginId)) {
+      throw new Error("Provider login is already in progress.");
+    }
+    const controller = new AbortController();
+    this.loginControllers.set(loginId, controller);
+    try {
+      const runtime = await this.getModelRuntime(agentDir);
+      const credential = await runtime.login(providerId, authType, {
+        signal: controller.signal,
+        notify: (notice) => {
+          this.options.emit({
+            type: "provider-auth-notice",
+            loginId,
+            notice,
+          });
+        },
+        prompt: (prompt) => this.waitForAuthPrompt(loginId, prompt),
+      });
+      return { credentialType: credential.type };
+    } finally {
+      this.loginControllers.delete(loginId);
+      this.rejectAuthPrompts(loginId, "Provider login ended.");
+    }
+  }
+
+  respondToProviderAuth(
+    loginId: string,
+    promptId: string,
+    value: string,
+  ): { accepted: boolean } {
+    const pending = this.pendingAuthPrompts.get(promptId);
+    if (!pending || pending.loginId !== loginId) return { accepted: false };
+    this.pendingAuthPrompts.delete(promptId);
+    pending.resolve(value);
+    return { accepted: true };
+  }
+
+  cancelProviderAuth(loginId: string): { cancelled: boolean } {
+    const controller = this.loginControllers.get(loginId);
+    if (!controller) return { cancelled: false };
+    controller.abort();
+    this.rejectAuthPrompts(loginId, "Provider login was cancelled.");
+    return { cancelled: true };
+  }
+
+  async logoutProvider(
+    agentDir: string,
+    providerId: string,
+  ): Promise<{ disposed: boolean }> {
+    await (await this.getModelRuntime(agentDir)).logout(providerId);
+    return { disposed: true };
+  }
+
+  async selectModel(
+    agentDir: string,
+    providerId: string,
+    modelId: string,
+    thinkingLevel: PineThinkingLevel,
+    sessionId?: string,
+  ): Promise<{ disposed: boolean }> {
+    const runtime = await this.getModelRuntime(agentDir);
+    const model = runtime.getModel(providerId, modelId);
+    if (!model) throw new Error("Model not found.");
+    const available = await runtime.getAvailable(providerId);
+    if (!available.some((candidate) => candidate.id === modelId)) {
+      throw new Error("Configure this provider before selecting its model.");
+    }
+
+    const supported = getSupportedThinkingLevels(model);
+    const normalizedThinkingLevel = supported.includes(thinkingLevel)
+      ? thinkingLevel
+      : (supported.at(-1) ?? "off");
+    const live = sessionId ? this.liveSessions.get(sessionId) : undefined;
+    if (live) {
+      await live.session.setModel(model);
+      live.session.setThinkingLevel(normalizedThinkingLevel);
+      await live.session.settingsManager.flush();
+    } else {
+      const settings = SettingsManager.create(process.cwd(), agentDir, {
+        projectTrusted: false,
+      });
+      settings.setDefaultModelAndProvider(providerId, modelId);
+      settings.setDefaultThinkingLevel(normalizedThinkingLevel);
+      await settings.flush();
+    }
     return { disposed: true };
   }
 
@@ -218,7 +392,7 @@ export class PineAgentRuntime {
     let runtime = this.modelRuntimes.get(agentDir);
     if (!runtime) {
       runtime = ModelRuntime.create({
-        allowModelNetwork: false,
+        allowModelNetwork: true,
         authPath: path.join(agentDir, "auth.json"),
         modelsPath: path.join(agentDir, "models.json"),
         modelsStorePath: path.join(agentDir, "models-store.json"),
@@ -226,6 +400,62 @@ export class PineAgentRuntime {
       this.modelRuntimes.set(agentDir, runtime);
     }
     return runtime;
+  }
+
+  private describeModel(
+    model: Model<Api>,
+    providers: PineModelCatalog["providers"],
+  ): PineModelCatalog["models"][number] {
+    return {
+      api: model.api,
+      contextWindow: model.contextWindow,
+      id: model.id,
+      input: model.input,
+      maxTokens: model.maxTokens,
+      name: model.name,
+      providerId: model.provider,
+      providerName:
+        providers.find((provider) => provider.id === model.provider)?.name ??
+        model.provider,
+      reasoning: model.reasoning,
+      supportedThinkingLevels: getSupportedThinkingLevels(model),
+    };
+  }
+
+  private waitForAuthPrompt(
+    loginId: string,
+    prompt: AuthPrompt,
+  ): Promise<string> {
+    const promptId = randomUUID();
+    return new Promise<string>((resolve, reject) => {
+      const pending = { loginId, resolve, reject };
+      this.pendingAuthPrompts.set(promptId, pending);
+      const abort = () => {
+        if (this.pendingAuthPrompts.get(promptId) !== pending) return;
+        this.pendingAuthPrompts.delete(promptId);
+        reject(new Error("Provider login was cancelled."));
+      };
+      prompt.signal?.addEventListener("abort", abort, { once: true });
+      this.loginControllers
+        .get(loginId)
+        ?.signal.addEventListener("abort", abort, { once: true });
+      const serializablePrompt = { ...prompt };
+      delete serializablePrompt.signal;
+      this.options.emit({
+        type: "provider-auth-prompt",
+        loginId,
+        promptId,
+        prompt: serializablePrompt,
+      });
+    });
+  }
+
+  private rejectAuthPrompts(loginId: string, message: string): void {
+    for (const [promptId, pending] of this.pendingAuthPrompts) {
+      if (pending.loginId !== loginId) continue;
+      this.pendingAuthPrompts.delete(promptId);
+      pending.reject(new Error(message));
+    }
   }
 
   private forwardEvent(session: AgentSession, event: AgentSessionEvent): void {

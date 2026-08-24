@@ -4,6 +4,7 @@ import {
   dialog,
   ipcMain,
   nativeTheme,
+  shell,
   webContents,
   type OpenDialogOptions,
 } from "electron";
@@ -21,6 +22,19 @@ import {
   type AbortSessionResult,
   type PromptSessionResult,
 } from "./shared/agent";
+import {
+  CANCEL_PROVIDER_AUTH_CHANNEL,
+  GET_MODEL_CATALOG_CHANNEL,
+  LOGIN_PROVIDER_CHANNEL,
+  LOGOUT_PROVIDER_CHANNEL,
+  OPEN_PROVIDER_AUTH_URL_CHANNEL,
+  PROVIDER_AUTH_EVENT_CHANNEL,
+  RESPOND_PROVIDER_AUTH_CHANNEL,
+  SELECT_MODEL_CHANNEL,
+  isProviderAuthEvent,
+  type PineModelCatalog,
+  type ProviderLoginResult,
+} from "./shared/models";
 import {
   CREATE_PROJECT_CHANNEL,
   CLOSE_PROJECT_CHANNEL,
@@ -110,6 +124,36 @@ const PromptSessionRequestSchema = z.object({
   message: z.string().trim().min(1).max(100_000),
   streamingBehavior: z.enum(["follow-up", "steer"]).optional(),
 });
+const LoginProviderRequestSchema = z.object({
+  authType: z.enum(["api_key", "oauth"]),
+  loginId: z.uuid(),
+  providerId: z.string().trim().min(1).max(200),
+});
+const ProviderAuthResponseRequestSchema = z.object({
+  loginId: z.uuid(),
+  promptId: z.uuid(),
+  value: z.string().max(100_000),
+});
+const ProviderAuthLoginIdSchema = z.object({ loginId: z.uuid() });
+const ProviderIdSchema = z.object({
+  providerId: z.string().trim().min(1).max(200),
+});
+const SelectModelRequestSchema = z.object({
+  modelId: z.string().trim().min(1).max(500),
+  providerId: z.string().trim().min(1).max(200),
+  thinkingLevel: z.enum([
+    "off",
+    "minimal",
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+    "max",
+  ]),
+});
+const ProviderAuthUrlSchema = z
+  .url()
+  .refine((url) => ["http:", "https:"].includes(new URL(url).protocol));
 const ListProjectDirectoryRequestSchema = z.object({
   folderId: z.uuid(),
   relativePath: z.string().max(4_096),
@@ -176,6 +220,72 @@ ipcMain.handle(
     projects: await getProjectRepository().list(),
   }),
 );
+
+ipcMain.handle(GET_MODEL_CATALOG_CHANNEL, (): Promise<PineModelCatalog> =>
+  getProjectRuntimes().getModelCatalog(),
+);
+
+const providerLoginOwners = new Map<string, number>();
+
+ipcMain.handle(
+  LOGIN_PROVIDER_CHANNEL,
+  async (event, request: unknown): Promise<ProviderLoginResult> => {
+    const parsed = LoginProviderRequestSchema.parse(request);
+    providerLoginOwners.set(parsed.loginId, event.sender.id);
+    try {
+      return await getProjectRuntimes().loginProvider(parsed);
+    } finally {
+      providerLoginOwners.delete(parsed.loginId);
+    }
+  },
+);
+
+ipcMain.handle(
+  RESPOND_PROVIDER_AUTH_CHANNEL,
+  (event, request: unknown): Promise<{ accepted: boolean }> => {
+    const parsed = ProviderAuthResponseRequestSchema.parse(request);
+    if (providerLoginOwners.get(parsed.loginId) !== event.sender.id) {
+      throw new Error("Provider login does not belong to this window.");
+    }
+    return getProjectRuntimes().respondToProviderAuth(
+      parsed.loginId,
+      parsed.promptId,
+      parsed.value,
+    );
+  },
+);
+
+ipcMain.handle(
+  CANCEL_PROVIDER_AUTH_CHANNEL,
+  (event, request: unknown): Promise<{ cancelled: boolean }> => {
+    const { loginId } = ProviderAuthLoginIdSchema.parse(request);
+    if (providerLoginOwners.get(loginId) !== event.sender.id) {
+      throw new Error("Provider login does not belong to this window.");
+    }
+    return getProjectRuntimes().cancelProviderAuth(loginId);
+  },
+);
+
+ipcMain.handle(
+  LOGOUT_PROVIDER_CHANNEL,
+  (_event, request: unknown): Promise<{ disposed: boolean }> =>
+    getProjectRuntimes().logoutProvider(
+      ProviderIdSchema.parse(request).providerId,
+    ),
+);
+
+ipcMain.handle(
+  SELECT_MODEL_CHANNEL,
+  (event, request: unknown): Promise<{ disposed: boolean }> =>
+    getProjectRuntimes().selectModel(
+      event.sender.id,
+      SelectModelRequestSchema.parse(request),
+    ),
+);
+
+ipcMain.handle(OPEN_PROVIDER_AUTH_URL_CHANNEL, async (_event, url: unknown) => {
+  await shell.openExternal(ProviderAuthUrlSchema.parse(url));
+});
 
 ipcMain.handle(
   PICK_PROJECT_FOLDERS_CHANNEL,
@@ -342,6 +452,15 @@ app.on("ready", () => {
     path.join(app.getPath("userData"), "agent"),
   );
   agentHost.subscribe((agentEvent) => {
+    if (isProviderAuthEvent(agentEvent)) {
+      const ownerId = providerLoginOwners.get(agentEvent.loginId);
+      if (ownerId !== undefined) {
+        webContents
+          .fromId(ownerId)
+          ?.send(PROVIDER_AUTH_EVENT_CHANNEL, agentEvent);
+      }
+      return;
+    }
     const ownerId = projectRuntimes?.ownerOfSession(agentEvent.sessionId);
     if (ownerId === undefined) return;
     webContents.fromId(ownerId)?.send(SESSION_EVENT_CHANNEL, agentEvent);

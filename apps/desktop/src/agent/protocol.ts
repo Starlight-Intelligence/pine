@@ -1,4 +1,11 @@
 import type { PineAgentEvent, PineJsonValue } from "../shared/agent";
+import type {
+  LoginProviderRequest,
+  PineModelCatalog,
+  PineProviderAuthEvent,
+  PineThinkingLevel,
+  ProviderLoginResult,
+} from "../shared/models";
 import type { PineSessionSummary } from "../shared/sessions";
 
 export interface AgentSessionLocation {
@@ -6,6 +13,8 @@ export interface AgentSessionLocation {
   cwd: string;
   sessionsRoot: string;
 }
+
+export type PineRuntimeEvent = PineAgentEvent | PineProviderAuthEvent;
 
 export type AgentWorkerRequest =
   | {
@@ -38,6 +47,43 @@ export type AgentWorkerRequest =
     }
   | {
       id: string;
+      type: "models:catalog";
+      agentDir: string;
+    }
+  | ({
+      id: string;
+      type: "provider:login";
+      agentDir: string;
+    } & LoginProviderRequest)
+  | {
+      id: string;
+      type: "provider:auth-response";
+      loginId: string;
+      promptId: string;
+      value: string;
+    }
+  | {
+      id: string;
+      type: "provider:auth-cancel";
+      loginId: string;
+    }
+  | {
+      id: string;
+      type: "provider:logout";
+      agentDir: string;
+      providerId: string;
+    }
+  | {
+      id: string;
+      type: "models:select";
+      agentDir: string;
+      modelId: string;
+      providerId: string;
+      sessionId?: string;
+      thinkingLevel: PineThinkingLevel;
+    }
+  | {
+      id: string;
       type: "runtime:dispose";
     };
 
@@ -59,7 +105,11 @@ export interface AgentWorkerPromptResult extends AgentWorkerSessionResult {
 export type AgentWorkerResult =
   | AgentWorkerSessionResult
   | AgentWorkerPromptResult
+  | PineModelCatalog
+  | ProviderLoginResult
+  | { accepted: boolean }
   | { aborted: boolean }
+  | { cancelled: boolean }
   | { disposed: boolean };
 
 export type AgentWorkerMessage =
@@ -76,7 +126,7 @@ export type AgentWorkerMessage =
       ok: false;
       error: { message: string; code?: string };
     }
-  | { type: "event"; event: PineAgentEvent };
+  | { type: "event"; event: PineRuntimeEvent };
 
 export function toPineJsonValue(value: unknown): PineJsonValue {
   if (value === undefined) return null;

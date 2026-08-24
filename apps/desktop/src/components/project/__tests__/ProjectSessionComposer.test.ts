@@ -1,26 +1,59 @@
 import { mount } from "@vue/test-utils";
+import { createPinia, setActivePinia } from "pinia";
 import { describe, expect, it } from "vitest";
 import { createAppI18n } from "@/app/i18n";
-import zhCN from "@/app/i18n/locales/zh-CN";
-import type { Model, ReasoningEffort } from "../projectSessionComposerOptions";
-import {
-  modelOptions,
-  reasoningEfforts,
-} from "../projectSessionComposerOptions";
+import { useModelsStore } from "@/stores/models";
 import ProjectSessionComposer from "../ProjectSessionComposer.vue";
 
 interface ComposerProps {
   approvalMode?: "ask-for-permission" | "agent-decides" | "yolo";
   isRunning?: boolean;
-  model?: Model;
-  reasoningEffort?: ReasoningEffort;
 }
 
 function mountComposer(props: ComposerProps = {}) {
+  const pinia = createPinia();
+  setActivePinia(pinia);
+  const catalog = {
+    providers: [
+      {
+        authMethods: [{ type: "api_key" as const, label: "API key" }],
+        configured: true,
+        id: "anthropic",
+        modelCount: 1,
+        name: "Anthropic",
+      },
+    ],
+    models: [
+      {
+        api: "anthropic-messages",
+        contextWindow: 200_000,
+        id: "claude-sonnet",
+        input: ["text" as const],
+        maxTokens: 32_000,
+        name: "Claude Sonnet",
+        providerId: "anthropic",
+        providerName: "Anthropic",
+        reasoning: true,
+        supportedThinkingLevels: ["off" as const, "high" as const],
+      },
+    ],
+    selection: {
+      modelId: "claude-sonnet",
+      providerId: "anthropic",
+      thinkingLevel: "high" as const,
+    },
+  };
+  Object.defineProperty(window, "pine", {
+    configurable: true,
+    value: {
+      getModelCatalog: () => Promise.resolve(catalog),
+    },
+  });
+  useModelsStore().catalog = catalog;
   return mount(ProjectSessionComposer, {
     props,
     global: {
-      plugins: [createAppI18n("zh-CN")],
+      plugins: [pinia, createAppI18n("zh-CN")],
       stubs: {
         Tooltip: { template: "<div><slot /></div>" },
         TooltipContent: { template: "<div><slot /></div>" },
@@ -74,16 +107,14 @@ describe("ProjectSessionComposer", () => {
     ).toBe("sm");
   });
 
-  it("shows the default approval mode, model, and reasoning effort", () => {
+  it("shows the default approval mode and configured Pi model", () => {
     const wrapper = mountComposer();
     const approvalTrigger = wrapper.get('[data-slot="approval-mode-trigger"]');
     const modelTrigger = wrapper.get('[data-slot="model-selector-trigger"]');
 
     expect(approvalTrigger.text()).toContain("帮我决定");
     expect(approvalTrigger.get("span").classes()).toContain("text-foreground");
-    expect(modelTrigger.text()).toContain("Folio");
-    expect(modelTrigger.get("span").classes()).toContain("text-foreground");
-    expect(modelTrigger.text()).toContain("auto");
+    expect(modelTrigger.text()).toContain("Claude Sonnet");
   });
 
   it("reflects an externally selected approval mode", () => {
@@ -107,55 +138,6 @@ describe("ProjectSessionComposer", () => {
     expect(
       yoloWrapper.get('[data-slot="approval-mode-trigger"] svg').classes(),
     ).toContain("text-destructive");
-  });
-
-  it("reflects externally selected model settings", () => {
-    const wrapper = mountComposer({
-      model: "advanced",
-      reasoningEffort: "high",
-    });
-    const trigger = wrapper.get('[data-slot="model-selector-trigger"]');
-
-    expect(trigger.text()).toContain("Lore");
-    expect(trigger.get("span").classes()).toContain(
-      "text-composer-model-advanced",
-    );
-    expect(trigger.text()).toContain("high");
-
-    const lightweightWrapper = mountComposer({ model: "lightweight" });
-
-    expect(
-      lightweightWrapper
-        .get('[data-slot="model-selector-trigger"] span')
-        .classes(),
-    ).toContain("text-composer-model-lightweight");
-  });
-
-  it("keeps model and reasoning options in their specified order", () => {
-    expect(modelOptions.map((option) => option.value)).toEqual([
-      "lightweight",
-      "balanced",
-      "advanced",
-    ]);
-    expect(modelOptions.map((option) => option.label)).toEqual([
-      "Quill",
-      "Folio",
-      "Lore",
-    ]);
-    expect(zhCN.project.composer.models).toEqual({
-      lightweight: "轻快响应，适合简单和日常任务",
-      balanced: "速度与能力均衡，适合大多数任务",
-      advanced: "深入分析，适合复杂和高要求任务",
-    });
-    expect(reasoningEfforts).toEqual([
-      "none",
-      "low",
-      "medium",
-      "high",
-      "xhigh",
-      "max",
-      "auto",
-    ]);
   });
 
   it("disables sending while the message is blank", async () => {

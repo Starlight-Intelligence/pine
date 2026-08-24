@@ -5,6 +5,12 @@ import type {
   PromptSessionResult,
 } from "../shared/agent";
 import type {
+  LoginProviderRequest,
+  PineModelCatalog,
+  ProviderLoginResult,
+  SelectModelRequest,
+} from "../shared/models";
+import type {
   LoadSessionMessagesResult,
   PineSessionSummary,
   SessionSearchResult,
@@ -169,6 +175,43 @@ export class ProjectRuntimeRegistry {
     if (!runtime.activeSessionId) return { aborted: false };
     const result = await this.agentHost.abort(runtime.activeSessionId);
     return { ...result, sessionId: runtime.activeSessionId };
+  }
+
+  getModelCatalog(): Promise<PineModelCatalog> {
+    return this.agentHost.getModelCatalog(this.agentDir);
+  }
+
+  loginProvider(request: LoginProviderRequest): Promise<ProviderLoginResult> {
+    return this.agentHost.loginProvider(this.agentDir, request);
+  }
+
+  respondToProviderAuth(
+    loginId: string,
+    promptId: string,
+    value: string,
+  ): Promise<{ accepted: boolean }> {
+    return this.agentHost.respondToProviderAuth(loginId, promptId, value);
+  }
+
+  cancelProviderAuth(loginId: string): Promise<{ cancelled: boolean }> {
+    return this.agentHost.cancelProviderAuth(loginId);
+  }
+
+  logoutProvider(providerId: string): Promise<{ disposed: boolean }> {
+    return this.agentHost.logoutProvider(this.agentDir, providerId);
+  }
+
+  selectModel(
+    webContentsId: number,
+    request: SelectModelRequest,
+  ): Promise<{ disposed: boolean }> {
+    return this.agentHost.selectModel(
+      this.agentDir,
+      request.providerId,
+      request.modelId,
+      request.thinkingLevel,
+      this.runtimes.get(webContentsId)?.activeSessionId ?? undefined,
+    );
   }
 
   ownerOfSession(sessionId: string): number | undefined {

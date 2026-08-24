@@ -1,0 +1,134 @@
+export const GET_MODEL_CATALOG_CHANNEL = "models:catalog" as const;
+export const SELECT_MODEL_CHANNEL = "models:select" as const;
+export const LOGIN_PROVIDER_CHANNEL = "providers:login" as const;
+export const RESPOND_PROVIDER_AUTH_CHANNEL = "providers:auth-response" as const;
+export const CANCEL_PROVIDER_AUTH_CHANNEL = "providers:auth-cancel" as const;
+export const LOGOUT_PROVIDER_CHANNEL = "providers:logout" as const;
+export const OPEN_PROVIDER_AUTH_URL_CHANNEL =
+  "providers:open-auth-url" as const;
+export const PROVIDER_AUTH_EVENT_CHANNEL = "providers:auth-event" as const;
+
+export type PineAuthType = "api_key" | "oauth";
+export type PineThinkingLevel =
+  "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
+
+export interface PineProviderAuthMethod {
+  label: string;
+  type: PineAuthType;
+}
+
+export interface PineModelDescriptor {
+  api: string;
+  contextWindow: number;
+  id: string;
+  input: readonly ("image" | "text")[];
+  maxTokens: number;
+  name: string;
+  providerId: string;
+  providerName: string;
+  reasoning: boolean;
+  supportedThinkingLevels: readonly PineThinkingLevel[];
+}
+
+export interface PineProviderDescriptor {
+  authMethods: readonly PineProviderAuthMethod[];
+  authSource?: string;
+  configured: boolean;
+  id: string;
+  modelCount: number;
+  name: string;
+}
+
+export interface PineModelSelection {
+  modelId: string;
+  providerId: string;
+  thinkingLevel: PineThinkingLevel;
+}
+
+export interface PineModelCatalog {
+  models: readonly PineModelDescriptor[];
+  providers: readonly PineProviderDescriptor[];
+  selection?: PineModelSelection;
+}
+
+export type PineProviderAuthPrompt =
+  | {
+      type: "text" | "secret" | "manual_code";
+      message: string;
+      placeholder?: string;
+    }
+  | {
+      type: "select";
+      message: string;
+      options: readonly {
+        id: string;
+        label: string;
+        description?: string;
+      }[];
+    };
+
+export type PineProviderAuthNotice =
+  | {
+      type: "info";
+      message: string;
+      links?: readonly { label?: string; url: string }[];
+    }
+  | { type: "auth_url"; url: string; instructions?: string }
+  | {
+      type: "device_code";
+      userCode: string;
+      verificationUri: string;
+      intervalSeconds?: number;
+      expiresInSeconds?: number;
+    }
+  | { type: "progress"; message: string };
+
+export type PineProviderAuthEvent =
+  | {
+      type: "provider-auth-prompt";
+      loginId: string;
+      promptId: string;
+      prompt: PineProviderAuthPrompt;
+    }
+  | {
+      type: "provider-auth-notice";
+      loginId: string;
+      notice: PineProviderAuthNotice;
+    };
+
+export interface LoginProviderRequest {
+  authType: PineAuthType;
+  loginId: string;
+  providerId: string;
+}
+
+export interface ProviderAuthResponseRequest {
+  loginId: string;
+  promptId: string;
+  value: string;
+}
+
+export interface ProviderLoginResult {
+  credentialType: PineAuthType;
+}
+
+export type SelectModelRequest = PineModelSelection;
+
+export interface LogoutProviderRequest {
+  providerId: string;
+}
+
+export type ProviderAuthEventListener = (event: PineProviderAuthEvent) => void;
+
+export function isProviderAuthEvent(
+  value: unknown,
+): value is PineProviderAuthEvent {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return false;
+  }
+  const event = value as { type?: unknown };
+  return (
+    event.type === "provider-auth-prompt" ||
+    event.type === "provider-auth-notice"
+  );
+}
