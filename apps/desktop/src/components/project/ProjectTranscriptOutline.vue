@@ -1,0 +1,119 @@
+<script setup lang="ts">
+import { computed } from "vue";
+import { useI18n } from "vue-i18n";
+import { Button } from "@/components/ui/button";
+import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from "@/components/ui/hover-card";
+import {
+  useMessageScroller,
+  useMessageScrollerVisibility,
+} from "@/components/ui/message-scroller";
+import { cn } from "@/lib/utils";
+import type { PineTranscriptMessage } from "@/stores/session";
+
+const props = defineProps<{
+  messages: PineTranscriptMessage[];
+}>();
+
+const maximumMarkerCount = 9;
+const { t } = useI18n();
+const { scrollToMessage } = useMessageScroller();
+const visibility = useMessageScrollerVisibility();
+const turns = computed(() =>
+  props.messages.filter((message) => message.role === "user"),
+);
+const markerCount = computed(() =>
+  Math.min(turns.value.length, maximumMarkerCount),
+);
+const activeTurnIndex = computed(() =>
+  turns.value.findIndex(
+    (message) => message.id === visibility.value.currentAnchorId,
+  ),
+);
+const activeMarkerIndex = computed(() => {
+  if (activeTurnIndex.value < 0 || markerCount.value <= 1) {
+    return activeTurnIndex.value;
+  }
+
+  return Math.round(
+    (activeTurnIndex.value / (turns.value.length - 1)) *
+      (markerCount.value - 1),
+  );
+});
+
+function excerpt(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
+}
+
+function scrollToTurn(messageId: string): void {
+  scrollToMessage(messageId, { align: "start", behavior: "smooth" });
+}
+</script>
+
+<template>
+  <div
+    v-if="turns.length"
+    class="absolute right-3 top-1/2 hidden -translate-y-1/2 sm:block"
+  >
+    <HoverCard :open-delay="120" :close-delay="120">
+      <HoverCardTrigger as-child>
+        <Button
+          variant="secondary"
+          size="icon-sm"
+          class="h-auto min-h-8 flex-col gap-1 py-2"
+          :aria-label="t('project.transcript.outline')"
+        >
+          <span
+            v-for="markerIndex in markerCount"
+            :key="markerIndex"
+            :class="
+              cn(
+                'h-0.5 w-3 rounded-full bg-muted-foreground/35',
+                markerIndex - 1 === activeMarkerIndex && 'bg-foreground',
+              )
+            "
+          />
+        </Button>
+      </HoverCardTrigger>
+
+      <HoverCardContent
+        side="left"
+        align="center"
+        :side-offset="8"
+        class="w-72 p-1"
+      >
+        <nav
+          v-scroll-fade
+          class="scroll-fade scrollbar-thin flex max-h-80 flex-col gap-1 overflow-y-auto"
+          :aria-label="t('project.transcript.outline')"
+        >
+          <Button
+            v-for="(message, index) in turns"
+            :key="message.id"
+            class="h-auto w-full min-w-0 justify-start px-3 py-2 text-left"
+            :variant="
+              visibility.currentAnchorId === message.id ? 'secondary' : 'ghost'
+            "
+            size="sm"
+            :aria-current="
+              visibility.currentAnchorId === message.id ? 'location' : undefined
+            "
+            @click="scrollToTurn(message.id)"
+          >
+            <span class="min-w-0">
+              <span class="block text-[0.6875rem] text-muted-foreground">
+                {{ t("project.transcript.turn", { number: index + 1 }) }}
+              </span>
+              <span class="block truncate">
+                {{ excerpt(message.text) }}
+              </span>
+            </span>
+          </Button>
+        </nav>
+      </HoverCardContent>
+    </HoverCard>
+  </div>
+</template>

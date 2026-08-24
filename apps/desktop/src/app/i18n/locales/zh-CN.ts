@@ -78,6 +78,7 @@ export default {
       label: "会话消息",
       placeholder: "不妨大胆想象……",
       send: "发送消息",
+      stop: "停止回答",
       model: "模型",
       reasoningEffort: "推理强度",
       models: {
@@ -93,6 +94,17 @@ export default {
         yoloLabel: "干就完了",
         yolo: "自主执行，仅在出错时通知",
       },
+    },
+    transcript: {
+      assistantLabel: "Pine",
+      emptyDescription: "从一个问题、一项任务，或一个大胆的想法开始。",
+      emptyTitle: "不妨大胆想象",
+      loadHistory: "加载更早的消息",
+      loadingHistory: "正在加载",
+      outline: "对话大纲",
+      outlineEmpty: "发送消息后，回合会显示在这里。",
+      turn: "第 {number} 回合",
+      userLabel: "你",
     },
     tabs: {
       files: "文件",
@@ -123,6 +135,14 @@ export default {
     sessionResume: {
       title: "无法打开会话",
       description: "该会话可能已被移动或删除",
+    },
+    sessionPrompt: {
+      title: "无法发送消息",
+      description: "请检查模型设置和认证后重试",
+    },
+    sessionAbort: {
+      title: "无法停止回答",
+      description: "请稍后重试",
     },
     projectFiles: {
       title: "无法读取文件",

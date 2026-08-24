@@ -11,6 +11,7 @@ import ProjectSessionComposer from "../ProjectSessionComposer.vue";
 
 interface ComposerProps {
   approvalMode?: "ask-for-permission" | "agent-decides" | "yolo";
+  isRunning?: boolean;
   model?: Model;
   reasoningEffort?: ReasoningEffort;
 }
@@ -186,6 +187,16 @@ describe("ProjectSessionComposer", () => {
     await textarea.trigger("keydown", { key: "Enter", shiftKey: true });
     await textarea.trigger("keydown", { key: "Enter", isComposing: true });
 
+    expect(wrapper.emitted("submit")).toBeUndefined();
+  });
+
+  it("turns the send action into a stop action while running", async () => {
+    const wrapper = mountComposer({ isRunning: true });
+    const stopButton = wrapper.get('button[aria-label="停止回答"]');
+
+    await stopButton.trigger("click");
+
+    expect(wrapper.emitted("abort")).toEqual([[]]);
     expect(wrapper.emitted("submit")).toBeUndefined();
   });
 });

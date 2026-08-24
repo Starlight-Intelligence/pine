@@ -6,6 +6,7 @@ import {
   ShieldCheckIcon,
   ShieldIcon,
   ShieldOffIcon,
+  SquareIcon,
 } from "@lucide/vue";
 import { computed, useId } from "vue";
 import { useI18n } from "vue-i18n";
@@ -61,8 +62,16 @@ interface ApprovalModeOption {
 }
 
 const emit = defineEmits<{
+  abort: [];
   submit: [message: string];
 }>();
+
+const props = withDefaults(
+  defineProps<{
+    isRunning?: boolean;
+  }>(),
+  { isRunning: false },
+);
 
 const message = defineModel<string>({ default: "" });
 const approvalMode = defineModel<ApprovalMode>("approvalMode", {
@@ -75,7 +84,9 @@ const reasoningEffort = defineModel<ReasoningEffort>("reasoningEffort", {
 
 const { t } = useI18n();
 const messageId = useId();
-const canSubmit = computed(() => message.value.trim().length > 0);
+const canSubmit = computed(
+  () => props.isRunning || message.value.trim().length > 0,
+);
 const approvalModes = computed<ApprovalModeOption[]>(() => [
   {
     value: "ask-for-permission",
@@ -115,6 +126,10 @@ const selectedModel = computed(
 );
 
 function submitMessage(): void {
+  if (props.isRunning) {
+    emit("abort");
+    return;
+  }
   const normalizedMessage = message.value.trim();
   if (!normalizedMessage) return;
 
@@ -154,14 +169,23 @@ function handleKeydown(event: KeyboardEvent): void {
               size="icon-sm"
               variant="default"
               :disabled="!canSubmit"
-              :aria-label="t('project.composer.send')"
+              :aria-label="
+                props.isRunning
+                  ? t('project.composer.stop')
+                  : t('project.composer.send')
+              "
               @click="submitMessage"
             >
-              <ArrowUpIcon />
+              <SquareIcon v-if="props.isRunning" />
+              <ArrowUpIcon v-else />
             </InputGroupButton>
           </TooltipTrigger>
           <TooltipContent side="top">
-            {{ t("project.composer.send") }}
+            {{
+              props.isRunning
+                ? t("project.composer.stop")
+                : t("project.composer.send")
+            }}
           </TooltipContent>
         </Tooltip>
       </InputGroupAddon>

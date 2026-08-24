@@ -81,6 +81,7 @@ export default {
       label: "Session message",
       placeholder: "Imagine what’s possible…",
       send: "Send message",
+      stop: "Stop response",
       model: "Model",
       reasoningEffort: "Reasoning effort",
       models: {
@@ -96,6 +97,17 @@ export default {
         yoloLabel: "YOLO",
         yolo: "Run autonomously and notify only when something fails",
       },
+    },
+    transcript: {
+      assistantLabel: "Pine",
+      emptyDescription: "Start with a question, a task, or a bold idea.",
+      emptyTitle: "Imagine what’s possible",
+      loadHistory: "Load earlier messages",
+      loadingHistory: "Loading",
+      outline: "Conversation outline",
+      outlineEmpty: "Your turns will appear here after you send a message.",
+      turn: "Turn {number}",
+      userLabel: "You",
     },
     tabs: {
       files: "Files",
@@ -135,6 +147,14 @@ export default {
     sessionResume: {
       title: "Unable to open session",
       description: "The session may have been moved or deleted",
+    },
+    sessionPrompt: {
+      title: "Unable to send message",
+      description: "Check model settings and authentication, then try again",
+    },
+    sessionAbort: {
+      title: "Unable to stop response",
+      description: "Try again in a moment",
     },
     projectFiles: {
       title: "Unable to read files",
