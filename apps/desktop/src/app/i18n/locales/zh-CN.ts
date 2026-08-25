@@ -114,18 +114,21 @@ export default {
     current: "当前",
     noSessions: "还没有会话",
     noResults: "没有匹配的会话",
+    deleteAction: "删除对话",
+    deleteTitle: "删除对话？",
+    deleteDescription: "“{name}”及其消息将被永久删除。",
   },
   project: {
     preferences: "项目设置",
     contentTabs: {
       newSession: "新会话",
-      sessionNumber: "会话 {number}",
       addTab: "新建会话标签页",
       closeTab: "关闭 {name}",
+      tabListLabel: "已打开的内容",
     },
     composer: {
       label: "会话消息",
-      placeholder: "不妨大胆想象……",
+      placeholder: "描述任务、明确需求……",
       send: "发送消息",
       stop: "停止回答",
       model: "模型",
@@ -141,15 +144,13 @@ export default {
       },
     },
     transcript: {
-      assistantLabel: "Pine",
       emptyDescription: "从一个问题、一项任务，或一个大胆的想法开始。",
       emptyTitle: "不妨大胆想象",
       loadHistory: "加载更早的消息",
       loadingHistory: "正在加载",
       outline: "对话大纲",
       outlineEmpty: "发送消息后，回合会显示在这里。",
-      turn: "第 {number} 回合",
-      userLabel: "你",
+      thinking: "思考过程",
     },
     tabs: {
       files: "文件",
@@ -187,6 +188,10 @@ export default {
     },
     sessionAbort: {
       title: "无法停止回答",
+      description: "请稍后重试",
+    },
+    sessionDelete: {
+      title: "无法删除对话",
       description: "请稍后重试",
     },
     projectFiles: {

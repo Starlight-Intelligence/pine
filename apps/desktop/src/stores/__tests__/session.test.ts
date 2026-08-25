@@ -58,6 +58,27 @@ describe("session store", () => {
     expect(store.activeSession).toEqual(session);
   });
 
+  it("keeps the indexed title when the live resume summary omits it", async () => {
+    const liveSession = { ...session };
+    delete liveSession.name;
+    Object.defineProperty(window, "pine", {
+      configurable: true,
+      value: {
+        loadSessionMessages: vi.fn().mockResolvedValue({
+          hasMore: false,
+          messages: [],
+        }),
+        resumeSession: vi.fn().mockResolvedValue({ session: liveSession }),
+      },
+    });
+    const store = useSessionStore();
+    store.recentSessions = [session];
+
+    await store.resume(session.id);
+
+    expect(store.activeSession?.name).toBe("Session search");
+  });
+
   it("loads recent sessions separately from search results", async () => {
     Object.defineProperty(window, "pine", {
       configurable: true,
@@ -88,13 +109,92 @@ describe("session store", () => {
     const store = useSessionStore();
     await store.resume(session.id);
 
-    store.startTransientSession();
+    store.startDraft();
 
     expect(store.activeSession).toBeNull();
   });
 
-  it("builds a text transcript from streaming agent events", () => {
+  it("adds a newly prompted session to the recent list immediately", async () => {
+    const promptSession = vi.fn().mockResolvedValue({ session });
+    Object.defineProperty(window, "pine", {
+      configurable: true,
+      value: {
+        promptSession,
+      },
+    });
+    const store = useSessionStore();
+
+    await store.prompt("Describe the task");
+
+    expect(store.recentSessions).toEqual([
+      expect.objectContaining({
+        id: session.id,
+        preview: "Describe the task",
+      }),
+    ]);
+    expect(store.activeSession?.id).toBe(session.id);
+    expect(promptSession).toHaveBeenCalledWith({
+      message: "Describe the task",
+      target: { kind: "new" },
+    });
+  });
+
+  it("targets the active session when sending a follow-up", async () => {
+    const promptSession = vi.fn().mockResolvedValue({ session });
+    Object.defineProperty(window, "pine", {
+      configurable: true,
+      value: {
+        loadSessionMessages: vi.fn().mockResolvedValue({
+          hasMore: false,
+          messages: [],
+        }),
+        promptSession,
+        resumeSession: vi.fn().mockResolvedValue({ session }),
+      },
+    });
+    const store = useSessionStore();
+    await store.resume(session.id);
+
+    await store.prompt("Continue here", session.id);
+
+    expect(promptSession).toHaveBeenCalledWith({
+      message: "Continue here",
+      target: { kind: "session", sessionId: session.id },
+    });
+  });
+
+  it("removes a deleted session and clears it when active", async () => {
+    Object.defineProperty(window, "pine", {
+      configurable: true,
+      value: {
+        deleteSession: vi.fn().mockResolvedValue({ deleted: true }),
+        loadSessionMessages: vi.fn().mockResolvedValue({
+          hasMore: false,
+          messages: [],
+        }),
+        resumeSession: vi.fn().mockResolvedValue({ session }),
+      },
+    });
+    const store = useSessionStore();
+    store.recentSessions = [session];
+    await store.resume(session.id);
+
+    await expect(store.deleteSession(session.id)).resolves.toBe(true);
+
+    expect(store.recentSessions).toEqual([]);
+    expect(store.activeSession).toBeNull();
+    expect(store.messages).toEqual([]);
+  });
+
+  it("builds a text transcript from streaming agent events", async () => {
     let listener: ((event: PineAgentEvent) => void) | undefined;
+    let resolvePrompt:
+      ((value: { session: PineSessionSummary }) => void) | undefined;
+    const promptResult = new Promise<{ session: PineSessionSummary }>(
+      (resolve) => {
+        resolvePrompt = resolve;
+      },
+    );
     Object.defineProperty(window, "pine", {
       configurable: true,
       value: {
@@ -102,10 +202,12 @@ describe("session store", () => {
           listener = nextListener;
           return () => undefined;
         }),
+        promptSession: vi.fn().mockReturnValue(promptResult),
       },
     });
     const store = useSessionStore();
     store.connectAgentEvents();
+    const prompt = store.prompt("Hello");
 
     listener?.({
       type: "run-state",
@@ -129,9 +231,14 @@ describe("session store", () => {
       message: {
         role: "assistant",
         timestamp: 1_784_000_000_000,
-        content: [{ type: "text", text: "Hello, world" }],
+        content: [
+          { type: "thinking", thinking: "Check the incoming message." },
+          { type: "text", text: "Hello, world" },
+        ],
       },
     });
+    resolvePrompt?.({ session });
+    await prompt;
 
     expect(store.messages).toEqual([
       expect.objectContaining({
@@ -139,8 +246,79 @@ describe("session store", () => {
         role: "assistant",
         status: "complete",
         text: "Hello, world",
+        thinking: "Check the incoming message.",
       }),
     ]);
     expect(store.isRunning).toBe(true);
+  });
+
+  it("keeps the prompt title when a runtime summary omits display fields", async () => {
+    let listener: ((event: PineAgentEvent) => void) | undefined;
+    Object.defineProperty(window, "pine", {
+      configurable: true,
+      value: {
+        onSessionEvent: vi.fn((nextListener) => {
+          listener = nextListener;
+          return () => undefined;
+        }),
+        promptSession: vi.fn().mockResolvedValue({ session }),
+      },
+    });
+    const store = useSessionStore();
+    store.connectAgentEvents();
+    await store.prompt("Describe the task");
+
+    const summaryWithoutDisplayFields = { ...session };
+    delete summaryWithoutDisplayFields.name;
+    listener?.({
+      type: "session-updated",
+      sessionId: session.id,
+      summary: summaryWithoutDisplayFields,
+    });
+
+    expect(store.activeSession?.preview).toBe("Describe the task");
+    expect(store.recentSessions[0]?.preview).toBe("Describe the task");
+  });
+
+  it("ignores late events from a session after opening a new tab", async () => {
+    let listener: ((event: PineAgentEvent) => void) | undefined;
+    Object.defineProperty(window, "pine", {
+      configurable: true,
+      value: {
+        loadSessionMessages: vi.fn().mockResolvedValue({
+          hasMore: false,
+          messages: [],
+        }),
+        onSessionEvent: vi.fn((nextListener) => {
+          listener = nextListener;
+          return () => undefined;
+        }),
+        resumeSession: vi.fn().mockResolvedValue({ session }),
+      },
+    });
+    const store = useSessionStore();
+    store.connectAgentEvents();
+    await store.resume(session.id);
+    store.startDraft();
+
+    listener?.({
+      type: "run-state",
+      sessionId: session.id,
+      state: "running",
+    });
+    listener?.({
+      type: "message-end",
+      sessionId: session.id,
+      messageId: "019cfe51-7166-79b9-a5b9-c652fcca9ead",
+      message: {
+        role: "assistant",
+        timestamp: 1_784_000_000_000,
+        content: [{ type: "text", text: "Late response" }],
+      },
+    });
+
+    expect(store.activeSession).toBeNull();
+    expect(store.messages).toEqual([]);
+    expect(store.isRunning).toBe(false);
   });
 });

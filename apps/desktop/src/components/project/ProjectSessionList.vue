@@ -1,10 +1,27 @@
 <script setup lang="ts">
-import { History, Plus, Search } from "@lucide/vue";
+import { History, Plus, Search, Trash2 } from "@lucide/vue";
 import { useVirtualizer } from "@tanstack/vue-virtual";
 import { storeToRefs } from "pinia";
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { handleError } from "@/app/errors/errorHandler";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuGroup,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -15,6 +32,7 @@ import {
   SidebarMenuItem,
   SidebarMenuSkeleton,
 } from "@/components/ui/sidebar";
+import { useContentTabNavigation } from "@/composables/useContentTabNavigation";
 import type { PineSessionSummary } from "@/shared/sessions";
 import { useSessionStore } from "@/stores/session";
 
@@ -22,10 +40,14 @@ const { locale, t } = useI18n();
 const emit = defineEmits<{
   search: [];
 }>();
+const tabNavigation = useContentTabNavigation();
 const sessionStore = useSessionStore();
-const { activeSession, isLoadingRecent, recentSessions } =
-  storeToRefs(sessionStore);
+const { activeSessionTab } = tabNavigation;
+const { isLoadingRecent, recentSessions } = storeToRefs(sessionStore);
 const scrollHost = ref<HTMLElement | null>(null);
+const sessionPendingDelete = ref<PineSessionSummary | null>(null);
+const isDeleteDialogOpen = ref(false);
+const isDeleting = ref(false);
 
 const dateFormatter = computed(
   () =>
@@ -65,17 +87,33 @@ async function loadRecentSessions(): Promise<void> {
   }
 }
 
-async function resumeSession(sessionId: string): Promise<void> {
-  if (sessionId === activeSession.value?.id) return;
+function openSession(session: PineSessionSummary): void {
+  tabNavigation.openSession(session);
+}
 
+function requestSessionDeletion(session: PineSessionSummary): void {
+  sessionPendingDelete.value = session;
+  isDeleteDialogOpen.value = true;
+}
+
+async function deleteRequestedSession(): Promise<void> {
+  const session = sessionPendingDelete.value;
+  if (!session || isDeleting.value) return;
+
+  isDeleting.value = true;
   try {
-    await sessionStore.resume(sessionId);
+    await sessionStore.deleteSession(session.id);
+    tabNavigation.removeSession(session.id);
+    isDeleteDialogOpen.value = false;
+    sessionPendingDelete.value = null;
   } catch (error) {
     handleError(error, {
-      id: "sessions.sidebar.resume",
-      title: t("errors.sessionResume.title"),
-      description: t("errors.sessionResume.description"),
+      id: "sessions.sidebar.delete",
+      title: t("errors.sessionDelete.title"),
+      description: t("errors.sessionDelete.description"),
     });
+  } finally {
+    isDeleting.value = false;
   }
 }
 
@@ -97,8 +135,8 @@ onMounted(() => {
           </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton
-              :is-active="activeSession === null"
-              @click="sessionStore.startTransientSession"
+              :is-active="activeSessionTab?.state === 'draft'"
+              @click="tabNavigation.createSessionTab"
             >
               <Plus aria-hidden="true" />
               <span>{{ t("sessions.newSession") }}</span>
@@ -138,37 +176,88 @@ onMounted(() => {
         class="h-full [&_[data-slot=scroll-area-viewport]]:scroll-fade"
       >
         <SidebarMenu
-          class="relative px-2 py-1"
-          :style="{ height: `${rowVirtualizer.getTotalSize() + 8}px` }"
+          class="relative px-2 py-2"
+          :style="{ height: `${rowVirtualizer.getTotalSize() + 16}px` }"
         >
           <SidebarMenuItem
             v-for="virtualRow in virtualRows"
             :key="recentSessions[virtualRow.index].id"
-            class="absolute inset-x-2 top-1"
+            class="absolute inset-x-2 top-2"
             :style="{
               transform: `translateY(${virtualRow.start}px)`,
               height: `${virtualRow.size}px`,
             }"
           >
-            <SidebarMenuButton
-              :is-active="
-                recentSessions[virtualRow.index].id === activeSession?.id
-              "
-              @click="resumeSession(recentSessions[virtualRow.index].id)"
-            >
-              <History aria-hidden="true" />
-              <span>{{ sessionTitle(recentSessions[virtualRow.index]) }}</span>
-              <span class="ml-auto shrink-0 text-xs text-muted-foreground">
-                {{
-                  dateFormatter.format(
-                    new Date(recentSessions[virtualRow.index].updatedAt),
-                  )
-                }}
-              </span>
-            </SidebarMenuButton>
+            <ContextMenu>
+              <ContextMenuTrigger as-child>
+                <SidebarMenuButton
+                  class="min-w-0"
+                  :is-active="
+                    activeSessionTab?.state === 'bound' &&
+                    recentSessions[virtualRow.index].id ===
+                      activeSessionTab.sessionId
+                  "
+                  @click="openSession(recentSessions[virtualRow.index])"
+                >
+                  <History aria-hidden="true" />
+                  <span class="min-w-0 flex-1 truncate">
+                    {{ sessionTitle(recentSessions[virtualRow.index]) }}
+                  </span>
+                  <span class="ml-auto shrink-0 text-xs text-muted-foreground">
+                    {{
+                      dateFormatter.format(
+                        new Date(recentSessions[virtualRow.index].updatedAt),
+                      )
+                    }}
+                  </span>
+                </SidebarMenuButton>
+              </ContextMenuTrigger>
+              <ContextMenuContent>
+                <ContextMenuGroup>
+                  <ContextMenuItem
+                    variant="destructive"
+                    @select="
+                      requestSessionDeletion(recentSessions[virtualRow.index])
+                    "
+                  >
+                    <Trash2 aria-hidden="true" />
+                    {{ t("sessions.deleteAction") }}
+                  </ContextMenuItem>
+                </ContextMenuGroup>
+              </ContextMenuContent>
+            </ContextMenu>
           </SidebarMenuItem>
         </SidebarMenu>
       </ScrollArea>
     </div>
+
+    <AlertDialog v-model:open="isDeleteDialogOpen">
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{{ t("sessions.deleteTitle") }}</AlertDialogTitle>
+          <AlertDialogDescription>
+            {{
+              t("sessions.deleteDescription", {
+                name: sessionPendingDelete
+                  ? sessionTitle(sessionPendingDelete)
+                  : "",
+              })
+            }}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel :disabled="isDeleting">
+            {{ t("common.cancel") }}
+          </AlertDialogCancel>
+          <AlertDialogAction
+            variant="destructive"
+            :disabled="isDeleting"
+            @click="deleteRequestedSession"
+          >
+            {{ t("common.delete") }}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   </div>
 </template>

@@ -14,6 +14,7 @@ import {
   CommandShortcut,
 } from "@/components/ui/command";
 import { Spinner } from "@/components/ui/spinner";
+import { useContentTabNavigation } from "@/composables/useContentTabNavigation";
 import type { SessionSearchResult } from "@/shared/sessions";
 import { useSessionStore } from "@/stores/session";
 import SessionCommandInput from "./SessionCommandInput.vue";
@@ -28,8 +29,10 @@ const emit = defineEmits<{
 }>();
 
 const { locale, t } = useI18n();
+const tabNavigation = useContentTabNavigation();
 const sessionStore = useSessionStore();
-const { activeSession, isSearching, searchResults } = storeToRefs(sessionStore);
+const { activeSessionTab } = tabNavigation;
+const { isSearching, searchResults } = storeToRefs(sessionStore);
 const query = ref("");
 const filterRefreshToken = computed(
   () =>
@@ -77,22 +80,9 @@ function sessionSnippet(session: SessionSearchResult): string | undefined {
   return snippet?.replaceAll(/\s+/g, " ").trim();
 }
 
-async function resumeSession(sessionId: string): Promise<void> {
-  if (sessionId === activeSession.value?.id) {
-    emit("update:open", false);
-    return;
-  }
-
-  try {
-    await sessionStore.resume(sessionId);
-    emit("update:open", false);
-  } catch (error) {
-    handleError(error, {
-      id: "sessions.resume",
-      title: t("errors.sessionResume.title"),
-      description: t("errors.sessionResume.description"),
-    });
-  }
+function openSession(session: SessionSearchResult): void {
+  tabNavigation.openSession(session);
+  emit("update:open", false);
 }
 </script>
 
@@ -127,7 +117,7 @@ async function resumeSession(sessionId: string): Promise<void> {
           :key="session.id"
           :value="session.id"
           class="data-[highlighted]:bg-muted data-[highlighted]:text-foreground data-[highlighted]:*:[svg]:text-foreground"
-          @select="resumeSession(session.id)"
+          @select="openSession(session)"
         >
           <History aria-hidden="true" />
           <div class="min-w-0 flex-1">
@@ -145,7 +135,8 @@ async function resumeSession(sessionId: string): Promise<void> {
           </div>
           <CommandShortcut class="tracking-normal">
             {{
-              session.id === activeSession?.id
+              activeSessionTab?.state === "bound" &&
+              session.id === activeSessionTab.sessionId
                 ? t("sessions.current")
                 : dateFormatter.format(new Date(session.updatedAt))
             }}

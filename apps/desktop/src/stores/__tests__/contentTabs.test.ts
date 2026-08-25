@@ -1,0 +1,103 @@
+import { createPinia, setActivePinia } from "pinia";
+import { beforeEach, describe, expect, it } from "vitest";
+import type { PineSessionSummary } from "@/shared/sessions";
+import { useContentTabsStore } from "../contentTabs";
+
+const firstSession: PineSessionSummary = {
+  createdAt: "2026-08-25T00:00:00.000Z",
+  id: "019cfe51-7166-79b9-a5b9-c652fcca9eab",
+  messageCount: 2,
+  preview: "First prompt",
+  updatedAt: "2026-08-25T00:01:00.000Z",
+};
+
+describe("content tabs store", () => {
+  beforeEach(() => setActivePinia(createPinia()));
+
+  it("creates a draft tab from a bound session", () => {
+    const store = useContentTabsStore();
+    store.bindSession("session-1", firstSession);
+
+    const draft = store.createSessionTab();
+
+    expect(draft.state).toBe("draft");
+    expect(store.tabs).toContainEqual(draft);
+    expect(store.tabs).toHaveLength(3);
+  });
+
+  it("does not duplicate an already active draft tab", () => {
+    const store = useContentTabsStore();
+
+    const draft = store.createSessionTab();
+
+    expect(draft.id).toBe("session-1");
+    expect(store.tabs).toHaveLength(2);
+  });
+
+  it("binds a prompt result to the tab that sent it", () => {
+    const store = useContentTabsStore();
+    const firstTabId = "session-1";
+    store.beginPrompt(firstTabId, "Pending prompt");
+    const secondTab = store.createSessionTab();
+
+    store.bindSession(firstTabId, firstSession);
+
+    expect(secondTab.state).toBe("draft");
+    expect(store.tabs).toContainEqual(
+      expect.objectContaining({
+        id: firstTabId,
+        sessionId: firstSession.id,
+        state: "bound",
+      }),
+    );
+  });
+
+  it("moves a draft through creating to bound", () => {
+    const store = useContentTabsStore();
+
+    expect(store.beginPrompt("session-1", "First prompt")).toBe(true);
+    expect(store.tabs).toContainEqual(
+      expect.objectContaining({
+        id: "session-1",
+        label: "First prompt",
+        state: "creating",
+      }),
+    );
+
+    store.bindSession("session-1", firstSession);
+
+    expect(store.tabs).toContainEqual(
+      expect.objectContaining({
+        id: "session-1",
+        sessionId: firstSession.id,
+        state: "bound",
+      }),
+    );
+  });
+
+  it("replaces the final closed session tab with a usable draft", () => {
+    const store = useContentTabsStore();
+
+    const replacementId = store.close("session-1", "session-1");
+
+    expect(store.tabs.find((tab) => tab.id === replacementId)).toEqual(
+      expect.objectContaining({ state: "draft" }),
+    );
+    expect(store.tabs.filter((tab) => tab.kind === "session")).toHaveLength(1);
+  });
+
+  it("opens an existing session tab instead of duplicating it", () => {
+    const store = useContentTabsStore();
+    store.bindSession("session-1", firstSession);
+    store.createSessionTab();
+
+    const opened = store.openSession(firstSession, store.createSessionTab().id);
+
+    expect(opened.id).toBe("session-1");
+    expect(
+      store.tabs.filter(
+        (tab) => tab.kind === "session" && tab.state === "bound",
+      ),
+    ).toHaveLength(1);
+  });
+});

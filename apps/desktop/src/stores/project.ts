@@ -5,9 +5,11 @@ import type {
   PineProject,
   UpdateProjectRequest,
 } from "@/shared/projects";
+import { useContentTabsStore } from "./contentTabs";
 import { useSessionStore } from "./session";
 
 export const useProjectStore = defineStore("project", () => {
+  const contentTabsStore = useContentTabsStore();
   const sessionStore = useSessionStore();
   const projects = shallowRef<PineProject[]>([]);
   const activeProject = shallowRef<PineProject | null>(null);
@@ -57,6 +59,7 @@ export const useProjectStore = defineStore("project", () => {
     try {
       const project = (await window.pine.openProject({ id })).project;
       sessionStore.reset();
+      contentTabsStore.reset();
       activeProject.value = project;
       upsertProject(project);
       return project;
@@ -75,6 +78,7 @@ export const useProjectStore = defineStore("project", () => {
       if (activeProject.value?.id === project.id) {
         activeProject.value = project;
         sessionStore.reset();
+        contentTabsStore.reset();
       }
       return project;
     } finally {
@@ -90,6 +94,7 @@ export const useProjectStore = defineStore("project", () => {
       if (activeProject.value?.id === id) {
         activeProject.value = null;
         sessionStore.reset();
+        contentTabsStore.reset();
       }
     } finally {
       isSavingProject.value = false;
@@ -100,6 +105,7 @@ export const useProjectStore = defineStore("project", () => {
     await window.pine.closeProject();
     activeProject.value = null;
     sessionStore.reset();
+    contentTabsStore.reset();
   }
 
   return {

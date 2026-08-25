@@ -117,18 +117,22 @@ export default {
     current: "Current",
     noSessions: "No sessions yet",
     noResults: "No matching sessions",
+    deleteAction: "Delete conversation",
+    deleteTitle: "Delete conversation?",
+    deleteDescription:
+      "\u201c{name}\u201d and its messages will be permanently deleted.",
   },
   project: {
     preferences: "Project settings",
     contentTabs: {
       newSession: "New session",
-      sessionNumber: "Session {number}",
       addTab: "Add session tab",
       closeTab: "Close {name}",
+      tabListLabel: "Open content",
     },
     composer: {
       label: "Session message",
-      placeholder: "Imagine what’s possible…",
+      placeholder: "Describe a task or clarify what you need…",
       send: "Send message",
       stop: "Stop response",
       model: "Model",
@@ -144,15 +148,13 @@ export default {
       },
     },
     transcript: {
-      assistantLabel: "Pine",
       emptyDescription: "Start with a question, a task, or a bold idea.",
       emptyTitle: "Imagine what’s possible",
       loadHistory: "Load earlier messages",
       loadingHistory: "Loading",
       outline: "Conversation outline",
       outlineEmpty: "Your turns will appear here after you send a message.",
-      turn: "Turn {number}",
-      userLabel: "You",
+      thinking: "Reasoning",
     },
     tabs: {
       files: "Files",
@@ -199,6 +201,10 @@ export default {
     },
     sessionAbort: {
       title: "Unable to stop response",
+      description: "Try again in a moment",
+    },
+    sessionDelete: {
+      title: "Unable to delete conversation",
       description: "Try again in a moment",
     },
     projectFiles: {

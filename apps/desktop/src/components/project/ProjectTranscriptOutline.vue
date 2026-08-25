@@ -56,14 +56,14 @@ function scrollToTurn(messageId: string): void {
 <template>
   <div
     v-if="turns.length"
-    class="absolute right-3 top-1/2 hidden -translate-y-1/2 sm:block"
+    class="absolute right-0 top-1/2 z-10 hidden -translate-y-1/2 sm:block"
   >
     <HoverCard :open-delay="120" :close-delay="120">
       <HoverCardTrigger as-child>
         <Button
-          variant="secondary"
+          variant="ghost"
           size="icon-sm"
-          class="h-auto min-h-8 flex-col gap-1 py-2"
+          class="h-auto min-h-12 flex-col gap-1 rounded-l-md rounded-r-none px-2 py-3"
           :aria-label="t('project.transcript.outline')"
         >
           <span
@@ -79,21 +79,16 @@ function scrollToTurn(messageId: string): void {
         </Button>
       </HoverCardTrigger>
 
-      <HoverCardContent
-        side="left"
-        align="center"
-        :side-offset="8"
-        class="w-72 p-1"
-      >
+      <HoverCardContent side="left" align="center" :side-offset="8" class="p-2">
         <nav
           v-scroll-fade
           class="scroll-fade scrollbar-thin flex max-h-80 flex-col gap-1 overflow-y-auto"
           :aria-label="t('project.transcript.outline')"
         >
           <Button
-            v-for="(message, index) in turns"
+            v-for="message in turns"
             :key="message.id"
-            class="h-auto w-full min-w-0 justify-start px-3 py-2 text-left"
+            class="w-full min-w-0 justify-start"
             :variant="
               visibility.currentAnchorId === message.id ? 'secondary' : 'ghost'
             "
@@ -103,13 +98,8 @@ function scrollToTurn(messageId: string): void {
             "
             @click="scrollToTurn(message.id)"
           >
-            <span class="min-w-0">
-              <span class="block text-[0.6875rem] text-muted-foreground">
-                {{ t("project.transcript.turn", { number: index + 1 }) }}
-              </span>
-              <span class="block truncate">
-                {{ excerpt(message.text) }}
-              </span>
+            <span class="min-w-0 truncate">
+              {{ excerpt(message.text) }}
             </span>
           </Button>
         </nav>

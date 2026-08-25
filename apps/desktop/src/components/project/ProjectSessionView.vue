@@ -3,6 +3,7 @@ import { storeToRefs } from "pinia";
 import { onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
+import { PineCharacter } from "@/components/pine";
 import { Button } from "@/components/ui/button";
 import {
   Empty,
@@ -12,19 +13,26 @@ import {
 } from "@/components/ui/empty";
 import {
   MessageScroller,
-  MessageScrollerButton,
   MessageScrollerContent,
   MessageScrollerItem,
   MessageScrollerProvider,
   MessageScrollerViewport,
 } from "@/components/ui/message-scroller";
 import { Spinner } from "@/components/ui/spinner";
+import { useContentTabNavigation } from "@/composables/useContentTabNavigation";
+import { useContentTabsStore } from "@/stores/contentTabs";
 import { useSessionStore } from "@/stores/session";
 import ProjectSessionComposer from "./ProjectSessionComposer.vue";
 import ProjectTranscriptMessage from "./ProjectTranscriptMessage.vue";
 import ProjectTranscriptOutline from "./ProjectTranscriptOutline.vue";
 
 const { t } = useI18n();
+const props = defineProps<{
+  sessionId?: string;
+  tabId: string;
+}>();
+const contentTabsStore = useContentTabsStore();
+const tabNavigation = useContentTabNavigation();
 const sessionStore = useSessionStore();
 const { hasEarlierMessages, isLoadingMessages, isRunning, messages } =
   storeToRefs(sessionStore);
@@ -33,12 +41,18 @@ const draft = ref("");
 onMounted(() => sessionStore.connectAgentEvents());
 
 function submit(message: string): void {
+  const sessionId = props.sessionId;
+  if (!contentTabsStore.beginPrompt(props.tabId, message)) return;
   draft.value = "";
-  void sessionStore.prompt(message).catch(() => {
-    toast.error(t("errors.sessionPrompt.title"), {
-      description: t("errors.sessionPrompt.description"),
+  void sessionStore
+    .prompt(message, sessionId)
+    .then((session) => tabNavigation.bindSession(props.tabId, session))
+    .catch(() => {
+      tabNavigation.failPrompt(props.tabId);
+      toast.error(t("errors.sessionPrompt.title"), {
+        description: t("errors.sessionPrompt.description"),
+      });
     });
-  });
 }
 
 function abort(): void {
@@ -57,11 +71,11 @@ function abort(): void {
     :scroll-previous-item-peek="64"
   >
     <div class="flex h-full min-h-0 flex-col">
-      <div class="relative mx-auto min-h-0 w-full max-w-[864px] flex-1">
+      <div class="relative min-h-0 w-full flex-1">
         <MessageScroller>
           <MessageScrollerViewport>
             <MessageScrollerContent
-              class="mx-auto w-full max-w-[768px] px-4 py-8"
+              class="mx-auto w-full max-w-[736px] px-4 py-8"
               spacer-class="h-16"
             >
               <div
@@ -85,6 +99,7 @@ function abort(): void {
 
               <Empty v-if="!messages.length && !isLoadingMessages">
                 <EmptyHeader>
+                  <PineCharacter decorative size="lg" />
                   <EmptyTitle>{{
                     t("project.transcript.emptyTitle")
                   }}</EmptyTitle>
@@ -104,7 +119,6 @@ function abort(): void {
               </MessageScrollerItem>
             </MessageScrollerContent>
           </MessageScrollerViewport>
-          <MessageScrollerButton direction="end" />
         </MessageScroller>
 
         <ProjectTranscriptOutline :messages="messages" />

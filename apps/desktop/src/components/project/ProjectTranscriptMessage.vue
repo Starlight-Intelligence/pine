@@ -2,11 +2,7 @@
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
-import {
-  Message,
-  MessageContent,
-  MessageHeader,
-} from "@/components/ui/message";
+import { Message, MessageContent } from "@/components/ui/message";
 import type { PineTranscriptMessage } from "@/stores/session";
 
 const props = defineProps<{
@@ -20,13 +16,20 @@ const isUser = computed(() => props.message.role === "user");
 <template>
   <Message :align="isUser ? 'end' : 'start'">
     <MessageContent>
-      <MessageHeader>
-        {{
-          isUser
-            ? t("project.transcript.userLabel")
-            : t("project.transcript.assistantLabel")
-        }}
-      </MessageHeader>
+      <details
+        v-if="!isUser && message.thinking"
+        class="group mb-2 text-sm text-muted-foreground"
+        :open="message.status === 'streaming'"
+      >
+        <summary
+          class="w-fit cursor-pointer select-none font-medium hover:text-foreground"
+        >
+          {{ t("project.transcript.thinking") }}
+        </summary>
+        <div class="mt-2 border-l border-border pl-3 whitespace-pre-wrap">
+          {{ message.thinking }}
+        </div>
+      </details>
       <Bubble :variant="isUser ? 'secondary' : 'ghost'">
         <BubbleContent class="whitespace-pre-wrap">
           {{ message.text }}

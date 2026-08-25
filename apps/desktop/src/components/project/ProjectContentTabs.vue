@@ -1,100 +1,125 @@
 <script setup lang="ts">
-import type { Component } from "vue";
 import {
   FileCode2Icon,
   PlusIcon,
   SquareTerminalIcon,
   XIcon,
 } from "@lucide/vue";
-import { computed, ref, shallowRef } from "vue";
+import { storeToRefs } from "pinia";
+import type { ComponentPublicInstance } from "vue";
+import { computed, nextTick, watch } from "vue";
 import { useI18n } from "vue-i18n";
+import { handleError } from "@/app/errors/errorHandler";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { useSidebar } from "@/components/ui/sidebar";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useContentTabNavigation } from "@/composables/useContentTabNavigation";
 import { cn } from "@/lib/utils";
+import type { ProjectContentTab } from "@/stores/contentTabs";
+import { useContentTabsStore } from "@/stores/contentTabs";
+import { useSessionStore } from "@/stores/session";
 import ProjectSessionView from "./ProjectSessionView.vue";
-
-interface ProjectContentTab {
-  id: string;
-  icon: Component;
-  label?: string;
-  sessionNumber?: number;
-}
 
 const { t } = useI18n();
 const { state: sidebarState, isMobile } = useSidebar();
+const contentTabsStore = useContentTabsStore();
+const tabNavigation = useContentTabNavigation();
+const sessionStore = useSessionStore();
+const { activeTab: activeContentTab, activeTabId, tabs } = tabNavigation;
+const { activeSession } = storeToRefs(sessionStore);
 const shouldReserveWindowControlsSpace = computed(
   () => sidebarState.value === "collapsed" || isMobile.value,
 );
 
-const tabs = shallowRef<ProjectContentTab[]>([
-  {
-    id: "session-1",
-    icon: SquareTerminalIcon,
-    sessionNumber: 1,
-  },
-  {
-    id: "file-project-view",
-    icon: FileCode2Icon,
-    label: "ProjectView.vue",
-  },
-]);
-const activeTab = ref("session-1");
-const nextSessionNumber = ref(2);
+const tabButtons = new Map<string, HTMLButtonElement>();
 
 function getTabLabel(tab: ProjectContentTab): string {
-  if (tab.label) return tab.label;
-  if (tab.sessionNumber === 1) return t("project.contentTabs.newSession");
+  return "label" in tab && tab.label
+    ? tab.label
+    : t("project.contentTabs.newSession");
+}
 
-  return t("project.contentTabs.sessionNumber", {
-    number: tab.sessionNumber,
-  });
+function tabIcon(tab: ProjectContentTab) {
+  return tab.kind === "session" ? SquareTerminalIcon : FileCode2Icon;
 }
 
 function shouldShowSeparator(index: number): boolean {
   if (index === 0) return false;
 
   return (
-    tabs.value[index - 1]?.id !== activeTab.value &&
-    tabs.value[index]?.id !== activeTab.value
+    tabs.value[index - 1]?.id !== activeTabId.value &&
+    tabs.value[index]?.id !== activeTabId.value
   );
 }
 
-function addSessionTab(): void {
-  const number = nextSessionNumber.value;
-  const id = `session-${number}`;
-
-  tabs.value = [
-    ...tabs.value,
-    {
-      id,
-      icon: SquareTerminalIcon,
-      sessionNumber: number,
-    },
-  ];
-  nextSessionNumber.value += 1;
-  activeTab.value = id;
-}
-
-function closeTab(tabId: string): void {
-  if (tabs.value.length === 1) return;
-
-  const tabIndex = tabs.value.findIndex((tab) => tab.id === tabId);
-  if (tabIndex < 0) return;
-
-  const wasActive = activeTab.value === tabId;
-  const nextTabs = tabs.value.filter((tab) => tab.id !== tabId);
-  tabs.value = nextTabs;
-
-  if (wasActive) {
-    activeTab.value = nextTabs[Math.min(tabIndex, nextTabs.length - 1)].id;
+function setTabButton(
+  tabId: string,
+  element: Element | ComponentPublicInstance | null,
+): void {
+  let button: HTMLButtonElement | null = null;
+  if (element instanceof HTMLButtonElement) {
+    button = element;
+  } else if (
+    element &&
+    "$el" in element &&
+    element.$el instanceof HTMLButtonElement
+  ) {
+    button = element.$el;
   }
+  if (button) tabButtons.set(tabId, button);
+  else tabButtons.delete(tabId);
 }
+
+function activateTab(tabId: string): void {
+  tabNavigation.activate(tabId);
+}
+
+function moveTabFocus(index: number, event: KeyboardEvent): void {
+  let nextIndex: number | null = null;
+  if (event.key === "ArrowLeft") nextIndex = index - 1;
+  if (event.key === "ArrowRight") nextIndex = index + 1;
+  if (event.key === "Home") nextIndex = 0;
+  if (event.key === "End") nextIndex = tabs.value.length - 1;
+  if (nextIndex === null) return;
+
+  event.preventDefault();
+  const normalizedIndex = (nextIndex + tabs.value.length) % tabs.value.length;
+  const tab = tabs.value[normalizedIndex];
+  tabNavigation.activate(tab.id);
+  void nextTick(() => tabButtons.get(tab.id)?.focus());
+}
+
+watch(
+  activeContentTab,
+  (tab) => {
+    if (!tab || tab.kind !== "session") return;
+
+    if (tab.state === "draft") {
+      sessionStore.startDraft();
+      return;
+    }
+    if (tab.state === "creating") return;
+    if (activeSession.value?.id === tab.sessionId) return;
+
+    void sessionStore.resume(tab.sessionId).catch((error) => {
+      handleError(error, {
+        id: "sessions.tabs.resume",
+        title: t("errors.sessionResume.title"),
+        description: t("errors.sessionResume.description"),
+      });
+    });
+  },
+  { immediate: true },
+);
+
+watch(activeSession, (session) => {
+  if (!session) return;
+  contentTabsStore.updateSession(session);
+});
 </script>
 
 <template>
-  <Tabs v-model="activeTab" class="h-full min-h-0 gap-0 bg-background">
+  <div class="flex h-full min-h-0 flex-col bg-background">
     <div
       data-slot="project-content-tabs-titlebar"
       :class="
@@ -105,9 +130,11 @@ function closeTab(tabId: string): void {
         )
       "
     >
-      <TabsList
-        variant="line"
-        class="window-no-drag pointer-events-auto min-w-0 flex-1 justify-start overflow-x-auto scrollbar-none"
+      <div
+        data-slot="project-content-tab-list"
+        role="tablist"
+        :aria-label="t('project.contentTabs.tabListLabel')"
+        class="window-no-drag pointer-events-auto flex min-w-0 flex-1 items-center justify-start gap-1 overflow-x-auto scrollbar-none"
       >
         <template v-for="(tab, index) in tabs" :key="tab.id">
           <Separator
@@ -122,55 +149,69 @@ function closeTab(tabId: string): void {
           />
 
           <div
-            :class="
-              cn(
-                'group relative flex h-8 w-40 min-w-40 items-center rounded-2xl',
-                activeTab === tab.id && 'bg-muted',
-              )
-            "
+            class="group relative flex h-8 w-40 min-w-40 items-center rounded-2xl"
           >
-            <TabsTrigger
-              :value="tab.id"
-              class="h-8 w-full max-w-none flex-none justify-start gap-2 px-3 py-2 pr-10 after:hidden has-data-[icon=inline-start]:pl-3 data-active:bg-transparent"
+            <Button
+              :id="`project-content-tab-${tab.id}`"
+              :ref="(element) => setTabButton(tab.id, element)"
+              role="tab"
+              :aria-controls="`project-content-panel-${tab.id}`"
+              :aria-selected="activeTabId === tab.id"
+              :tabindex="activeTabId === tab.id ? 0 : -1"
+              :variant="activeTabId === tab.id ? 'secondary' : 'ghost'"
+              size="sm"
+              class="h-8 w-full min-w-0 justify-start pr-10"
+              @click="activateTab(tab.id)"
+              @keydown="moveTabFocus(index, $event)"
             >
-              <component :is="tab.icon" data-icon="inline-start" />
+              <component :is="tabIcon(tab)" data-icon="inline-start" />
               <span class="truncate">{{ getTabLabel(tab) }}</span>
-            </TabsTrigger>
+            </Button>
 
             <Button
               class="pointer-events-none absolute inset-y-0 right-2 my-auto opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100"
               variant="ghost"
               size="icon-xs"
-              :disabled="tabs.length === 1"
               :aria-label="
                 t('project.contentTabs.closeTab', { name: getTabLabel(tab) })
               "
-              @click.stop="closeTab(tab.id)"
+              @click.stop="tabNavigation.close(tab.id)"
             >
               <XIcon />
             </Button>
           </div>
         </template>
-      </TabsList>
+      </div>
 
       <Button
         class="window-no-drag pointer-events-auto"
         variant="ghost"
         size="icon-sm"
         :aria-label="t('project.contentTabs.addTab')"
-        @click="addSessionTab"
+        @click="tabNavigation.createSessionTab"
       >
         <PlusIcon />
       </Button>
     </div>
 
-    <TabsContent
-      v-for="tab in tabs"
-      :key="tab.id"
-      :value="tab.id"
-      class="min-h-0 overflow-hidden"
+    <div
+      v-if="activeContentTab"
+      :key="activeContentTab.id"
+      :id="`project-content-panel-${activeContentTab.id}`"
+      role="tabpanel"
+      :aria-labelledby="`project-content-tab-${activeContentTab.id}`"
+      class="min-h-0 flex-1 overflow-hidden"
     >
-      <ProjectSessionView v-if="tab.sessionNumber !== undefined" />
-    </TabsContent>
-  </Tabs>
+      <ProjectSessionView
+        v-if="activeContentTab.kind === 'session'"
+        :key="activeContentTab.id"
+        :tab-id="activeContentTab.id"
+        :session-id="
+          activeContentTab.state === 'bound'
+            ? activeContentTab.sessionId
+            : undefined
+        "
+      />
+    </div>
+  </div>
 </template>

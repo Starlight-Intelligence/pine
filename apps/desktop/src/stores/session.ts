@@ -33,6 +33,18 @@ function messageText(value: PineJsonValue): string {
     .join("\n");
 }
 
+function messageThinking(value: PineJsonValue): string {
+  if (!Array.isArray(value)) return "";
+  return value
+    .flatMap((part) => {
+      if (typeof part !== "object" || part === null || Array.isArray(part)) {
+        return [];
+      }
+      return typeof part.thinking === "string" ? [part.thinking] : [];
+    })
+    .join("\n");
+}
+
 function messageContent(value: PineJsonValue): PineJsonValue {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return value;
@@ -64,6 +76,46 @@ export const useSessionStore = defineStore("session", () => {
   let stopAgentEvents: (() => void) | null = null;
   let searchSequence = 0;
   let recentSequence = 0;
+  let activationSequence = 0;
+  let isStartingPrompt = false;
+
+  function mergeSessionSummary(
+    session: PineSessionSummary,
+    previous?: PineSessionSummary,
+  ): PineSessionSummary {
+    return {
+      ...previous,
+      ...session,
+      ...(session.name || previous?.name
+        ? { name: session.name || previous?.name }
+        : {}),
+      ...(session.preview || previous?.preview
+        ? { preview: session.preview || previous?.preview }
+        : {}),
+    };
+  }
+
+  function upsertRecentSession(
+    session: PineSessionSummary,
+  ): SessionSearchResult {
+    recentSequence += 1;
+    isLoadingRecent.value = false;
+    const previous = recentSessions.value.find(
+      (candidate) => candidate.id === session.id,
+    );
+    const nextSession = mergeSessionSummary(session, previous);
+    recentSessions.value = [
+      nextSession,
+      ...recentSessions.value.filter(
+        (candidate) => candidate.id !== session.id,
+      ),
+    ].sort(
+      (left, right) =>
+        new Date(right.updatedAt).getTime() -
+        new Date(left.updatedAt).getTime(),
+    );
+    return nextSession;
+  }
 
   async function loadRecent(): Promise<SessionSearchResult[]> {
     const sequence = ++recentSequence;
@@ -94,14 +146,31 @@ export const useSessionStore = defineStore("session", () => {
   }
 
   async function resume(sessionId: string): Promise<PineSessionSummary> {
-    const result = await window.pine.resumeSession({ sessionId });
-    activeSession.value = result.session;
-    currentSessionId = result.session.id;
+    const sequence = ++activationSequence;
+    currentSessionId = sessionId;
+    isStartingPrompt = false;
+    activeSession.value = null;
     messages.value = [];
     hasEarlierMessages.value = false;
     nextBefore.value = undefined;
-    await loadInitialMessages(result.session.id);
-    return result.session;
+    isLoadingMessages.value = true;
+
+    try {
+      const result = await window.pine.resumeSession({ sessionId });
+      const session = upsertRecentSession(result.session);
+      if (sequence !== activationSequence) return result.session;
+
+      activeSession.value = session;
+      currentSessionId = session.id;
+      await loadInitialMessages(session.id);
+      return session;
+    } catch (error) {
+      if (sequence === activationSequence) {
+        currentSessionId = null;
+        isLoadingMessages.value = false;
+      }
+      throw error;
+    }
   }
 
   async function loadInitialMessages(sessionId: string): Promise<void> {
@@ -156,14 +225,35 @@ export const useSessionStore = defineStore("session", () => {
     }
   }
 
-  async function prompt(message: string): Promise<void> {
+  async function prompt(
+    message: string,
+    sessionId?: string,
+  ): Promise<PineSessionSummary> {
+    const sequence = ++activationSequence;
+    currentSessionId = sessionId ?? null;
+    isStartingPrompt = sessionId === undefined;
     isRunning.value = true;
     try {
-      const result = await window.pine.promptSession({ message });
-      activeSession.value = result.session;
-      currentSessionId = result.session.id;
+      const result = await window.pine.promptSession({
+        message,
+        target: sessionId ? { kind: "session", sessionId } : { kind: "new" },
+      });
+      const session = {
+        ...result.session,
+        preview: result.session.preview || message,
+      };
+      const nextSession = upsertRecentSession(session);
+      if (sequence !== activationSequence) return nextSession;
+
+      isStartingPrompt = false;
+      activeSession.value = nextSession;
+      currentSessionId = nextSession.id;
+      return nextSession;
     } catch (error) {
-      isRunning.value = false;
+      if (sequence === activationSequence) {
+        isStartingPrompt = false;
+        isRunning.value = false;
+      }
       throw error;
     }
   }
@@ -172,16 +262,46 @@ export const useSessionStore = defineStore("session", () => {
     await window.pine.abortSession();
   }
 
+  async function deleteSession(sessionId: string): Promise<boolean> {
+    const { deleted } = await window.pine.deleteSession({ sessionId });
+    if (!deleted) return false;
+
+    recentSequence += 1;
+    isLoadingRecent.value = false;
+    recentSessions.value = recentSessions.value.filter(
+      (session) => session.id !== sessionId,
+    );
+    searchResults.value = searchResults.value.filter(
+      (session) => session.id !== sessionId,
+    );
+    if (currentSessionId === sessionId) startDraft();
+    return true;
+  }
+
   function handleAgentEvent(event: PineAgentEvent): void {
     if (event.type === "run-state") {
-      if (event.state === "running") currentSessionId = event.sessionId;
+      if (
+        event.state === "running" &&
+        isStartingPrompt &&
+        currentSessionId === null
+      ) {
+        currentSessionId = event.sessionId;
+      }
       if (currentSessionId !== event.sessionId) return;
       isRunning.value = event.state === "running" || event.state === "aborting";
       return;
     }
     if (event.type === "session-updated") {
       if (currentSessionId !== event.sessionId) return;
-      activeSession.value = event.summary;
+      const previous =
+        activeSession.value?.id === event.sessionId
+          ? activeSession.value
+          : recentSessions.value.find(
+              (session) => session.id === event.sessionId,
+            );
+      const summary = mergeSessionSummary(event.summary, previous);
+      activeSession.value = summary;
+      upsertRecentSession(summary);
       return;
     }
     if (
@@ -195,12 +315,15 @@ export const useSessionStore = defineStore("session", () => {
 
     const role = messageRole(event.message);
     if (!role) return;
+    const content = messageContent(event.message);
+    const thinking = messageThinking(content);
     const nextMessage: PineTranscriptMessage = {
       createdAt: messageCreatedAt(event.message),
       id: event.messageId,
       role,
       status: event.type === "message-end" ? "complete" : "streaming",
-      text: messageText(messageContent(event.message)),
+      text: messageText(content),
+      ...(thinking ? { thinking } : {}),
     };
     const index = messages.value.findIndex(
       (message) => message.id === event.messageId,
@@ -214,16 +337,20 @@ export const useSessionStore = defineStore("session", () => {
     stopAgentEvents = window.pine.onSessionEvent(handleAgentEvent);
   }
 
-  function startTransientSession(): void {
+  function startDraft(): void {
+    activationSequence += 1;
+    isStartingPrompt = false;
     activeSession.value = null;
     currentSessionId = null;
     messages.value = [];
     hasEarlierMessages.value = false;
     nextBefore.value = undefined;
     isRunning.value = false;
+    isLoadingMessages.value = false;
   }
 
   function reset(): void {
+    activationSequence += 1;
     searchSequence += 1;
     recentSequence += 1;
     activeSession.value = null;
@@ -235,6 +362,7 @@ export const useSessionStore = defineStore("session", () => {
     isSearching.value = false;
     isLoadingMessages.value = false;
     isRunning.value = false;
+    isStartingPrompt = false;
     hasEarlierMessages.value = false;
     nextBefore.value = undefined;
   }
@@ -243,6 +371,7 @@ export const useSessionStore = defineStore("session", () => {
     activeSession,
     abort,
     connectAgentEvents,
+    deleteSession,
     hasEarlierMessages,
     isLoadingRecent,
     isLoadingMessages,
@@ -257,7 +386,7 @@ export const useSessionStore = defineStore("session", () => {
     resume,
     search,
     searchResults,
-    startTransientSession,
+    startDraft,
   };
 });
 
