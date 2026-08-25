@@ -76,6 +76,7 @@ export class AgentProcessHost implements AgentHost {
   private process: AgentProcess | null = null;
   private ready: Promise<void> | null = null;
   private resolveReady: (() => void) | null = null;
+  private rejectReady: ((reason: Error) => void) | null = null;
   private readonly pending = new Map<string, PendingRequest>();
   private readonly listeners = new Set<(event: PineRuntimeEvent) => void>();
 
@@ -83,7 +84,7 @@ export class AgentProcessHost implements AgentHost {
 
   static createDefault(): AgentProcessHost {
     return new AgentProcessHost(() =>
-      utilityProcess.fork(path.join(__dirname, "agent.js"), [], {
+      utilityProcess.fork(path.join(__dirname, "agent.mjs"), [], {
         serviceName: "Pine Agent",
         stdio: "pipe",
       }),
@@ -211,8 +212,9 @@ export class AgentProcessHost implements AgentHost {
   private ensureReady(): Promise<void> {
     if (this.ready) return this.ready;
 
-    this.ready = new Promise<void>((resolve) => {
+    this.ready = new Promise<void>((resolve, reject) => {
       this.resolveReady = resolve;
+      this.rejectReady = reject;
     });
     const process = this.createProcess();
     this.process = process;
@@ -231,6 +233,7 @@ export class AgentProcessHost implements AgentHost {
     if (workerMessage.type === "ready") {
       this.resolveReady?.();
       this.resolveReady = null;
+      this.rejectReady = null;
       return;
     }
     if (workerMessage.type === "event") {
@@ -246,9 +249,11 @@ export class AgentProcessHost implements AgentHost {
   }
 
   private resetProcess(error: Error): void {
+    this.rejectReady?.(error);
     this.process = null;
     this.ready = null;
     this.resolveReady = null;
+    this.rejectReady = null;
     for (const pending of this.pending.values()) pending.reject(error);
     this.pending.clear();
   }

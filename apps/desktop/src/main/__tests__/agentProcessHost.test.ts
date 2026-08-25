@@ -102,4 +102,16 @@ describe("AgentProcessHost", () => {
       "The Pine agent process exited unexpectedly (9).",
     );
   });
+
+  it("rejects work when the utility process exits before becoming ready", async () => {
+    const process = new FakeAgentProcess();
+    const host = new AgentProcessHost(() => {
+      queueMicrotask(() => process.emit("exit", 7));
+      return process;
+    });
+
+    await expect(host.getModelCatalog("/pine/agent")).rejects.toThrow(
+      "The Pine agent process exited unexpectedly (7).",
+    );
+  });
 });
