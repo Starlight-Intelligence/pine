@@ -28,7 +28,7 @@ const { filterState } = useCommand();
 
 <template>
   <div data-slot="command-input-wrapper" class="p-1 pb-0">
-    <InputGroup class="bg-input/50 h-9">
+    <InputGroup class="bg-input/50 h-8!">
       <ListboxFilter
         v-bind="{ ...forwardedProps, ...$attrs }"
         v-model="filterState.search"

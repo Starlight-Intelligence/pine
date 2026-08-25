@@ -10,8 +10,6 @@ export default {
   preferences: {
     title: "Pine 设置",
     open: "打开 Pine 设置",
-    general: "通用",
-    providers: "模型服务",
     language: "语言",
     languageChinese: "简体中文",
     languageEnglish: "English",
@@ -21,13 +19,20 @@ export default {
     themeDark: "深色",
   },
   models: {
+    favorites: "收藏的模型",
     loading: "正在加载模型",
+    recent: "最近使用",
     reasoning: "推理",
     picker: {
       title: "选择模型",
-      description: "搜索已配置服务中的模型",
+      description: "搜索已配置的模型，或添加新的模型服务",
       searchPlaceholder: "搜索服务或模型…",
-      empty: "没有已配置的模型，请先在 Pine 设置中添加模型服务。",
+      empty: "没有匹配的模型",
+      addServiceOrModel: "添加服务或模型",
+      addFavorite: "收藏 {model}",
+      backToModels: "返回模型列表",
+      browse: "浏览所有模型…",
+      removeFavorite: "取消收藏 {model}",
     },
     thinkingLevels: {
       off: "关闭",
@@ -40,16 +45,8 @@ export default {
     },
   },
   providers: {
-    title: "模型服务",
-    description: "连接 Pine 可用于对话的模型服务。",
-    add: "添加服务",
     connected: "已连接",
-    default: "默认",
-    disconnect: "断开模型服务",
-    reconfigure: "配置",
     modelCount: "{count} 个模型",
-    emptyTitle: "还没有连接模型服务",
-    emptyDescription: "连接模型服务后，即可选择对话模型。",
     picker: {
       title: "选择模型服务",
       description: "搜索 Pi 内置的模型服务目录",
@@ -59,7 +56,6 @@ export default {
     },
     auth: {
       title: "连接 {provider}",
-      description: "凭据会保存在 Pine 私有的应用数据中。",
       method: "认证方式",
       openBrowser: "在浏览器中打开",
       deviceCode: "请在浏览器中输入此代码：",

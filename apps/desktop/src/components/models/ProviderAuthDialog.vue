@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -37,7 +36,10 @@ const props = defineProps<{
   open: boolean;
   provider: PineProviderDescriptor | null;
 }>();
-const emit = defineEmits<{ "update:open": [open: boolean] }>();
+const emit = defineEmits<{
+  connected: [];
+  "update:open": [open: boolean];
+}>();
 
 const { t } = useI18n();
 const modelsStore = useModelsStore();
@@ -60,6 +62,7 @@ watch(
         : undefined;
     response.value = "";
     modelsStore.clearLogin();
+    if (authType.value) void startLogin();
   },
 );
 
@@ -75,6 +78,7 @@ async function startLogin(): Promise<void> {
   isStarting.value = true;
   try {
     await modelsStore.beginLogin(props.provider, authType.value);
+    emit("connected");
   } catch {
     // The store exposes the provider error in the dialog.
   } finally {
@@ -105,12 +109,9 @@ function openUrl(url: string): void {
         <DialogTitle>
           {{ t("providers.auth.title", { provider: provider?.name ?? "" }) }}
         </DialogTitle>
-        <DialogDescription>
-          {{ t("providers.auth.description") }}
-        </DialogDescription>
       </DialogHeader>
 
-      <FieldGroup v-if="provider && !login">
+      <FieldGroup v-if="provider && !login && provider.authMethods.length > 1">
         <Field>
           <FieldLabel>{{ t("providers.auth.method") }}</FieldLabel>
           <ToggleGroup
@@ -131,7 +132,7 @@ function openUrl(url: string): void {
         </Field>
       </FieldGroup>
 
-      <div v-else-if="login" class="flex min-h-32 flex-col gap-4">
+      <div v-else-if="login" class="flex flex-col gap-4">
         <div
           v-for="(notice, index) in login.notices"
           :key="index"
@@ -204,6 +205,7 @@ function openUrl(url: string): void {
             :type="activePrompt.type === 'secret' ? 'password' : 'text'"
             :placeholder="activePrompt.placeholder"
             autocomplete="off"
+            autofocus
             @keydown.enter.prevent="submitPrompt"
           />
           <FieldDescription v-if="activePrompt.type === 'manual_code'">
@@ -228,7 +230,7 @@ function openUrl(url: string): void {
 
       <DialogFooter>
         <Button
-          v-if="!login"
+          v-if="!login && provider && provider.authMethods.length > 1"
           type="button"
           :disabled="!authType || isStarting"
           @click="startLogin"
@@ -245,7 +247,7 @@ function openUrl(url: string): void {
           {{ t("providers.auth.continue") }}
         </Button>
         <Button
-          v-else-if="isComplete || login.error"
+          v-else-if="isComplete || login?.error"
           type="button"
           @click="updateOpen(false)"
         >

@@ -3,6 +3,7 @@ import type { Component } from "vue";
 import {
   ArrowUpIcon,
   ChevronDownIcon,
+  SearchIcon,
   ShieldCheckIcon,
   ShieldIcon,
   ShieldOffIcon,
@@ -16,8 +17,15 @@ import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -33,7 +41,7 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import type { PineThinkingLevel } from "@/shared/models";
-import { useModelsStore } from "@/stores/models";
+import { pineModelKey, useModelsStore } from "@/stores/models";
 
 type ApprovalMode = "ask-for-permission" | "agent-decides" | "yolo";
 
@@ -67,7 +75,8 @@ const approvalMode = defineModel<ApprovalMode>("approvalMode", {
 });
 const { t } = useI18n();
 const modelsStore = useModelsStore();
-const { selectedModel, selection } = storeToRefs(modelsStore);
+const { favoriteModels, featuredModels, selectedModel, selection } =
+  storeToRefs(modelsStore);
 const messageId = useId();
 const isModelPickerOpen = ref(false);
 const canSubmit = computed(
@@ -132,6 +141,20 @@ function updateThinkingLevel(value: unknown): void {
     return;
   }
   void modelsStore.setThinkingLevel(value as PineThinkingLevel);
+}
+
+function selectFeaturedModel(value: unknown): void {
+  if (typeof value !== "string") return;
+  const model = featuredModels.value.find(
+    (candidate) => pineModelKey(candidate) === value,
+  );
+  if (model) void modelsStore.select(model);
+}
+
+function openModelPicker(): void {
+  window.setTimeout(() => {
+    isModelPickerOpen.value = true;
+  });
 }
 </script>
 
@@ -237,51 +260,99 @@ function updateThinkingLevel(value: unknown): void {
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <div class="flex min-w-0 items-center">
-        <Button
-          data-slot="model-selector-trigger"
-          class="min-w-0"
-          type="button"
-          variant="ghost"
-          size="sm"
-          @click="isModelPickerOpen = true"
-        >
-          <span class="truncate">
-            {{ selectedModel?.name ?? t("project.composer.selectModel") }}
-          </span>
-        </Button>
-
-        <DropdownMenu v-if="selectedModel && thinkingLevels.length > 1">
-          <DropdownMenuTrigger as-child>
-            <Button
-              data-slot="reasoning-effort-trigger"
-              type="button"
-              variant="ghost"
-              size="sm"
+      <DropdownMenu>
+        <DropdownMenuTrigger as-child>
+          <Button
+            data-slot="model-selector-trigger"
+            class="min-w-0"
+            type="button"
+            variant="ghost"
+            size="sm"
+          >
+            <span class="truncate">
+              {{ selectedModel?.name ?? t("project.composer.selectModel") }}
+            </span>
+            <span
+              v-if="selectedModel && selection"
+              class="shrink-0 text-muted-foreground"
             >
-              <span class="text-muted-foreground">
-                {{ selection?.thinkingLevel }}
-              </span>
-              <ChevronDownIcon data-icon="inline-end" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent side="top" align="end" class="w-40">
+              · {{ t(`models.thinkingLevels.${selection.thinkingLevel}`) }}
+            </span>
+            <ChevronDownIcon data-icon="inline-end" />
+          </Button>
+        </DropdownMenuTrigger>
+
+        <DropdownMenuContent side="top" align="end" class="w-72">
+          <template v-if="featuredModels.length > 0">
+            <DropdownMenuLabel>
+              {{
+                favoriteModels.length > 0
+                  ? t("models.favorites")
+                  : t("models.recent")
+              }}
+            </DropdownMenuLabel>
             <DropdownMenuRadioGroup
-              :model-value="selection?.thinkingLevel"
-              @update:model-value="updateThinkingLevel"
+              :model-value="selectedModel ? pineModelKey(selectedModel) : ''"
+              @update:model-value="selectFeaturedModel"
             >
               <DropdownMenuRadioItem
-                v-for="level in thinkingLevels"
-                :key="level"
-                data-slot="reasoning-effort-option"
-                :value="level"
+                v-for="model in featuredModels"
+                :key="pineModelKey(model)"
+                data-slot="model-option"
+                :value="pineModelKey(model)"
               >
-                {{ t(`models.thinkingLevels.${level}`) }}
+                <span class="flex min-w-0 flex-col gap-0.5">
+                  <span class="truncate">{{ model.name }}</span>
+                  <span class="truncate text-xs text-muted-foreground">
+                    {{ model.providerName }}
+                  </span>
+                </span>
               </DropdownMenuRadioItem>
             </DropdownMenuRadioGroup>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
+            <DropdownMenuSeparator />
+          </template>
+
+          <DropdownMenuGroup>
+            <DropdownMenuItem @select="openModelPicker">
+              <SearchIcon />
+              {{ t("models.picker.browse") }}
+            </DropdownMenuItem>
+          </DropdownMenuGroup>
+
+          <template v-if="selectedModel && thinkingLevels.length > 1">
+            <DropdownMenuSeparator />
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger data-slot="reasoning-effort-trigger">
+                <span class="flex min-w-0 flex-1 justify-between gap-3">
+                  <span>{{ t("models.reasoning") }}</span>
+                  <span class="text-muted-foreground">
+                    {{
+                      selection
+                        ? t(`models.thinkingLevels.${selection.thinkingLevel}`)
+                        : ""
+                    }}
+                  </span>
+                </span>
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent class="w-36">
+                <DropdownMenuRadioGroup
+                  :model-value="selection?.thinkingLevel"
+                  @update:model-value="updateThinkingLevel"
+                >
+                  <DropdownMenuRadioItem
+                    v-for="level in thinkingLevels"
+                    :key="level"
+                    data-slot="reasoning-effort-option"
+                    :value="level"
+                  >
+                    {{ t(`models.thinkingLevels.${level}`) }}
+                  </DropdownMenuRadioItem>
+                </DropdownMenuRadioGroup>
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+          </template>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
 
     <ModelPickerDialog v-model:open="isModelPickerOpen" />

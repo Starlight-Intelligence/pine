@@ -20,8 +20,61 @@ interface ProviderLoginState {
   providerId: string;
 }
 
+export const MODEL_FAVORITES_STORAGE_KEY = "pine.models.favorites";
+export const MODEL_RECENTS_STORAGE_KEY = "pine.models.recents";
+const RECENT_MODEL_LIMIT = 5;
+const DEFAULT_THINKING_LEVEL_PRIORITY: readonly PineModelSelection["thinkingLevel"][] =
+  ["medium", "high", "low", "xhigh", "max", "off"];
+
+export function pineModelKey(
+  model: Pick<PineModelDescriptor, "id" | "providerId">,
+): string {
+  return JSON.stringify([model.providerId, model.id]);
+}
+
+export function defaultThinkingLevel(
+  supportedLevels: readonly PineModelSelection["thinkingLevel"][],
+): PineModelSelection["thinkingLevel"] {
+  return (
+    DEFAULT_THINKING_LEVEL_PRIORITY.find((level) =>
+      supportedLevels.includes(level),
+    ) ?? "off"
+  );
+}
+
+function readStoredModelKeys(storageKey: string): string[] {
+  try {
+    const value: unknown = JSON.parse(
+      window.localStorage.getItem(storageKey) ?? "[]",
+    );
+    return Array.isArray(value)
+      ? [
+          ...new Set(
+            value.filter((item): item is string => typeof item === "string"),
+          ),
+        ]
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistModelKeys(storageKey: string, keys: readonly string[]): void {
+  try {
+    window.localStorage.setItem(storageKey, JSON.stringify(keys));
+  } catch {
+    // The model list still works for this session if storage is unavailable.
+  }
+}
+
 export const useModelsStore = defineStore("models", () => {
   const catalog = shallowRef<PineModelCatalog>({ models: [], providers: [] });
+  const favoriteModelKeys = ref<string[]>(
+    readStoredModelKeys(MODEL_FAVORITES_STORAGE_KEY),
+  );
+  const recentModelKeys = ref<string[]>(
+    readStoredModelKeys(MODEL_RECENTS_STORAGE_KEY),
+  );
   const isLoading = ref(false);
   const login = ref<ProviderLoginState | null>(null);
   let stopAuthEvents: (() => void) | null = null;
@@ -42,6 +95,53 @@ export const useModelsStore = defineStore("models", () => {
   const configuredProviders = computed(() =>
     providers.value.filter((provider) => provider.configured),
   );
+  const configuredProviderIds = computed(
+    () => new Set(configuredProviders.value.map((provider) => provider.id)),
+  );
+  const availableModelsByKey = computed(
+    () =>
+      new Map(
+        models.value
+          .filter((model) => configuredProviderIds.value.has(model.providerId))
+          .map((model) => [pineModelKey(model), model]),
+      ),
+  );
+  const favoriteModels = computed(() =>
+    favoriteModelKeys.value.flatMap((key) => {
+      const model = availableModelsByKey.value.get(key);
+      return model ? [model] : [];
+    }),
+  );
+  const recentModels = computed(() =>
+    recentModelKeys.value.flatMap((key) => {
+      const model = availableModelsByKey.value.get(key);
+      return model ? [model] : [];
+    }),
+  );
+  const featuredModels = computed(() =>
+    favoriteModels.value.length > 0 ? favoriteModels.value : recentModels.value,
+  );
+
+  function recordRecent(model: PineModelDescriptor): void {
+    const key = pineModelKey(model);
+    recentModelKeys.value = [
+      key,
+      ...recentModelKeys.value.filter((candidate) => candidate !== key),
+    ].slice(0, RECENT_MODEL_LIMIT);
+    persistModelKeys(MODEL_RECENTS_STORAGE_KEY, recentModelKeys.value);
+  }
+
+  function isFavorite(model: PineModelDescriptor): boolean {
+    return favoriteModelKeys.value.includes(pineModelKey(model));
+  }
+
+  function toggleFavorite(model: PineModelDescriptor): void {
+    const key = pineModelKey(model);
+    favoriteModelKeys.value = isFavorite(model)
+      ? favoriteModelKeys.value.filter((candidate) => candidate !== key)
+      : [...favoriteModelKeys.value, key];
+    persistModelKeys(MODEL_FAVORITES_STORAGE_KEY, favoriteModelKeys.value);
+  }
 
   function connectAuthEvents(): void {
     if (stopAuthEvents) return;
@@ -62,6 +162,8 @@ export const useModelsStore = defineStore("models", () => {
     isLoading.value = true;
     try {
       catalog.value = await window.pine.getModelCatalog();
+      const selected = selectedModel.value;
+      if (selected) recordRecent(selected);
     } finally {
       isLoading.value = false;
     }
@@ -72,12 +174,7 @@ export const useModelsStore = defineStore("models", () => {
     thinkingLevel?: PineModelSelection["thinkingLevel"],
   ): Promise<void> {
     const nextThinkingLevel =
-      thinkingLevel ??
-      (model.supportedThinkingLevels.includes(
-        selection.value?.thinkingLevel ?? "off",
-      )
-        ? (selection.value?.thinkingLevel ?? "off")
-        : (model.supportedThinkingLevels.at(-1) ?? "off"));
+      thinkingLevel ?? defaultThinkingLevel(model.supportedThinkingLevels);
     await window.pine.selectModel({
       providerId: model.providerId,
       modelId: model.id,
@@ -91,6 +188,7 @@ export const useModelsStore = defineStore("models", () => {
         thinkingLevel: nextThinkingLevel,
       },
     };
+    recordRecent(model);
   }
 
   async function setThinkingLevel(
@@ -170,17 +268,22 @@ export const useModelsStore = defineStore("models", () => {
     clearLogin,
     configuredProviders,
     connectAuthEvents,
+    favoriteModels,
+    featuredModels,
+    isFavorite,
     isLoading,
     load,
     login,
     logout,
     models,
     providers,
+    recentModels,
     respondToPrompt,
     select,
     selectedModel,
     selection,
     setThinkingLevel,
+    toggleFavorite,
   };
 });
 

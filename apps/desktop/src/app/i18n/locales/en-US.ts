@@ -10,8 +10,6 @@ export default {
   preferences: {
     title: "Pine Settings",
     open: "Open Pine settings",
-    general: "General",
-    providers: "Providers",
     language: "Language",
     languageChinese: "简体中文",
     languageEnglish: "English",
@@ -21,13 +19,20 @@ export default {
     themeDark: "Dark",
   },
   models: {
+    favorites: "Favorites",
     loading: "Loading models",
+    recent: "Recently used",
     reasoning: "Reasoning",
     picker: {
       title: "Choose a model",
-      description: "Search models from your configured providers",
+      description: "Search configured models or add a provider",
       searchPlaceholder: "Search providers and models…",
-      empty: "No configured models found. Add a provider in Pine Settings.",
+      empty: "No matching models",
+      addServiceOrModel: "Add provider or model",
+      addFavorite: "Favorite {model}",
+      backToModels: "Back to models",
+      browse: "Browse all models…",
+      removeFavorite: "Remove {model} from favorites",
     },
     thinkingLevels: {
       off: "Off",
@@ -40,17 +45,8 @@ export default {
     },
   },
   providers: {
-    title: "Model providers",
-    description: "Connect the services Pine can use for conversations.",
-    add: "Add provider",
     connected: "Connected",
-    default: "Default",
-    disconnect: "Disconnect provider",
-    reconfigure: "Configure",
     modelCount: "{count} models",
-    emptyTitle: "No providers connected",
-    emptyDescription:
-      "Connect a provider before choosing a conversation model.",
     picker: {
       title: "Choose a provider",
       description: "Search Pi's built-in provider catalog",
@@ -60,7 +56,6 @@ export default {
     },
     auth: {
       title: "Connect {provider}",
-      description: "Credentials are stored in Pine's private application data.",
       method: "Authentication method",
       openBrowser: "Open browser",
       deviceCode: "Enter this code in the browser:",

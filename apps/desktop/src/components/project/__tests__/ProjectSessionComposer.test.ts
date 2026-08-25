@@ -81,7 +81,7 @@ describe("ProjectSessionComposer", () => {
     expect(textarea.classes()).toContain("text-sm");
     expect(textarea.classes()).not.toContain("text-base");
     expect(textarea.classes()).toContain("field-sizing-content");
-    expect(textarea.attributes("placeholder")).toBe("不妨大胆想象……");
+    expect(textarea.attributes("placeholder")).toBe("描述任务、明确需求……");
     expect(addons.map((addon) => addon.attributes("data-align"))).toEqual([
       "inline-end",
     ]);
@@ -105,6 +105,11 @@ describe("ProjectSessionComposer", () => {
         .get('[data-slot="model-selector-trigger"]')
         .attributes("data-size"),
     ).toBe("sm");
+    expect(
+      wrapper.findAll(
+        '[data-slot="model-selector-trigger"], [data-slot="reasoning-effort-trigger"]',
+      ),
+    ).toHaveLength(1);
   });
 
   it("shows the default approval mode and configured Pi model", () => {
@@ -115,6 +120,7 @@ describe("ProjectSessionComposer", () => {
     expect(approvalTrigger.text()).toContain("帮我决定");
     expect(approvalTrigger.get("span").classes()).toContain("text-foreground");
     expect(modelTrigger.text()).toContain("Claude Sonnet");
+    expect(modelTrigger.text()).toContain("高");
   });
 
   it("reflects an externally selected approval mode", () => {
