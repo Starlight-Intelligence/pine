@@ -20,12 +20,21 @@ import type { ProjectDataPaths } from "./projects/projectRepository";
 import { ProjectSessionService } from "./sessions";
 import type { AgentHost } from "./agentProcessHost";
 
+type RuntimeSessionState =
+  | { status: "idle" }
+  | {
+      status: "creating";
+      promise: Promise<PineSessionSummary>;
+    }
+  | {
+      status: "active";
+      summary: PineSessionSummary;
+    };
+
 interface ProjectRuntime {
-  activeSessionId: string | null;
-  activeSessionSummary: PineSessionSummary | null;
   dataPaths: ProjectDataPaths;
   project: PineProject;
-  sessionCreation: Promise<PineSessionSummary> | null;
+  session: RuntimeSessionState;
   sessions: ProjectSessionService;
 }
 
@@ -57,11 +66,9 @@ export class ProjectRuntimeRegistry {
       sessionsRoot: dataPaths.sessionsRoot,
     });
     this.runtimes.set(webContentsId, {
-      activeSessionId: null,
-      activeSessionSummary: null,
       dataPaths,
       project,
-      sessionCreation: null,
+      session: { status: "idle" },
       sessions,
     });
   }
@@ -90,6 +97,20 @@ export class ProjectRuntimeRegistry {
     );
   }
 
+  async deleteSession(
+    webContentsId: number,
+    sessionId: string,
+  ): Promise<boolean> {
+    const runtime = this.get(webContentsId);
+    if (
+      runtime.session.status === "active" &&
+      runtime.session.summary.id === sessionId
+    ) {
+      await this.releaseSession(runtime);
+    }
+    return runtime.sessions.deleteSession(sessionId);
+  }
+
   async listDirectory(
     webContentsId: number,
     folderId: string,
@@ -107,47 +128,68 @@ export class ProjectRuntimeRegistry {
     sessionId: string,
   ): Promise<PineSessionSummary> {
     const runtime = this.get(webContentsId);
-    if (runtime.activeSessionId === sessionId && runtime.activeSessionSummary) {
-      return runtime.activeSessionSummary;
+    if (
+      runtime.session.status === "active" &&
+      runtime.session.summary.id === sessionId
+    ) {
+      return runtime.session.summary;
     }
 
     const descriptor = await runtime.sessions.describeSession(sessionId);
-    if (runtime.activeSessionId) {
-      await this.agentHost.disposeSession(runtime.activeSessionId);
-    }
+    await this.releaseSession(runtime);
     const opened = await this.agentHost.openSession(
       this.location(runtime),
       descriptor.sessionFile,
     );
-    runtime.activeSessionId = opened.session.id;
-    runtime.activeSessionSummary = opened.session;
+    runtime.session = { status: "active", summary: opened.session };
     return opened.session;
   }
 
-  async getOrCreateActiveSession(
+  private async ensureActiveSession(
     webContentsId: number,
   ): Promise<PineSessionSummary> {
     const runtime = this.get(webContentsId);
-    if (runtime.activeSessionId && runtime.activeSessionSummary) {
-      return runtime.activeSessionSummary;
+    if (runtime.session.status === "active") {
+      return runtime.session.summary;
     }
+    if (runtime.session.status === "creating") return runtime.session.promise;
 
-    runtime.sessionCreation ??= this.agentHost
+    const creation = this.agentHost
       .createSession(this.location(runtime))
       .then(({ session }) => session);
+    runtime.session = { status: "creating", promise: creation };
 
     try {
-      const handle = await runtime.sessionCreation;
+      const session = await creation;
       if (this.runtimes.get(webContentsId) !== runtime) {
         throw new Error("The active project changed while creating a session.");
       }
+      if (
+        runtime.session.status !== "creating" ||
+        runtime.session.promise !== creation
+      ) {
+        throw new Error("Session creation was superseded.");
+      }
 
-      runtime.activeSessionId = handle.id;
-      runtime.activeSessionSummary = handle;
-      return handle;
-    } finally {
-      runtime.sessionCreation = null;
+      runtime.session = { status: "active", summary: session };
+      return session;
+    } catch (error) {
+      if (
+        runtime.session.status === "creating" &&
+        runtime.session.promise === creation
+      ) {
+        runtime.session = { status: "idle" };
+      }
+      throw error;
     }
+  }
+
+  private async createNewSession(
+    webContentsId: number,
+  ): Promise<PineSessionSummary> {
+    const runtime = this.get(webContentsId);
+    await this.releaseSession(runtime);
+    return this.ensureActiveSession(webContentsId);
   }
 
   async prompt(
@@ -155,7 +197,10 @@ export class ProjectRuntimeRegistry {
     request: PromptSessionRequest,
   ): Promise<PromptSessionResult> {
     const runtime = this.get(webContentsId);
-    const activeSession = await this.getOrCreateActiveSession(webContentsId);
+    const activeSession =
+      request.target.kind === "new"
+        ? await this.createNewSession(webContentsId)
+        : await this.resume(webContentsId, request.target.sessionId);
     const result = await this.agentHost.prompt(
       activeSession.id,
       request.message,
@@ -163,7 +208,12 @@ export class ProjectRuntimeRegistry {
         ? "followUp"
         : request.streamingBehavior,
     );
-    runtime.activeSessionSummary = result.session;
+    if (
+      runtime.session.status === "active" &&
+      runtime.session.summary.id === result.session.id
+    ) {
+      runtime.session = { status: "active", summary: result.session };
+    }
     return { accepted: result.accepted, session: result.session };
   }
 
@@ -172,9 +222,10 @@ export class ProjectRuntimeRegistry {
     sessionId?: string;
   }> {
     const runtime = this.get(webContentsId);
-    if (!runtime.activeSessionId) return { aborted: false };
-    const result = await this.agentHost.abort(runtime.activeSessionId);
-    return { ...result, sessionId: runtime.activeSessionId };
+    if (runtime.session.status !== "active") return { aborted: false };
+    const sessionId = runtime.session.summary.id;
+    const result = await this.agentHost.abort(sessionId);
+    return { ...result, sessionId };
   }
 
   getModelCatalog(): Promise<PineModelCatalog> {
@@ -210,13 +261,13 @@ export class ProjectRuntimeRegistry {
       request.providerId,
       request.modelId,
       request.thinkingLevel,
-      this.runtimes.get(webContentsId)?.activeSessionId ?? undefined,
+      this.activeSessionId(this.runtimes.get(webContentsId)),
     );
   }
 
   ownerOfSession(sessionId: string): number | undefined {
     for (const [webContentsId, runtime] of this.runtimes) {
-      if (runtime.activeSessionId === sessionId) return webContentsId;
+      if (this.activeSessionId(runtime) === sessionId) return webContentsId;
     }
     return undefined;
   }
@@ -226,17 +277,29 @@ export class ProjectRuntimeRegistry {
     if (!runtime) return;
 
     this.runtimes.delete(webContentsId);
-    let createdSessionId: string | undefined;
-    if (runtime.sessionCreation) {
-      createdSessionId = await runtime.sessionCreation
-        .then((session) => session.id)
-        .catch(() => undefined);
-    }
-    const sessionId = runtime.activeSessionId ?? createdSessionId;
-    if (sessionId) {
-      await this.agentHost.disposeSession(sessionId);
-    }
+    await this.releaseSession(runtime);
     await runtime.sessions.dispose();
+  }
+
+  private activeSessionId(runtime?: ProjectRuntime): string | undefined {
+    return runtime?.session.status === "active"
+      ? runtime.session.summary.id
+      : undefined;
+  }
+
+  private async releaseSession(runtime: ProjectRuntime): Promise<void> {
+    const session = runtime.session;
+    runtime.session = { status: "idle" };
+
+    if (session.status === "idle") return;
+    const sessionId =
+      session.status === "active"
+        ? session.summary.id
+        : await session.promise.then(
+            (summary) => summary.id,
+            () => undefined,
+          );
+    if (sessionId) await this.agentHost.disposeSession(sessionId);
   }
 
   private get(webContentsId: number): ProjectRuntime {

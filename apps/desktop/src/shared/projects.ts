@@ -18,6 +18,8 @@ import type {
   ListProjectDirectoryResult,
 } from "./projectFiles";
 import type {
+  DeleteSessionRequest,
+  DeleteSessionResult,
   LoadSessionMessagesRequest,
   LoadSessionMessagesResult,
   ResumeSessionRequest,
@@ -104,6 +106,9 @@ export interface PineDesktopApi {
   closeProject: () => Promise<void>;
   createProject: (request: CreateProjectRequest) => Promise<ProjectResult>;
   deleteProject: (request: ProjectIdRequest) => Promise<DeleteProjectResult>;
+  deleteSession: (
+    request: DeleteSessionRequest,
+  ) => Promise<DeleteSessionResult>;
   listProjectDirectory: (
     request: ListProjectDirectoryRequest,
   ) => Promise<ListProjectDirectoryResult>;

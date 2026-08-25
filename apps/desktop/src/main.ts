@@ -50,9 +50,11 @@ import {
   type ProjectResult,
 } from "./shared/projects";
 import {
+  DELETE_SESSION_CHANNEL,
   LOAD_SESSION_MESSAGES_CHANNEL,
   RESUME_SESSION_CHANNEL,
   SEARCH_SESSIONS_CHANNEL,
+  type DeleteSessionResult,
   type LoadSessionMessagesResult,
   type ResumeSessionResult,
   type SearchSessionsResult,
@@ -112,7 +114,7 @@ const UpdateProjectRequestSchema = ProjectMutationSchema.safeExtend({
 const SearchSessionsRequestSchema = z.object({
   query: z.string().max(500),
 });
-const ResumeSessionRequestSchema = z.object({
+const SessionIdRequestSchema = z.object({
   sessionId: z.uuid(),
 });
 const LoadSessionMessagesRequestSchema = z.object({
@@ -122,6 +124,10 @@ const LoadSessionMessagesRequestSchema = z.object({
 });
 const PromptSessionRequestSchema = z.object({
   message: z.string().trim().min(1).max(100_000),
+  target: z.discriminatedUnion("kind", [
+    z.object({ kind: z.literal("new") }),
+    z.object({ kind: z.literal("session"), sessionId: z.uuid() }),
+  ]),
   streamingBehavior: z.enum(["follow-up", "steer"]).optional(),
 });
 const LoginProviderRequestSchema = z.object({
@@ -403,9 +409,22 @@ ipcMain.handle(
 ipcMain.handle(
   RESUME_SESSION_CHANNEL,
   async (event, request: unknown): Promise<ResumeSessionResult> => {
-    const { sessionId } = ResumeSessionRequestSchema.parse(request);
+    const { sessionId } = SessionIdRequestSchema.parse(request);
     return {
       session: await getProjectRuntimes().resume(event.sender.id, sessionId),
+    };
+  },
+);
+
+ipcMain.handle(
+  DELETE_SESSION_CHANNEL,
+  async (event, request: unknown): Promise<DeleteSessionResult> => {
+    const { sessionId } = SessionIdRequestSchema.parse(request);
+    return {
+      deleted: await getProjectRuntimes().deleteSession(
+        event.sender.id,
+        sessionId,
+      ),
     };
   },
 );

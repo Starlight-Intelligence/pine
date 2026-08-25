@@ -73,6 +73,20 @@ function textFromContent(content: unknown): string {
     .join("\n");
 }
 
+function thinkingFromContent(content: unknown): string {
+  if (!Array.isArray(content)) return "";
+
+  return content
+    .flatMap((part) => {
+      if (typeof part !== "object" || part === null) return [];
+      if ("thinking" in part && typeof part.thinking === "string") {
+        return [part.thinking];
+      }
+      return [];
+    })
+    .join("\n");
+}
+
 function textFromMessage(
   entry: Extract<SessionTreeEntry, { type: "message" }>,
 ): string {
@@ -99,7 +113,11 @@ function textMessages(entries: SessionTreeEntry[]): PineTextMessage[] {
     }
 
     const text = textFromMessage(entry).trim();
-    if (!text) return [];
+    const thinking =
+      "content" in entry.message
+        ? thinkingFromContent(entry.message.content).trim()
+        : "";
+    if (!text && !thinking) return [];
     const messageTimestamp = entry.message.timestamp;
     return [
       {
@@ -110,6 +128,7 @@ function textMessages(entries: SessionTreeEntry[]): PineTextMessage[] {
         id: entry.id,
         role: entry.message.role,
         text,
+        ...(thinking ? { thinking } : {}),
       } satisfies PineTextMessage,
     ];
   });
@@ -329,6 +348,20 @@ export class ProjectSessionService {
       messages: page,
       ...(start > 0 && page[0] ? { nextBefore: page[0].id } : {}),
     };
+  }
+
+  async deleteSession(sessionId: string): Promise<boolean> {
+    const metadata = (await this.repository.list()).find(
+      (session) => session.id === sessionId,
+    );
+    if (!metadata) return false;
+
+    await this.repository.delete(metadata);
+    this.liveSessionIds.delete(sessionId);
+    this.database
+      .prepare("DELETE FROM session_search WHERE session_id = ?")
+      .run(sessionId);
+    return true;
   }
 
   async search(query: string): Promise<SessionSearchResult[]> {

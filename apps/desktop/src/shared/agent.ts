@@ -50,6 +50,12 @@ export type PineAgentEvent =
 
 export interface PromptSessionRequest {
   message: string;
+  target:
+    | { kind: "new" }
+    | {
+        kind: "session";
+        sessionId: string;
+      };
   streamingBehavior?: "follow-up" | "steer";
 }
 

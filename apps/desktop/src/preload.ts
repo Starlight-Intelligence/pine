@@ -48,9 +48,12 @@ import {
   type UpdateProjectRequest,
 } from "./shared/projects";
 import {
+  DELETE_SESSION_CHANNEL,
   LOAD_SESSION_MESSAGES_CHANNEL,
   RESUME_SESSION_CHANNEL,
   SEARCH_SESSIONS_CHANNEL,
+  type DeleteSessionRequest,
+  type DeleteSessionResult,
   type LoadSessionMessagesRequest,
   type LoadSessionMessagesResult,
   type ResumeSessionRequest,
@@ -72,6 +75,10 @@ const pineApi: PineDesktopApi = {
     ipcRenderer.invoke(CREATE_PROJECT_CHANNEL, request),
   deleteProject: (request: ProjectIdRequest): Promise<DeleteProjectResult> =>
     ipcRenderer.invoke(DELETE_PROJECT_CHANNEL, request),
+  deleteSession: (
+    request: DeleteSessionRequest,
+  ): Promise<DeleteSessionResult> =>
+    ipcRenderer.invoke(DELETE_SESSION_CHANNEL, request),
   listProjectDirectory: (
     request: ListProjectDirectoryRequest,
   ): Promise<ListProjectDirectoryResult> =>

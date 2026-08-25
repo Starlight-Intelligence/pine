@@ -87,7 +87,7 @@ afterEach(async () => {
 });
 
 describe("ProjectRuntimeRegistry", () => {
-  it("creates a project-scoped Pi session lazily and only once", async () => {
+  it("reuses an explicitly targeted active session", async () => {
     const agentHost = createAgentHost();
     const createSession = vi.spyOn(agentHost, "createSession");
     const registry = new ProjectRuntimeRegistry(agentHost, "/pine/agent");
@@ -99,9 +99,14 @@ describe("ProjectRuntimeRegistry", () => {
         projectRoot: dataRoot,
         sessionsRoot: path.join(dataRoot, "sessions"),
       });
-      const first = await registry.getOrCreateActiveSession(1);
-      const second = await registry.getOrCreateActiveSession(1);
-      expect(second).toBe(first);
+      await registry.prompt(1, {
+        message: "Start",
+        target: { kind: "new" },
+      });
+      await registry.prompt(1, {
+        message: "Continue",
+        target: { kind: "session", sessionId: sessionSummary.id },
+      });
       expect(createSession).toHaveBeenCalledOnce();
     } finally {
       await registry.dispose(1);
@@ -150,7 +155,10 @@ describe("ProjectRuntimeRegistry", () => {
       });
 
       await expect(
-        registry.prompt(3, { message: "Imagine what is possible" }),
+        registry.prompt(3, {
+          message: "Imagine what is possible",
+          target: { kind: "new" },
+        }),
       ).resolves.toEqual({
         accepted: true,
         session: { ...sessionSummary, messageCount: 2 },
@@ -163,6 +171,86 @@ describe("ProjectRuntimeRegistry", () => {
       );
     } finally {
       await registry.dispose(3);
+    }
+  });
+
+  it("creates a fresh session when a prompt does not target a session", async () => {
+    const nextSession = {
+      ...sessionSummary,
+      id: "0198e338-fb55-7e18-a23e-a7028500f124",
+    };
+    const agentHost = createAgentHost();
+    const createSession = vi
+      .spyOn(agentHost, "createSession")
+      .mockResolvedValueOnce({ session: sessionSummary })
+      .mockResolvedValueOnce({ session: nextSession });
+    const disposeSession = vi.spyOn(agentHost, "disposeSession");
+    const prompt = vi.spyOn(agentHost, "prompt").mockResolvedValue({
+      accepted: true,
+      session: { ...nextSession, messageCount: 2 },
+    });
+    const registry = new ProjectRuntimeRegistry(agentHost, "/pine/agent");
+    const { dataRoot, project } = await createRuntimeFixture();
+
+    try {
+      await registry.open(5, project, {
+        cacheRoot: path.join(dataRoot, "cache"),
+        projectRoot: dataRoot,
+        sessionsRoot: path.join(dataRoot, "sessions"),
+      });
+      await registry.prompt(5, {
+        message: "First conversation",
+        target: { kind: "new" },
+      });
+
+      await registry.prompt(5, {
+        message: "Start over",
+        target: { kind: "new" },
+      });
+
+      expect(disposeSession).toHaveBeenCalledWith(sessionSummary.id);
+      expect(createSession).toHaveBeenCalledTimes(2);
+      expect(prompt).toHaveBeenCalledWith(
+        nextSession.id,
+        "Start over",
+        undefined,
+      );
+    } finally {
+      await registry.dispose(5);
+    }
+  });
+
+  it("continues the session explicitly targeted by a prompt", async () => {
+    const agentHost = createAgentHost();
+    const createSession = vi.spyOn(agentHost, "createSession");
+    const prompt = vi.spyOn(agentHost, "prompt");
+    const registry = new ProjectRuntimeRegistry(agentHost, "/pine/agent");
+    const { dataRoot, project } = await createRuntimeFixture();
+
+    try {
+      await registry.open(6, project, {
+        cacheRoot: path.join(dataRoot, "cache"),
+        projectRoot: dataRoot,
+        sessionsRoot: path.join(dataRoot, "sessions"),
+      });
+      await registry.prompt(6, {
+        message: "Start here",
+        target: { kind: "new" },
+      });
+
+      await registry.prompt(6, {
+        message: "Continue here",
+        target: { kind: "session", sessionId: sessionSummary.id },
+      });
+
+      expect(createSession).toHaveBeenCalledOnce();
+      expect(prompt).toHaveBeenCalledWith(
+        sessionSummary.id,
+        "Continue here",
+        undefined,
+      );
+    } finally {
+      await registry.dispose(6);
     }
   });
 
@@ -183,7 +271,11 @@ describe("ProjectRuntimeRegistry", () => {
       projectRoot: dataRoot,
       sessionsRoot: path.join(dataRoot, "sessions"),
     });
-    const creation = registry.getOrCreateActiveSession(4);
+    const creation = registry.prompt(4, {
+      message: "Start",
+      target: { kind: "new" },
+    });
+    await Promise.resolve();
     const disposal = registry.dispose(4);
     creationDeferred.resolve({ session: sessionSummary });
 

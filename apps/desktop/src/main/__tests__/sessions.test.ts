@@ -139,4 +139,33 @@ describe("ProjectSessionService", () => {
       await environment.cleanup();
     }
   });
+
+  it("deletes a session and removes it from search", async () => {
+    const rootPath = await createTemporaryProjectData();
+    const options = serviceOptions(rootPath);
+    await mkdir(options.cwd, { recursive: true });
+    const environment = new NodeExecutionEnv({ cwd: options.cwd });
+    const repository = new JsonlSessionRepo({
+      fs: environment,
+      sessionsRoot: options.sessionsRoot,
+    });
+    const session = await repository.create({ cwd: options.cwd });
+    await session.appendMessage({
+      role: "user",
+      content: "Delete this conversation",
+      timestamp: Date.now(),
+    });
+    const metadata = await session.getMetadata();
+    const service = await ProjectSessionService.create(options);
+
+    try {
+      await expect(service.search("")).resolves.toHaveLength(1);
+      await expect(service.deleteSession(metadata.id)).resolves.toBe(true);
+      await expect(service.search("")).resolves.toEqual([]);
+      await expect(service.deleteSession(metadata.id)).resolves.toBe(false);
+    } finally {
+      await service.dispose();
+      await environment.cleanup();
+    }
+  });
 });

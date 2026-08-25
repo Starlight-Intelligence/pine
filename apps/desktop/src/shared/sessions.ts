@@ -1,12 +1,14 @@
 export const SEARCH_SESSIONS_CHANNEL = "sessions:search" as const;
 export const RESUME_SESSION_CHANNEL = "sessions:resume" as const;
 export const LOAD_SESSION_MESSAGES_CHANNEL = "sessions:messages" as const;
+export const DELETE_SESSION_CHANNEL = "sessions:delete" as const;
 
 export interface PineTextMessage {
   createdAt: string;
   id: string;
   role: "assistant" | "user";
   text: string;
+  thinking?: string;
 }
 
 export interface PineSessionSummary {
@@ -36,6 +38,14 @@ export interface ResumeSessionRequest {
 
 export interface ResumeSessionResult {
   session: PineSessionSummary;
+}
+
+export interface DeleteSessionRequest {
+  sessionId: string;
+}
+
+export interface DeleteSessionResult {
+  deleted: boolean;
 }
 
 export interface LoadSessionMessagesRequest {
