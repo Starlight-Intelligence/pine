@@ -2,7 +2,7 @@
 import { History, Plus, Search, Trash2 } from "@lucide/vue";
 import { useVirtualizer } from "@tanstack/vue-virtual";
 import { storeToRefs } from "pinia";
-import { computed, onMounted, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { handleError } from "@/app/errors/errorHandler";
 import {
@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/sidebar";
 import { useContentTabNavigation } from "@/composables/useContentTabNavigation";
 import type { PineSessionSummary } from "@/shared/sessions";
+import { useProjectStore } from "@/stores/project";
 import { useSessionStore } from "@/stores/session";
 
 const { locale, t } = useI18n();
@@ -41,8 +42,10 @@ const emit = defineEmits<{
   search: [];
 }>();
 const tabNavigation = useContentTabNavigation();
+const projectStore = useProjectStore();
 const sessionStore = useSessionStore();
 const { activeSessionTab } = tabNavigation;
+const { activeProject } = storeToRefs(projectStore);
 const { isLoadingRecent, recentSessions } = storeToRefs(sessionStore);
 const scrollHost = ref<HTMLElement | null>(null);
 const sessionPendingDelete = ref<PineSessionSummary | null>(null);
@@ -117,9 +120,16 @@ async function deleteRequestedSession(): Promise<void> {
   }
 }
 
-onMounted(() => {
-  void loadRecentSessions();
-});
+watch(
+  () => {
+    const project = activeProject.value;
+    return project ? `${project.id}:${project.updatedAt}` : null;
+  },
+  (projectVersion) => {
+    if (projectVersion) void loadRecentSessions();
+  },
+  { immediate: true },
+);
 </script>
 
 <template>

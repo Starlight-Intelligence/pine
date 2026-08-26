@@ -96,6 +96,49 @@ describe("ProjectSessionService", () => {
     }
   });
 
+  it("keeps sessions visible after the project's default folder changes", async () => {
+    const rootPath = await createTemporaryProjectData();
+    const previousCwd = path.join(rootPath, "previous-source");
+    const nextCwd = path.join(rootPath, "next-source");
+    const sessionsRoot = path.join(rootPath, "sessions");
+    await Promise.all([
+      mkdir(previousCwd, { recursive: true }),
+      mkdir(nextCwd, { recursive: true }),
+    ]);
+    const environment = new NodeExecutionEnv({ cwd: previousCwd });
+    const repository = new JsonlSessionRepo({ fs: environment, sessionsRoot });
+    const previousSession = await repository.create({ cwd: previousCwd });
+    await previousSession.appendMessage({
+      role: "user",
+      content: "Conversation from the previous default folder",
+      timestamp: Date.now(),
+    });
+    const metadata = await previousSession.getMetadata();
+    const service = await ProjectSessionService.create({
+      cacheRoot: path.join(rootPath, "cache"),
+      cwd: nextCwd,
+      sessionsRoot,
+    });
+
+    try {
+      await expect(service.search("")).resolves.toEqual([
+        expect.objectContaining({ id: metadata.id }),
+      ]);
+      await expect(service.loadMessages(metadata.id)).resolves.toEqual(
+        expect.objectContaining({
+          messages: [
+            expect.objectContaining({
+              text: "Conversation from the previous default folder",
+            }),
+          ],
+        }),
+      );
+    } finally {
+      await service.dispose();
+      await environment.cleanup();
+    }
+  });
+
   it("loads text messages backwards with a stable cursor", async () => {
     const rootPath = await createTemporaryProjectData();
     const options = serviceOptions(rootPath);
