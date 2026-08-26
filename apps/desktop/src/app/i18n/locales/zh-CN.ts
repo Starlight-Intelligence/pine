@@ -151,6 +151,46 @@ export default {
       outline: "对话大纲",
       outlineEmpty: "发送消息后，回合会显示在这里。",
       thinking: "思考过程",
+      thinkingActive: "正在思考（{duration}）",
+      thinkingComplete: "已思考 {duration}",
+      thinkingCompleteWithoutDuration: "已思考",
+      thinkingDuration: {
+        lessThanSecond: "不到 1 秒",
+        minutes: "{minutes} 分 {seconds} 秒",
+        seconds: "{value} 秒",
+      },
+      tools: {
+        bash: {
+          complete: "已执行 {target}",
+          error: "执行 {target} 失败",
+          running: "正在执行 {target}",
+        },
+        edit: {
+          complete: "已编辑 {target}",
+          error: "编辑 {target} 失败",
+          running: "正在编辑 {target}",
+        },
+        generic: {
+          complete: "已使用 {target}",
+          error: "{target} 调用失败",
+          running: "正在使用 {target}",
+        },
+        read: {
+          complete: "已读取 {target}",
+          error: "读取 {target} 失败",
+          running: "正在读取 {target}",
+        },
+        search: {
+          complete: "已搜索 {target}",
+          error: "搜索 {target} 失败",
+          running: "正在搜索 {target}",
+        },
+        write: {
+          complete: "已写入 {target}",
+          error: "写入 {target} 失败",
+          running: "正在写入 {target}",
+        },
+      },
     },
     tabs: {
       files: "文件",

@@ -3,12 +3,26 @@ export const RESUME_SESSION_CHANNEL = "sessions:resume" as const;
 export const LOAD_SESSION_MESSAGES_CHANNEL = "sessions:messages" as const;
 export const DELETE_SESSION_CHANNEL = "sessions:delete" as const;
 
+export type PineToolCallStatus = "pending" | "running" | "complete" | "error";
+
+export interface PineToolCall {
+  id: string;
+  name: string;
+  status: PineToolCallStatus;
+  input?: unknown;
+  output?: unknown;
+  startedAt?: string;
+  durationMs?: number;
+}
+
 export interface PineTextMessage {
   createdAt: string;
   id: string;
   role: "assistant" | "user";
   text: string;
   thinking?: string;
+  thinkingDurationMs?: number;
+  toolCalls?: PineToolCall[];
 }
 
 export interface PineSessionSummary {

@@ -1,5 +1,10 @@
 import { JsonlSessionRepo } from "@earendil-works/pi-agent-core";
 import { NodeExecutionEnv } from "@earendil-works/pi-agent-core/node";
+import {
+  fauxAssistantMessage,
+  fauxThinking,
+  fauxToolCall,
+} from "@earendil-works/pi-ai/providers/faux";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -177,6 +182,65 @@ describe("ProjectSessionService", () => {
         "two",
       ]);
       expect(earlier.hasMore).toBe(false);
+    } finally {
+      await service.dispose();
+      await environment.cleanup();
+    }
+  });
+
+  it("restores thinking duration and completed tool calls", async () => {
+    const rootPath = await createTemporaryProjectData();
+    const options = serviceOptions(rootPath);
+    await mkdir(options.cwd, { recursive: true });
+    const environment = new NodeExecutionEnv({ cwd: options.cwd });
+    const repository = new JsonlSessionRepo({
+      fs: environment,
+      sessionsRoot: options.sessionsRoot,
+    });
+    const session = await repository.create({ cwd: options.cwd });
+    const toolCallId = "call-read-main";
+    await session.appendMessage(
+      fauxAssistantMessage(
+        [
+          fauxThinking("Find the relevant file."),
+          fauxToolCall(
+            "read",
+            { path: "/project/src/main.ts" },
+            {
+              id: toolCallId,
+            },
+          ),
+        ],
+        { stopReason: "toolUse", timestamp: Date.now() - 1_500 },
+      ),
+    );
+    await session.appendMessage({
+      role: "toolResult",
+      toolCallId,
+      toolName: "read",
+      content: [{ type: "text", text: "export {}" }],
+      isError: false,
+      timestamp: Date.now(),
+    });
+    const metadata = await session.getMetadata();
+    const service = await ProjectSessionService.create(options);
+
+    try {
+      const result = await service.loadMessages(metadata.id);
+
+      expect(result.messages).toEqual([
+        expect.objectContaining({
+          thinking: "Find the relevant file.",
+          thinkingDurationMs: expect.any(Number),
+          toolCalls: [
+            expect.objectContaining({
+              id: toolCallId,
+              name: "read",
+              status: "complete",
+            }),
+          ],
+        }),
+      ]);
     } finally {
       await service.dispose();
       await environment.cleanup();

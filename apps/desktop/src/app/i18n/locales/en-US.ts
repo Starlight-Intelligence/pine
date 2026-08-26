@@ -155,6 +155,46 @@ export default {
       outline: "Conversation outline",
       outlineEmpty: "Your turns will appear here after you send a message.",
       thinking: "Reasoning",
+      thinkingActive: "Thinking ({duration})",
+      thinkingComplete: "Thought for {duration}",
+      thinkingCompleteWithoutDuration: "Thought",
+      thinkingDuration: {
+        lessThanSecond: "<1s",
+        minutes: "{minutes}m {seconds}s",
+        seconds: "{value}s",
+      },
+      tools: {
+        bash: {
+          complete: "Ran {target}",
+          error: "Failed to run {target}",
+          running: "Running {target}",
+        },
+        edit: {
+          complete: "Edited {target}",
+          error: "Couldn’t edit {target}",
+          running: "Editing {target}",
+        },
+        generic: {
+          complete: "Used {target}",
+          error: "{target} failed",
+          running: "Using {target}",
+        },
+        read: {
+          complete: "Read {target}",
+          error: "Couldn’t read {target}",
+          running: "Reading {target}",
+        },
+        search: {
+          complete: "Searched for {target}",
+          error: "Couldn’t search for {target}",
+          running: "Searching for {target}",
+        },
+        write: {
+          complete: "Wrote {target}",
+          error: "Couldn’t write {target}",
+          running: "Writing {target}",
+        },
+      },
     },
     tabs: {
       files: "Files",

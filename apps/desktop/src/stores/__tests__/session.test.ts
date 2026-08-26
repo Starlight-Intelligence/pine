@@ -252,6 +252,118 @@ describe("session store", () => {
     expect(store.isRunning).toBe(true);
   });
 
+  it("tracks thinking completion and tool execution by call id", async () => {
+    vi.useFakeTimers();
+    try {
+      let listener: ((event: PineAgentEvent) => void) | undefined;
+      let resolvePrompt:
+        ((value: { session: PineSessionSummary }) => void) | undefined;
+      const promptResult = new Promise<{ session: PineSessionSummary }>(
+        (resolve) => {
+          resolvePrompt = resolve;
+        },
+      );
+      Object.defineProperty(window, "pine", {
+        configurable: true,
+        value: {
+          onSessionEvent: vi.fn((nextListener) => {
+            listener = nextListener;
+            return () => undefined;
+          }),
+          promptSession: vi.fn().mockReturnValue(promptResult),
+        },
+      });
+      const store = useSessionStore();
+      store.connectAgentEvents();
+      const prompt = store.prompt("Inspect the file");
+      const messageId = "assistant-with-tool";
+
+      listener?.({
+        type: "run-state",
+        sessionId: session.id,
+        state: "running",
+      });
+      vi.setSystemTime(1_000);
+      listener?.({
+        type: "message-update",
+        sessionId: session.id,
+        messageId,
+        message: {
+          role: "assistant",
+          timestamp: 500,
+          content: [{ type: "thinking", thinking: "Inspect.\nRead the file." }],
+        },
+        update: { type: "thinking_delta" },
+      });
+      vi.setSystemTime(3_500);
+      listener?.({
+        type: "message-update",
+        sessionId: session.id,
+        messageId,
+        message: {
+          role: "assistant",
+          timestamp: 500,
+          content: [{ type: "thinking", thinking: "Inspect.\nRead the file." }],
+        },
+        update: { type: "thinking_end" },
+      });
+      listener?.({
+        type: "message-end",
+        sessionId: session.id,
+        messageId,
+        message: {
+          role: "assistant",
+          timestamp: 500,
+          content: [
+            { type: "thinking", thinking: "Inspect.\nRead the file." },
+            {
+              type: "toolCall",
+              id: "call-read",
+              name: "read",
+              arguments: { path: "/project/src/main.ts" },
+            },
+          ],
+        },
+      });
+      listener?.({
+        type: "tool-start",
+        sessionId: session.id,
+        toolCallId: "call-read",
+        toolName: "read",
+        payload: { path: "/project/src/main.ts" },
+      });
+      vi.setSystemTime(4_500);
+      listener?.({
+        type: "tool-end",
+        sessionId: session.id,
+        toolCallId: "call-read",
+        toolName: "read",
+        payload: { content: [{ type: "text", text: "export {}" }] },
+        isError: false,
+      });
+      resolvePrompt?.({ session });
+      await prompt;
+
+      expect(store.messages).toEqual([
+        expect.objectContaining({
+          id: messageId,
+          thinkingDurationMs: 2_500,
+          thinkingStatus: "complete",
+          toolCalls: [
+            expect.objectContaining({
+              durationMs: 1_000,
+              id: "call-read",
+              input: { path: "/project/src/main.ts" },
+              status: "complete",
+            }),
+          ],
+        }),
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("keeps the prompt title when a runtime summary omits display fields", async () => {
     let listener: ((event: PineAgentEvent) => void) | undefined;
     Object.defineProperty(window, "pine", {

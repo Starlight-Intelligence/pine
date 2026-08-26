@@ -4,11 +4,14 @@ import type { PineAgentEvent, PineJsonValue } from "@/shared/agent";
 import type {
   PineSessionSummary,
   PineTextMessage,
+  PineToolCall,
   SessionSearchResult,
 } from "@/shared/sessions";
 
 export interface PineTranscriptMessage extends PineTextMessage {
   status: "complete" | "streaming";
+  thinkingStatus?: "complete" | "streaming";
+  thinkingStartedAt?: number;
 }
 
 function messageRole(value: PineJsonValue): "assistant" | "user" | null {
@@ -45,6 +48,43 @@ function messageThinking(value: PineJsonValue): string {
     .join("\n");
 }
 
+function messageToolCalls(value: PineJsonValue): PineToolCall[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((part) => {
+    if (
+      typeof part !== "object" ||
+      part === null ||
+      Array.isArray(part) ||
+      part.type !== "toolCall" ||
+      typeof part.id !== "string" ||
+      typeof part.name !== "string"
+    ) {
+      return [];
+    }
+    return [
+      {
+        id: part.id,
+        name: part.name,
+        status: "pending" as const,
+        ...(part.arguments !== undefined ? { input: part.arguments } : {}),
+      },
+    ];
+  });
+}
+
+function mergeToolCalls(
+  content: PineJsonValue,
+  previous: readonly PineToolCall[] = [],
+): PineToolCall[] | undefined {
+  const parsed = messageToolCalls(content);
+  if (parsed.length === 0)
+    return previous.length > 0 ? [...previous] : undefined;
+  return parsed.map((toolCall) => {
+    const existing = previous.find((candidate) => candidate.id === toolCall.id);
+    return existing ? { ...toolCall, ...existing } : toolCall;
+  });
+}
+
 function messageContent(value: PineJsonValue): PineJsonValue {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return value;
@@ -59,6 +99,13 @@ function messageCreatedAt(value: PineJsonValue): string {
   return typeof value.timestamp === "number"
     ? new Date(value.timestamp).toISOString()
     : new Date().toISOString();
+}
+
+function eventUpdateType(value: PineJsonValue): string | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return undefined;
+  }
+  return typeof value.type === "string" ? value.type : undefined;
 }
 
 export const useSessionStore = defineStore("session", () => {
@@ -184,6 +231,7 @@ export const useSessionStore = defineStore("session", () => {
       messages.value = result.messages.map((message) => ({
         ...message,
         status: "complete",
+        ...(message.thinking ? { thinkingStatus: "complete" as const } : {}),
       }));
       hasEarlierMessages.value = result.hasMore;
       nextBefore.value = result.nextBefore;
@@ -215,6 +263,7 @@ export const useSessionStore = defineStore("session", () => {
         ...result.messages.map((message): PineTranscriptMessage => ({
           ...message,
           status: "complete",
+          ...(message.thinking ? { thinkingStatus: "complete" as const } : {}),
         })),
         ...messages.value,
       ];
@@ -305,6 +354,68 @@ export const useSessionStore = defineStore("session", () => {
       return;
     }
     if (
+      (event.type === "tool-start" ||
+        event.type === "tool-update" ||
+        event.type === "tool-end") &&
+      currentSessionId === event.sessionId
+    ) {
+      const now = Date.now();
+      let messageIndex = messages.value.findIndex((message) =>
+        message.toolCalls?.some((toolCall) => toolCall.id === event.toolCallId),
+      );
+      if (messageIndex < 0) {
+        messages.value.push({
+          createdAt: new Date(now).toISOString(),
+          id: `tool-${event.toolCallId}`,
+          role: "assistant",
+          status: "complete",
+          text: "",
+          toolCalls: [
+            {
+              id: event.toolCallId,
+              name: event.toolName,
+              status: "pending",
+            },
+          ],
+        });
+        messageIndex = messages.value.length - 1;
+      }
+
+      const message = messages.value[messageIndex];
+      const toolCalls = (message.toolCalls ?? []).map((toolCall) => {
+        if (toolCall.id !== event.toolCallId) return toolCall;
+        const startedAt =
+          toolCall.startedAt ??
+          (event.type === "tool-start"
+            ? new Date(now).toISOString()
+            : undefined);
+        return {
+          ...toolCall,
+          name: event.toolName,
+          status:
+            event.type === "tool-end"
+              ? event.isError
+                ? ("error" as const)
+                : ("complete" as const)
+              : ("running" as const),
+          ...(event.type === "tool-start" && event.payload !== undefined
+            ? { input: event.payload }
+            : {}),
+          ...(event.type !== "tool-start" && event.payload !== undefined
+            ? { output: event.payload }
+            : {}),
+          ...(startedAt ? { startedAt } : {}),
+          ...(event.type === "tool-end" && startedAt
+            ? {
+                durationMs: Math.max(0, now - new Date(startedAt).getTime()),
+              }
+            : {}),
+        };
+      });
+      messages.value[messageIndex] = { ...message, toolCalls };
+      return;
+    }
+    if (
       (event.type !== "message-start" &&
         event.type !== "message-update" &&
         event.type !== "message-end") ||
@@ -317,6 +428,25 @@ export const useSessionStore = defineStore("session", () => {
     if (!role) return;
     const content = messageContent(event.message);
     const thinking = messageThinking(content);
+    const previous = messages.value.find(
+      (message) => message.id === event.messageId,
+    );
+    const now = Date.now();
+    const thinkingStartedAt = thinking
+      ? (previous?.thinkingStartedAt ?? now)
+      : undefined;
+    const updateType =
+      event.type === "message-update"
+        ? eventUpdateType(event.update)
+        : undefined;
+    const thinkingEnded =
+      event.type === "message-end" || updateType === "thinking_end";
+    const thinkingStatus = thinking
+      ? thinkingEnded || previous?.thinkingStatus === "complete"
+        ? ("complete" as const)
+        : ("streaming" as const)
+      : undefined;
+    const toolCalls = mergeToolCalls(content, previous?.toolCalls);
     const nextMessage: PineTranscriptMessage = {
       createdAt: messageCreatedAt(event.message),
       id: event.messageId,
@@ -324,6 +454,16 @@ export const useSessionStore = defineStore("session", () => {
       status: event.type === "message-end" ? "complete" : "streaming",
       text: messageText(content),
       ...(thinking ? { thinking } : {}),
+      ...(thinkingStatus ? { thinkingStatus } : {}),
+      ...(thinkingStartedAt ? { thinkingStartedAt } : {}),
+      ...(thinkingStartedAt && thinkingStatus === "complete"
+        ? {
+            thinkingDurationMs:
+              previous?.thinkingDurationMs ??
+              Math.max(0, now - thinkingStartedAt),
+          }
+        : {}),
+      ...(toolCalls ? { toolCalls } : {}),
     };
     const index = messages.value.findIndex(
       (message) => message.id === event.messageId,
