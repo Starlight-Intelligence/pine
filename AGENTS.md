@@ -20,6 +20,9 @@
 - 单元测试使用 Vitest；Vue 组件使用 Vue Test Utils，Pinia store 测试可使用 `@pinia/testing`。测试统一放在相邻模块的 `__tests__/` 目录。
 - shadcn-vue 生成的 `src/components/ui/` 与 `src/styles/shadcn-vue.css` 不做全局格式化改写；组件升级继续以 CLI 生成结果为准。
 - 提交前运行 `bun run check`，统一执行格式、Lint、类型和单元测试检查；需要覆盖率报告时运行 `bun run test:coverage`。
+- 提交遵循 [Conventional Commits](https://www.conventionalcommits.org/) 规范，使用 `feat(scope): ...`、`fix(scope): ...`、`docs:`、`chore:` 等格式；scope 指向受影响的包或模块，如 `desktop`、`session`。
+- 提交保持原子化：一个逻辑变更对应一个提交，不要混合不相关改动。涉及 `shadcn:add`、依赖升级（如 `package.json` / `bun.lock`）等基础设施类改动时，与功能改动拆分提交。
+- 本地开发分支保持可推送状态，变更经 `bun run check` 通过后提交并推送。
 - 当 Bun 长时间停在 `Resolving dependencies`，且请求经过本地代理时，临时绕过代理并降低网络并发后重试：
 
   ```sh
