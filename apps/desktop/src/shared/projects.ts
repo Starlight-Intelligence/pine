@@ -27,6 +27,7 @@ import type {
   SearchSessionsRequest,
   SearchSessionsResult,
 } from "./sessions";
+import type { PineWindowApi } from "./window";
 
 export const PROJECTS_DIRECTORY = "projects" as const;
 export const PROJECT_METADATA_FILE = "project.json" as const;
@@ -101,7 +102,7 @@ export interface PickProjectFoldersRequest {
   mode: "context" | "default";
 }
 
-export interface PineDesktopApi {
+export interface PineDesktopApi extends PineWindowApi {
   abortSession: () => Promise<AbortSessionResult>;
   closeProject: () => Promise<void>;
   createProject: (request: CreateProjectRequest) => Promise<ProjectResult>;

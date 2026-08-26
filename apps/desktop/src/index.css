@@ -1,3 +1,8 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
+
+/*
+   ---break---
+   */
 @import "@fontsource-variable/inter";
 @import "tailwindcss";
 @import "tw-animate-css";
@@ -249,6 +254,25 @@ body,
 body {
   margin: 0;
   overflow: hidden;
+}
+
+/*
+ * macOS sidebar vibrancy mode (enabled in Pine preferences). These rules
+ * deliberately live OUTSIDE the cascade-layer stack (unlayered), so they
+ * take precedence over Tailwind's `utilities` layer (e.g. `bg-sidebar`,
+ * `bg-background`) regardless of selector specificity. The main process
+ * swaps the window to the native `sidebar` vibrancy material and makes its
+ * background fully transparent, so the page shell and the sidebar panel must
+ * paint no background for the material to show through. The main content
+ * (`SidebarInset`) keeps its opaque `bg-background`, so the blur is only
+ * visible across the sidebar region.
+ */
+html.sidebar-vibrancy body {
+  background: transparent;
+}
+
+html.sidebar-vibrancy [data-slot="sidebar-inner"] {
+  background: transparent;
 }
 
 @layer base {

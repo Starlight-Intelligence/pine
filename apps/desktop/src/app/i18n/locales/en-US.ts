@@ -17,6 +17,9 @@ export default {
     themeSystem: "System",
     themeLight: "Light",
     themeDark: "Dark",
+    sidebarVibrancy: "Sidebar blur",
+    sidebarVibrancyDescription:
+      "Render the sidebar with the native macOS blur material",
   },
   models: {
     favorites: "Favorites",

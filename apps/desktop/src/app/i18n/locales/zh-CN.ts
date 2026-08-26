@@ -17,6 +17,8 @@ export default {
     themeSystem: "跟随系统",
     themeLight: "浅色",
     themeDark: "深色",
+    sidebarVibrancy: "侧栏模糊效果",
+    sidebarVibrancyDescription: "使用 macOS 原生模糊材质渲染侧栏",
   },
   models: {
     favorites: "收藏的模型",

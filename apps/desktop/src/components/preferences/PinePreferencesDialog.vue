@@ -11,13 +11,20 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Field, FieldGroup, FieldTitle } from "@/components/ui/field";
+import {
+  Field,
+  FieldDescription,
+  FieldGroup,
+  FieldTitle,
+} from "@/components/ui/field";
+import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { isThemePreference, useAppearanceStore } from "@/stores/appearance";
 
 const { locale, t } = useI18n();
 const appearanceStore = useAppearanceStore();
-const { themePreference } = storeToRefs(appearanceStore);
+const { supportsSidebarVibrancy, themePreference } =
+  storeToRefs(appearanceStore);
 
 function updateLocale(value: unknown): void {
   if (typeof value !== "string" || !isAppLocale(value)) return;
@@ -30,6 +37,10 @@ function updateLocale(value: unknown): void {
 function updateTheme(value: unknown): void {
   if (typeof value !== "string" || !isThemePreference(value)) return;
   appearanceStore.setThemePreference(value);
+}
+
+function updateSidebarVibrancy(value: boolean): void {
+  appearanceStore.setSidebarVibrancy(value);
 }
 </script>
 
@@ -96,6 +107,22 @@ function updateTheme(value: unknown): void {
               {{ t("preferences.themeDark") }}
             </ToggleGroupItem>
           </ToggleGroup>
+        </Field>
+        <Field v-if="supportsSidebarVibrancy" orientation="horizontal">
+          <div class="flex min-w-0 flex-1 flex-col gap-1">
+            <FieldTitle id="pine-sidebar-vibrancy-setting">
+              {{ t("preferences.sidebarVibrancy") }}
+            </FieldTitle>
+            <FieldDescription>
+              {{ t("preferences.sidebarVibrancyDescription") }}
+            </FieldDescription>
+          </div>
+          <Switch
+            data-testid="pine-sidebar-vibrancy-toggle"
+            :model-value="appearanceStore.sidebarVibrancy"
+            aria-labelledby="pine-sidebar-vibrancy-setting"
+            @update:model-value="updateSidebarVibrancy"
+          />
         </Field>
       </FieldGroup>
     </DialogContent>

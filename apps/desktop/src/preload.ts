@@ -66,8 +66,18 @@ import {
   type ListProjectDirectoryRequest,
   type ListProjectDirectoryResult,
 } from "./shared/projectFiles";
+import {
+  SET_SIDEBAR_VIBRANCY_CHANNEL,
+  type SetSidebarVibrancyRequest,
+  type SetSidebarVibrancyResult,
+} from "./shared/window";
 
 const pineApi: PineDesktopApi = {
+  platform: process.platform,
+  setSidebarVibrancy: (
+    request: SetSidebarVibrancyRequest,
+  ): Promise<SetSidebarVibrancyResult> =>
+    ipcRenderer.invoke(SET_SIDEBAR_VIBRANCY_CHANNEL, request),
   abortSession: (): Promise<AbortSessionResult> =>
     ipcRenderer.invoke(ABORT_SESSION_CHANNEL),
   closeProject: (): Promise<void> => ipcRenderer.invoke(CLOSE_PROJECT_CHANNEL),
