@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -21,8 +21,15 @@ describe("PineAgentRuntime", () => {
     const location = {
       agentDir: path.join(root, "agent"),
       cwd: path.join(root, "source"),
+      folders: [
+        {
+          access: "read-write" as const,
+          path: path.join(root, "source"),
+        },
+      ],
       sessionsRoot: path.join(root, "sessions"),
     };
+    await mkdir(location.cwd, { recursive: true });
     const runtime = new PineAgentRuntime({ emit: () => undefined });
 
     try {

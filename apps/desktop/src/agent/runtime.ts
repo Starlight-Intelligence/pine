@@ -31,10 +31,9 @@ import {
   toErrorMessage,
   toPineJsonValue,
 } from "./protocol";
+import { createPineToolDefinitions } from "./tools";
 
-// Pi's built-in filesystem tools accept absolute paths. Keep the initial
-// harness tool-free until Pine-owned tools enforce project folder scopes.
-const PINE_TOOLS: [] = [];
+const PINE_TOOL_NAMES = ["read", "bash", "edit", "write"];
 
 interface LiveAgentSession {
   session: AgentSession;
@@ -361,6 +360,7 @@ export class PineAgentRuntime {
       noThemes: true,
     });
     await resourceLoader.reload();
+    const customTools = await createPineToolDefinitions(location);
 
     const { session } = await createAgentSession({
       cwd: location.cwd,
@@ -369,7 +369,8 @@ export class PineAgentRuntime {
       resourceLoader,
       sessionManager,
       settingsManager,
-      tools: PINE_TOOLS,
+      customTools,
+      tools: PINE_TOOL_NAMES,
     });
     const unsubscribe = session.subscribe((event) =>
       this.forwardEvent(session, event),

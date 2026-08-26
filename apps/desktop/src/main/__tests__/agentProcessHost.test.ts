@@ -37,6 +37,7 @@ describe("AgentProcessHost", () => {
     const location = {
       agentDir: "/pine/agent",
       cwd: "/project",
+      folders: [{ access: "read-write" as const, path: "/project" }],
       sessionsRoot: "/pine/sessions",
     };
     const pending = host.createSession(location);

@@ -108,6 +108,17 @@ describe("ProjectRuntimeRegistry", () => {
         target: { kind: "session", sessionId: sessionSummary.id },
       });
       expect(createSession).toHaveBeenCalledOnce();
+      expect(createSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          cwd: project.folders[0].path,
+          folders: [
+            {
+              access: "read-write",
+              path: project.folders[0].path,
+            },
+          ],
+        }),
+      );
     } finally {
       await registry.dispose(1);
     }

@@ -8,9 +8,15 @@ import type {
 } from "../shared/models";
 import type { PineSessionSummary } from "../shared/sessions";
 
+export interface AgentFolderGrant {
+  access: "read-only" | "read-write";
+  path: string;
+}
+
 export interface AgentSessionLocation {
   agentDir: string;
   cwd: string;
+  folders: AgentFolderGrant[];
   sessionsRoot: string;
 }
 

@@ -324,6 +324,12 @@ export class ProjectRuntimeRegistry {
     return {
       agentDir: this.agentDir,
       cwd: defaultFolder.path,
+      folders: runtime.project.folders
+        .filter((folder) => folder.isAvailable)
+        .map(({ access, path: folderPath }) => ({
+          access,
+          path: folderPath,
+        })),
       sessionsRoot: runtime.dataPaths.sessionsRoot,
     };
   }
