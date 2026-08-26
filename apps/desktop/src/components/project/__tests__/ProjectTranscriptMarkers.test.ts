@@ -171,5 +171,11 @@ describe("project transcript markers", () => {
     expect(wrapper.get('[data-slot="marker-content"]').text()).toBe(
       "已读取 main.ts",
     );
+
+    const code = wrapper.get('[data-slot="marker-content"] code');
+    expect(code.text()).toBe("main.ts");
+    expect(code.classes()).toEqual(
+      expect.arrayContaining(["font-mono", "bg-muted"]),
+    );
   });
 });

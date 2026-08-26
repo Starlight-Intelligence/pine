@@ -76,8 +76,18 @@ const presentation = computed(() => {
     : props.toolCall.status === "error"
       ? "error"
       : "complete";
-  return t(`project.transcript.tools.${kind}.${state}`, { target });
+  const key = `project.transcript.tools.${kind}.${state}`;
+  return {
+    before: t(`${key}.before`),
+    target,
+    after: t(`${key}.after`),
+  };
 });
+
+const fullText = computed(
+  () =>
+    `${presentation.value.before}${presentation.value.target}${presentation.value.after}`,
+);
 </script>
 
 <template>
@@ -87,8 +97,12 @@ const presentation = computed(() => {
       <AlertCircleIcon v-else-if="toolCall.status === 'error'" />
       <CheckIcon v-else />
     </MarkerIcon>
-    <MarkerContent class="truncate" :title="presentation">
-      {{ presentation }}
+    <MarkerContent class="truncate" :title="fullText">
+      <span v-if="presentation.before">{{ presentation.before }}</span>
+      <code
+        class="rounded bg-muted px-[0.3rem] py-[0.2rem] font-mono text-sm font-semibold"
+        >{{ presentation.target }}</code
+      ><span v-if="presentation.after">{{ presentation.after }}</span>
     </MarkerContent>
   </Marker>
 </template>
