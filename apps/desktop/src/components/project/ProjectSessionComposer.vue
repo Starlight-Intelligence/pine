@@ -160,7 +160,7 @@ function openModelPicker(): void {
 
 <template>
   <form
-    class="mx-auto w-full max-w-[768px] px-4 pb-4"
+    class="mx-auto w-full max-w-[var(--session-composer-max-width)] px-[var(--session-composer-gutter)] pb-4"
     @submit.prevent="submitMessage"
   >
     <label class="sr-only" :for="messageId">
@@ -171,7 +171,7 @@ function openModelPicker(): void {
       <InputGroupTextarea
         :id="messageId"
         v-model="message"
-        class="max-h-48 min-h-12 py-3.5 text-sm"
+        class="session-composer-input max-h-48 min-h-12 py-3.5 text-sm"
         :placeholder="t('project.composer.placeholder')"
         @keydown="handleKeydown"
       />
@@ -358,3 +358,9 @@ function openModelPicker(): void {
     <ModelPickerDialog v-model:open="isModelPickerOpen" />
   </form>
 </template>
+
+<style scoped>
+.session-composer-input {
+  padding-inline: var(--session-input-padding-inline, 0.75rem);
+}
+</style>

@@ -70,12 +70,12 @@ function abort(): void {
     default-scroll-position="last-anchor"
     :scroll-previous-item-peek="64"
   >
-    <div class="flex h-full min-h-0 flex-col">
+    <div class="session-layout flex h-full min-h-0 flex-col">
       <div class="relative min-h-0 w-full flex-1">
         <MessageScroller>
           <MessageScrollerViewport>
             <MessageScrollerContent
-              class="mx-auto w-full max-w-[736px] px-4 py-8"
+              class="session-transcript-content mx-auto py-8"
               spacer-class="h-16"
             >
               <div
@@ -133,3 +133,23 @@ function abort(): void {
     </div>
   </MessageScrollerProvider>
 </template>
+
+<style scoped>
+.session-layout {
+  --session-composer-max-width: 48rem;
+  --session-composer-gutter: 1rem;
+  --session-input-padding-inline: 0.75rem;
+}
+
+.session-transcript-content {
+  width: calc(
+    100% - var(--session-composer-gutter) - var(--session-composer-gutter) -
+      var(--session-input-padding-inline) - var(--session-input-padding-inline)
+  );
+  max-width: calc(
+    var(--session-composer-max-width) - var(--session-composer-gutter) -
+      var(--session-composer-gutter) - var(--session-input-padding-inline) -
+      var(--session-input-padding-inline)
+  );
+}
+</style>

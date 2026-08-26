@@ -75,7 +75,11 @@ describe("ProjectSessionComposer", () => {
       '[data-slot="input-group-addon"] button',
     );
 
-    expect(form.classes()).toContain("max-w-[768px]");
+    expect(form.classes()).toContain(
+      "max-w-[var(--session-composer-max-width)]",
+    );
+    expect(form.classes()).toContain("px-[var(--session-composer-gutter)]");
+    expect(textarea.classes()).toContain("session-composer-input");
     expect(textarea.classes()).toContain("min-h-12");
     expect(textarea.classes()).toContain("py-3.5");
     expect(textarea.classes()).toContain("text-sm");
