@@ -519,4 +519,47 @@ describe("session store", () => {
     expect(store.messages).toEqual([]);
     expect(store.isRunning).toBe(false);
   });
+
+  it("tracks context usage for the active session only", async () => {
+    let listener: ((event: PineAgentEvent) => void) | undefined;
+    Object.defineProperty(window, "pine", {
+      configurable: true,
+      value: {
+        onSessionEvent: vi.fn((nextListener) => {
+          listener = nextListener;
+          return () => undefined;
+        }),
+        promptSession: vi.fn().mockResolvedValue({ session }),
+      },
+    });
+    const store = useSessionStore();
+    store.connectAgentEvents();
+    await store.prompt("Hello", session.id);
+
+    listener?.({
+      type: "context-usage",
+      sessionId: "another-session",
+      tokens: 1,
+      contextWindow: 200_000,
+      percent: 0.5,
+      cost: 0.01,
+    });
+    expect(store.contextUsage).toBeNull();
+
+    listener?.({
+      type: "context-usage",
+      sessionId: session.id,
+      tokens: 86_400,
+      contextWindow: 200_000,
+      percent: 43.2,
+      cost: 0.1234,
+    });
+
+    expect(store.contextUsage).toEqual({
+      tokens: 86_400,
+      contextWindow: 200_000,
+      percent: 43.2,
+      cost: 0.1234,
+    });
+  });
 });

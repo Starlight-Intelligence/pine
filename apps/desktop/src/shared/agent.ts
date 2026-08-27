@@ -46,6 +46,18 @@ export type PineAgentEvent =
       type: "session-updated";
       sessionId: string;
       summary: PineSessionSummary;
+    }
+  | {
+      type: "context-usage";
+      sessionId: string;
+      /** Estimated context tokens, or null when unknown (e.g. right after
+       * compaction, before the next LLM response). */
+      tokens: number | null;
+      contextWindow: number;
+      /** Context usage as percentage of the window, or null when unknown. */
+      percent: number | null;
+      /** Cumulative conversation cost in USD. */
+      cost: number;
     };
 
 export interface PromptSessionRequest {

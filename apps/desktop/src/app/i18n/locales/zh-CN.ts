@@ -144,6 +144,14 @@ export default {
         yoloLabel: "干就完了",
         yolo: "自主执行，仅在出错时通知",
       },
+      contextUsage: {
+        label: "上下文占用",
+        usedTokens: "已用 Token",
+        contextWindow: "上下文窗口",
+        precisePercent: "精确百分率",
+        cost: "对话花费",
+        unknown: "未知",
+      },
     },
     transcript: {
       emptyDescription: "从一个问题、一项任务，或一个大胆的想法开始。",

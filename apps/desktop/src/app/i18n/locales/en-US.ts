@@ -149,6 +149,14 @@ export default {
         yoloLabel: "YOLO",
         yolo: "Run autonomously and notify only when something fails",
       },
+      contextUsage: {
+        label: "Context usage",
+        usedTokens: "Tokens used",
+        contextWindow: "Context window",
+        precisePercent: "Precise percentage",
+        cost: "Conversation cost",
+        unknown: "Unknown",
+      },
     },
     transcript: {
       emptyDescription: "Start with a question, a task, or a bold idea.",

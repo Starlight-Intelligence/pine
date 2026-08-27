@@ -16,6 +16,13 @@ export interface PineTranscriptMessage extends PineTextMessage {
   thinkingStartedAt?: number;
 }
 
+export interface PineContextUsage {
+  tokens: number | null;
+  contextWindow: number;
+  percent: number | null;
+  cost: number;
+}
+
 function messageRole(value: PineJsonValue): "assistant" | "user" | null {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return null;
@@ -103,6 +110,7 @@ export const useSessionStore = defineStore("session", () => {
   const isSearching = ref(false);
   const isLoadingMessages = ref(false);
   const isRunning = ref(false);
+  const contextUsage = ref<PineContextUsage | null>(null);
   const hasEarlierMessages = ref(false);
   const nextBefore = ref<string | undefined>();
   let currentSessionId: string | null = null;
@@ -186,6 +194,7 @@ export const useSessionStore = defineStore("session", () => {
     messages.value = [];
     hasEarlierMessages.value = false;
     nextBefore.value = undefined;
+    contextUsage.value = null;
     isLoadingMessages.value = true;
 
     try {
@@ -343,6 +352,16 @@ export const useSessionStore = defineStore("session", () => {
       upsertRecentSession(summary);
       return;
     }
+    if (event.type === "context-usage") {
+      if (currentSessionId !== event.sessionId) return;
+      contextUsage.value = {
+        tokens: event.tokens,
+        contextWindow: event.contextWindow,
+        percent: event.percent,
+        cost: event.cost,
+      };
+      return;
+    }
     if (
       (event.type === "tool-start" ||
         event.type === "tool-update" ||
@@ -483,6 +502,7 @@ export const useSessionStore = defineStore("session", () => {
     messages.value = [];
     hasEarlierMessages.value = false;
     nextBefore.value = undefined;
+    contextUsage.value = null;
     isRunning.value = false;
     isLoadingMessages.value = false;
   }
@@ -503,12 +523,14 @@ export const useSessionStore = defineStore("session", () => {
     isStartingPrompt = false;
     hasEarlierMessages.value = false;
     nextBefore.value = undefined;
+    contextUsage.value = null;
   }
 
   return {
     activeSession,
     abort,
     connectAgentEvents,
+    contextUsage,
     deleteSession,
     hasEarlierMessages,
     isLoadingRecent,

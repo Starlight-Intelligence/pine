@@ -13,6 +13,7 @@ import { storeToRefs } from "pinia";
 import { computed, onMounted, ref, useId } from "vue";
 import { useI18n } from "vue-i18n";
 import ModelPickerDialog from "@/components/models/ModelPickerDialog.vue";
+import ContextUsageIndicator from "@/components/project/ContextUsageIndicator.vue";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -206,59 +207,63 @@ function openModelPicker(): void {
     </InputGroup>
 
     <div class="flex min-w-0 items-center justify-between gap-3 pt-2">
-      <DropdownMenu>
-        <DropdownMenuTrigger as-child>
-          <Button
-            data-slot="approval-mode-trigger"
-            class="min-w-0"
-            type="button"
-            variant="ghost"
-            size="sm"
-          >
-            <component
-              :is="selectedApprovalMode.icon"
-              :class="approvalModeColorClasses[selectedApprovalMode.value]"
-              data-icon="inline-start"
-            />
-            <span
-              :class="
-                cn(
-                  'truncate',
-                  approvalModeColorClasses[selectedApprovalMode.value],
-                )
-              "
-            >
-              {{ selectedApprovalMode.label }}
-            </span>
-            <ChevronDownIcon data-icon="inline-end" />
-          </Button>
-        </DropdownMenuTrigger>
-
-        <DropdownMenuContent side="top" align="start" class="w-72">
-          <DropdownMenuRadioGroup v-model="approvalMode">
-            <DropdownMenuRadioItem
-              v-for="option in approvalModes"
-              :key="option.value"
-              :value="option.value"
+      <div class="flex min-w-0 items-center gap-1">
+        <DropdownMenu>
+          <DropdownMenuTrigger as-child>
+            <Button
+              data-slot="approval-mode-trigger"
+              class="min-w-0"
+              type="button"
+              variant="ghost"
+              size="sm"
             >
               <component
-                :is="option.icon"
-                :class="approvalModeColorClasses[option.value]"
+                :is="selectedApprovalMode.icon"
+                :class="approvalModeColorClasses[selectedApprovalMode.value]"
+                data-icon="inline-start"
               />
-              <span class="flex min-w-0 flex-col gap-0.5">
-                <span :class="approvalModeColorClasses[option.value]">
-                  {{ option.label }}
-                </span>
-                <span
-                  class="whitespace-normal text-xs font-normal text-muted-foreground"
-                >
-                  {{ option.description }}
-                </span>
+              <span
+                :class="
+                  cn(
+                    'truncate',
+                    approvalModeColorClasses[selectedApprovalMode.value],
+                  )
+                "
+              >
+                {{ selectedApprovalMode.label }}
               </span>
-            </DropdownMenuRadioItem>
-          </DropdownMenuRadioGroup>
-        </DropdownMenuContent>
-      </DropdownMenu>
+              <ChevronDownIcon data-icon="inline-end" />
+            </Button>
+          </DropdownMenuTrigger>
+
+          <DropdownMenuContent side="top" align="start" class="w-72">
+            <DropdownMenuRadioGroup v-model="approvalMode">
+              <DropdownMenuRadioItem
+                v-for="option in approvalModes"
+                :key="option.value"
+                :value="option.value"
+              >
+                <component
+                  :is="option.icon"
+                  :class="approvalModeColorClasses[option.value]"
+                />
+                <span class="flex min-w-0 flex-col gap-0.5">
+                  <span :class="approvalModeColorClasses[option.value]">
+                    {{ option.label }}
+                  </span>
+                  <span
+                    class="whitespace-normal text-xs font-normal text-muted-foreground"
+                  >
+                    {{ option.description }}
+                  </span>
+                </span>
+              </DropdownMenuRadioItem>
+            </DropdownMenuRadioGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        <ContextUsageIndicator />
+      </div>
 
       <DropdownMenu>
         <DropdownMenuTrigger as-child>

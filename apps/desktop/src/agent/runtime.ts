@@ -376,6 +376,9 @@ export class PineAgentRuntime {
       this.forwardEvent(session, event),
     );
     this.liveSessions.set(session.sessionId, { session, unsubscribe });
+    // A resumed session already carries usage history; surface it before the
+    // next turn completes.
+    this.emitContextUsage(session);
 
     return {
       session: sessionSummary(session),
@@ -480,6 +483,7 @@ export class PineAgentRuntime {
           messageId,
           message: toPineJsonValue(event.message),
         });
+        if (event.type === "message_end") this.emitContextUsage(session);
         break;
       }
       case "message_update":
@@ -530,5 +534,20 @@ export class PineAgentRuntime {
       default:
         break;
     }
+  }
+
+  /** Pushes the live context usage estimate so the renderer's composer
+   * indicator stays current without polling. */
+  private emitContextUsage(session: AgentSession): void {
+    const usage = session.getContextUsage();
+    if (!usage) return;
+    this.options.emit({
+      type: "context-usage",
+      sessionId: session.sessionId,
+      tokens: usage.tokens,
+      contextWindow: usage.contextWindow,
+      percent: usage.percent,
+      cost: session.getSessionStats().cost,
+    });
   }
 }
