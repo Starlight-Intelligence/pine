@@ -166,6 +166,10 @@ export default {
         minutes: "{minutes}m {seconds}s",
         seconds: "{value}s",
       },
+      toolSteps: {
+        active: "Performing {count} steps",
+        complete: "Performed {count} steps",
+      },
       tools: {
         bash: {
           complete: { before: "Ran ", after: "" },

@@ -161,6 +161,10 @@ export default {
         minutes: "{minutes} 分 {seconds} 秒",
         seconds: "{value} 秒",
       },
+      toolSteps: {
+        active: "正在执行 {count} 个步骤",
+        complete: "进行了 {count} 个步骤",
+      },
       tools: {
         bash: {
           complete: { before: "已执行 ", after: "" },
