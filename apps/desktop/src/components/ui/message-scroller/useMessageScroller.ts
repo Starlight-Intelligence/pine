@@ -9,6 +9,7 @@ import {
   shallowRef,
   watch,
 } from "vue";
+import { animateScrollTop } from "@/lib/animateScroll";
 
 // -----------------------------------------------------------------------------
 // Public types
@@ -568,13 +569,26 @@ function createEngine(props: MessageScrollerProviderProps) {
     {
       behavior = "auto",
       autoscrolling: isAutoscrolling = false,
-    }: { behavior?: ScrollBehavior; autoscrolling?: boolean } = {},
+      animated = false,
+    }: {
+      behavior?: ScrollBehavior;
+      autoscrolling?: boolean;
+      animated?: boolean;
+    } = {},
   ) {
     if (!viewport) return;
     const target = Math.max(0, top);
     if (Math.abs(viewport.scrollTop - target) <= SCROLL_EPSILON) {
       viewport.scrollTop = target;
       commitScrollState();
+      return;
+    }
+    if (animated) {
+      // Shared expo-curve tween (see lib/animateScroll). Retarget-safe for
+      // streaming follow; wheel/touch input cancels it via the lib.
+      if (isAutoscrolling) setAutoscrolling(true);
+      animateScrollTop(viewport, target);
+      scheduleStateCommit();
       return;
     }
     if (isAutoscrolling) setAutoscrolling(true);
@@ -596,12 +610,17 @@ function createEngine(props: MessageScrollerProviderProps) {
 
   function scrollToEnd({
     behavior = "auto",
-  }: { behavior?: ScrollBehavior } = {}): boolean {
+    animated = false,
+  }: { behavior?: ScrollBehavior; animated?: boolean } = {}): boolean {
     if (!viewport) return false;
     setSpacerHeight(0);
     streamingTurn = null;
     mode = autoScroll() ? "following-bottom" : "free-scrolling";
-    scrollTo(maxScrollTop(viewport), { autoscrolling: true, behavior });
+    scrollTo(maxScrollTop(viewport), {
+      autoscrolling: true,
+      behavior,
+      animated,
+    });
     scheduleVisibilitySync();
     return true;
   }
@@ -822,7 +841,10 @@ function createEngine(props: MessageScrollerProviderProps) {
       }
     }
     if (mode === "following-bottom" && autoScroll()) {
-      scrollToEnd({ behavior: "auto" });
+      // Incremental growth within loaded messages glides like resize-driven
+      // follow above; big repositions (initial load, multi-anchor jumps)
+      // stay instant on purpose.
+      scrollToEnd({ behavior: "auto", animated: true });
     } else {
       commitScrollState();
       scheduleVisibilitySync();
@@ -843,7 +865,8 @@ function createEngine(props: MessageScrollerProviderProps) {
 
   function handleResize() {
     if (mode === "following-bottom" && autoScroll()) {
-      scrollToEnd({ behavior: "auto" });
+      // Streaming growth lands here; glide instead of snapping.
+      scrollToEnd({ behavior: "auto", animated: true });
       return;
     }
     const previousSpacerHeight = spacerHeight;
@@ -855,7 +878,7 @@ function createEngine(props: MessageScrollerProviderProps) {
       // transition keeps a turn taller than the viewport (placed with no
       // spacer) held instead of yanked to the end.
       if (autoScroll() && previousSpacerHeight > 0 && spacerHeight === 0)
-        scrollToEnd({ behavior: "auto" });
+        scrollToEnd({ behavior: "auto", animated: true });
       return;
     }
     scheduleStateCommit();
