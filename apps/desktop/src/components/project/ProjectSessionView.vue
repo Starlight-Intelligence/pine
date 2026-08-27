@@ -26,6 +26,7 @@ import { useSessionStore } from "@/stores/session";
 import ProjectSessionComposer from "./ProjectSessionComposer.vue";
 import ProjectTranscriptMessage from "./ProjectTranscriptMessage.vue";
 import ProjectTranscriptOutline from "./ProjectTranscriptOutline.vue";
+import { collapsesTranscriptGap } from "./transcriptLayout";
 
 const { t } = useI18n();
 const props = defineProps<{
@@ -42,6 +43,13 @@ const draft = ref("");
 /** While a response runs, its last two tool units (folded groups and
  * standalone calls alike) stay expanded; everything folds when it ends. */
 const expandedToolRuns = useToolActivityExpansion({ messages, isRunning });
+
+/**
+ * Turn gap collapses to the in-turn tool spacing (gap-2.5) when the model
+ * skips thinking and starts a turn directly with a tool call, cancelling the
+ * MessageScrollerContent `gap-8` down to that rhythm.
+ */
+const TOOL_CALL_TURN_MARGIN_CLASS = "-mt-[1.375rem]";
 
 onMounted(() => sessionStore.connectAgentEvents());
 
@@ -115,10 +123,15 @@ function abort(): void {
               </Empty>
 
               <MessageScrollerItem
-                v-for="message in messages"
+                v-for="(message, index) in messages"
                 :key="message.id"
                 :message-id="message.id"
                 :scroll-anchor="message.role === 'user'"
+                :class="
+                  collapsesTranscriptGap(messages, index)
+                    ? TOOL_CALL_TURN_MARGIN_CLASS
+                    : undefined
+                "
               >
                 <ProjectTranscriptMessage
                   :message="message"
