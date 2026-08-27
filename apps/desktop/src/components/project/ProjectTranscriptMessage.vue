@@ -7,6 +7,7 @@ import type { PineContentBlock, PineToolCall } from "@/shared/sessions";
 import type { PineTranscriptMessage } from "@/stores/session";
 import ProjectThinkingMarker from "./ProjectThinkingMarker.vue";
 import ProjectToolCallGroup from "./ProjectToolCallGroup.vue";
+import ProjectToolCallMarker from "./ProjectToolCallMarker.vue";
 
 const props = defineProps<{
   message: PineTranscriptMessage;
@@ -33,6 +34,7 @@ const text = computed(() =>
  */
 type RenderItem =
   | { kind: "block"; block: PineContentBlock }
+  | { kind: "toolCall"; toolCall: PineToolCall }
   | { kind: "toolRun"; toolCalls: PineToolCall[]; followedByContent: boolean };
 
 const renderItems = computed<RenderItem[]>(() => {
@@ -46,16 +48,22 @@ const renderItems = computed<RenderItem[]>(() => {
       while (index < blocks.length && blocks[index].type === "toolCall") {
         index++;
       }
-      items.push({
-        kind: "toolRun",
-        toolCalls: blocks
-          .slice(start, index)
-          .map((item): PineToolCall | undefined =>
-            item.type === "toolCall" ? item.toolCall : undefined,
-          )
-          .filter((item): item is PineToolCall => item !== undefined),
-        followedByContent: index < blocks.length,
-      });
+      const toolCalls = blocks
+        .slice(start, index)
+        .map((item): PineToolCall | undefined =>
+          item.type === "toolCall" ? item.toolCall : undefined,
+        )
+        .filter((item): item is PineToolCall => item !== undefined);
+      // A single tool call renders in full instead of being folded away.
+      if (toolCalls.length === 1) {
+        items.push({ kind: "toolCall", toolCall: toolCalls[0] });
+      } else {
+        items.push({
+          kind: "toolRun",
+          toolCalls,
+          followedByContent: index < blocks.length,
+        });
+      }
     } else {
       items.push({ kind: "block", block });
       index++;
@@ -75,6 +83,10 @@ const renderItems = computed<RenderItem[]>(() => {
           <ProjectThinkingMarker
             v-if="item.kind === 'block' && item.block.type === 'thinking'"
             :message="message"
+          />
+          <ProjectToolCallMarker
+            v-else-if="item.kind === 'toolCall'"
+            :tool-call="item.toolCall"
           />
           <ProjectToolCallGroup
             v-else-if="item.kind === 'toolRun'"
