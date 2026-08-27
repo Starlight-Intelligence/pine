@@ -448,6 +448,7 @@ function createEngine(props: MessageScrollerProviderProps) {
   let visibilityFrame: number | null = null;
   let pendingScrollFrame: number | null = null;
   let autoscrollingTimeout: number | null = null;
+  let mountSettled = false;
   let visibilityObserver: IntersectionObserver | null = null;
   let visibilityConsumers = 0;
   const messageElements = new Map<string, HTMLElement>();
@@ -583,7 +584,7 @@ function createEngine(props: MessageScrollerProviderProps) {
       commitScrollState();
       return;
     }
-    if (animated) {
+    if (animated && mountSettled) {
       // Shared expo-curve tween (see lib/animateScroll). Retarget-safe for
       // streaming follow; wheel/touch input cancels it via the lib.
       if (isAutoscrolling) setAutoscrolling(true);
@@ -1053,6 +1054,9 @@ function createEngine(props: MessageScrollerProviderProps) {
     registerMessage,
     applyDefaultScrollPosition,
     onAutoScrollChange,
+    markMountSettled: () => {
+      mountSettled = true;
+    },
     destroy,
   };
 }
@@ -1077,6 +1081,12 @@ export function provideMessageScroller(props: MessageScrollerProviderProps) {
     // after MessageScrollerContent ran its initial handleContentChange without
     // it. Re-sync now that every element is wired up.
     engine.context.syncAfterScroll();
+    // Let the initial layout and the viewport's first ResizeObserver observation
+    // settle before enabling follow animations, so entering a conversation
+    // positions on the last anchor without gliding to the bottom.
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => engine.markMountSettled());
+    });
   });
 
   onScopeDispose(() => engine.destroy());

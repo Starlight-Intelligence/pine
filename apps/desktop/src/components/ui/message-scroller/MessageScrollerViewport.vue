@@ -36,6 +36,15 @@ function onKeyDown(event: KeyboardEvent) {
 
 let resizeObserver: ResizeObserver | null = null;
 let resizeFrame = 0;
+let scrollFrame = 0;
+
+function onScroll(): void {
+  // Scroll is a high-frequency event; computing scrollable state reads the
+  // height of every message child (getBoundingClientRect), so coalesce all
+  // events within a frame into a single rAF commit.
+  window.cancelAnimationFrame(scrollFrame);
+  scrollFrame = window.requestAnimationFrame(syncAfterScroll);
+}
 
 onMounted(() => {
   const viewport = viewportEl.value;
@@ -50,6 +59,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.cancelAnimationFrame(resizeFrame);
+  window.cancelAnimationFrame(scrollFrame);
   resizeObserver?.disconnect();
   resizeObserver = null;
   setViewportElement(null);
@@ -71,7 +81,7 @@ onBeforeUnmount(() => {
         props.class,
       )
     "
-    @scroll="syncAfterScroll()"
+    @scroll="onScroll"
     @wheel="userScrollIntent()"
     @touchmove="userScrollIntent()"
     @keydown="onKeyDown"
