@@ -16,9 +16,12 @@ import {
   createEditToolDefinition,
   createReadToolDefinition,
   createWriteToolDefinition,
+  defineTool,
   type BashOperations,
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
+import { Type } from "typebox";
+import type { Static } from "typebox";
 import type { AgentFolderGrant, AgentSessionLocation } from "./protocol";
 
 type AccessMode = "read" | "write";
@@ -345,11 +348,31 @@ export async function createPineToolDefinitions(
     ),
   });
 
-  const pineBashTool = {
+  // Rebuild the bash tool with a required `description` field so the agent
+  // must state what each command does. The original execute handles the
+  // command/timeout args and ignores the extra description, so we forward
+  // straight to it.
+  const pineBashParams = Type.Object({
+    description: Type.String({
+      description:
+        "A short, imperative description of what this command does, for the user reading the transcript.",
+    }),
+    command: Type.String({ description: "Bash command to execute" }),
+    timeout: Type.Optional(
+      Type.Number({
+        description: "Timeout in seconds (optional, no default timeout)",
+      }),
+    ),
+  });
+  const pineBashTool = defineTool({
     ...bashTool,
-    description: `${bashTool.description} Pine provides an isolated writable temporary directory through $TMPDIR; direct writes to /tmp are blocked.`,
-    promptSnippet: `${bashTool.promptSnippet}. Use $TMPDIR for temporary files instead of /tmp`,
-  };
+    parameters: pineBashParams,
+    prepareArguments: (args) => args as Static<typeof pineBashParams>,
+    execute: (toolCallId, params, signal, onUpdate, ctx) =>
+      bashTool.execute(toolCallId, params, signal, onUpdate, ctx),
+    description: `${bashTool.description} Pine provides an isolated writable temporary directory through $TMPDIR; direct writes to /tmp are blocked. Explicitly describe what each command does in the description field.`,
+    promptSnippet: `${bashTool.promptSnippet}. Use $TMPDIR for temporary files instead of /tmp; always describe what the command does in the description field`,
+  });
 
   return [readTool, pineBashTool, editTool, writeTool] as ToolDefinition[];
 }

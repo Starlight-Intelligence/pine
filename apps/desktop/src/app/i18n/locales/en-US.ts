@@ -193,6 +193,7 @@ export default {
         },
       },
       tools: {
+        operationSeparator: ": ",
         bash: {
           complete: { before: "Ran ", after: "" },
           error: { before: "Failed to run ", after: "" },

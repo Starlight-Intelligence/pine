@@ -188,6 +188,7 @@ export default {
         },
       },
       tools: {
+        operationSeparator: "：",
         bash: {
           complete: { before: "已执行 ", after: "" },
           error: { before: "执行 ", after: " 失败" },

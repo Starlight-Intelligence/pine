@@ -44,6 +44,7 @@ function filename(value: string): string {
 const presentation = computed(() => {
   const kind = toolKind(props.toolCall.name);
   const input = inputRecord(props.toolCall.input);
+  const description = firstString(input, ["description", "summary"]);
   const path = firstString(input, ["path", "filePath", "file_path"]);
   const command = firstString(input, ["command", "cmd"]);
   const query = firstString(input, ["pattern", "query", "search"]);
@@ -63,15 +64,24 @@ const presentation = computed(() => {
   const key = `project.transcript.tools.${kind}.${state}`;
   return {
     before: t(`${key}.before`),
+    // A bash call shows an imperative operation summary before the command
+    // when the agent supplied one, e.g. "Ran {description}: {command}".
+    operation:
+      kind === "bash" && description && command ? `${description}` : undefined,
+    separator: t("project.transcript.tools.operationSeparator"),
     target,
     after: t(`${key}.after`),
   };
 });
 
-const fullText = computed(
-  () =>
-    `${presentation.value.before}${presentation.value.target}${presentation.value.after}`,
-);
+const fullText = computed(() => {
+  const before = presentation.value.before;
+  const operation = presentation.value.operation;
+  const separator = presentation.value.separator;
+  const target = presentation.value.target;
+  const after = presentation.value.after;
+  return `${before}${operation}${operation ? separator : ""}${target}${after}`;
+});
 </script>
 
 <template>
@@ -83,6 +93,9 @@ const fullText = computed(
     </MarkerIcon>
     <MarkerContent class="truncate" :title="fullText">
       <span v-if="presentation.before">{{ presentation.before }}</span>
+      <span v-if="presentation.operation"
+        >{{ presentation.operation }}{{ presentation.separator }}</span
+      >
       <code class="font-mono text-sm font-normal">{{
         presentation.target
       }}</code

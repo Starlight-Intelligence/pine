@@ -190,4 +190,45 @@ describe("project transcript markers", () => {
     );
     expect(code.classes()).not.toEqual(expect.arrayContaining(["bg-muted"]));
   });
+
+  it("shows a bash operation summary before the command", () => {
+    const wrapper = mount(ProjectToolCallMarker, {
+      props: {
+        toolCall: {
+          id: "tool-1",
+          input: {
+            command: "bun run typecheck",
+            description: "Checks types across the app",
+          },
+          name: "bash",
+          status: "complete",
+        },
+      },
+      global: { plugins: [createAppI18n("zh-CN")] },
+    });
+
+    const content = wrapper.get('[data-slot="marker-content"]');
+    expect(content.text()).toBe(
+      "已执行 Checks types across the app：bun run typecheck",
+    );
+    expect(content.get("code").text()).toBe("bun run typecheck");
+  });
+
+  it("falls back to the command when a bash call has no description", () => {
+    const wrapper = mount(ProjectToolCallMarker, {
+      props: {
+        toolCall: {
+          id: "tool-1",
+          input: { command: "bun run typecheck" },
+          name: "bash",
+          status: "complete",
+        },
+      },
+      global: { plugins: [createAppI18n("zh-CN")] },
+    });
+
+    expect(wrapper.get('[data-slot="marker-content"]').text()).toBe(
+      "已执行 bun run typecheck",
+    );
+  });
 });

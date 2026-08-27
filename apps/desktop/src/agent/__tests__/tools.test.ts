@@ -128,6 +128,16 @@ describe("createPineToolDefinitions", () => {
     expect(tools.find((tool) => tool.name === "bash")?.description).toContain(
       "$TMPDIR",
     );
+
+    const bash = tools.find((tool) => tool.name === "bash");
+    if (!bash) throw new Error("Bash tool is missing.");
+    const bashParams = bash.parameters as {
+      required?: string[];
+      properties?: Record<string, unknown>;
+    };
+    expect(bashParams.required).toContain("description");
+    expect(bashParams.required).toContain("command");
+    expect(bashParams.properties?.description).toBeDefined();
   });
 
   it("reads shared context and limits mutations to writable folders", async () => {
