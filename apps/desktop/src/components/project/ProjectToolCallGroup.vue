@@ -119,6 +119,7 @@ function toggleExpanded(): void {
             v-for="toolCall in toolCalls"
             :key="toolCall.id"
             :tool-call="toolCall"
+            nested
           />
         </div>
       </div>

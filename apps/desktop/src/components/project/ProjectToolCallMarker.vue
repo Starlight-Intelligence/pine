@@ -1,14 +1,20 @@
 <script setup lang="ts">
 import { AlertCircleIcon, CheckIcon } from "@lucide/vue";
-import { computed } from "vue";
+import { computed, type Component } from "vue";
 import { useI18n } from "vue-i18n";
 import { Marker, MarkerContent, MarkerIcon } from "@/components/ui/marker";
-import { Spinner } from "@/components/ui/spinner";
 import type { PineToolCall } from "@/shared/sessions";
-import { isRunningTool, toolKind } from "./toolKinds";
+import { isRunningTool, TOOL_KIND_ICON, toolKind } from "./toolKinds";
 
-const props = defineProps<{ toolCall: PineToolCall }>();
+const props = defineProps<{
+  toolCall: PineToolCall;
+  /** Nested rows repeat the folded header's kind icons, so they fall back
+   * to a plain check once the call succeeds. */
+  nested?: boolean;
+}>();
 const { t } = useI18n();
+
+const kindIcon: Component = TOOL_KIND_ICON[toolKind(props.toolCall.name)];
 
 const isRunning = computed(() => isRunningTool(props.toolCall));
 
@@ -86,12 +92,22 @@ const fullText = computed(() => {
 
 <template>
   <Marker :role="isRunning ? 'status' : undefined">
+    <!-- While running the label shimmers instead of showing a spinner; on
+         success the kind icon matches the folded group header, and failures
+         stay recognizable through the destructive alert tint. -->
     <MarkerIcon>
-      <Spinner v-if="isRunning" />
-      <AlertCircleIcon v-else-if="toolCall.status === 'error'" />
-      <CheckIcon v-else />
+      <AlertCircleIcon
+        v-if="toolCall.status === 'error'"
+        class="text-destructive"
+      />
+      <CheckIcon v-else-if="props.nested" />
+      <component :is="kindIcon" v-else />
     </MarkerIcon>
-    <MarkerContent class="truncate" :title="fullText">
+    <MarkerContent
+      class="truncate"
+      :class="isRunning && 'shimmer'"
+      :title="fullText"
+    >
       <span v-if="presentation.before">{{ presentation.before }}</span>
       <span v-if="presentation.operation"
         >{{ presentation.operation }}{{ presentation.separator }}</span

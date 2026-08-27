@@ -1,6 +1,7 @@
 import { mount } from "@vue/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createAppI18n } from "@/app/i18n";
+import { CheckIcon, TerminalIcon } from "@lucide/vue";
 import ProjectThinkingMarker from "../ProjectThinkingMarker.vue";
 import ProjectToolCallMarker from "../ProjectToolCallMarker.vue";
 
@@ -164,6 +165,62 @@ describe("project transcript markers", () => {
     expect(wrapper.get('[data-slot="marker"]').attributes("role")).toBe(
       "status",
     );
+  });
+
+  it("shimmers the label of a running call and shows its kind icon", () => {
+    const wrapper = mount(ProjectToolCallMarker, {
+      props: {
+        toolCall: {
+          id: "tool-1",
+          input: { command: "bun run typecheck" },
+          name: "bash",
+          status: "running",
+        },
+      },
+      global: { plugins: [createAppI18n("zh-CN")] },
+    });
+
+    expect(wrapper.get('[data-slot="marker-content"]').classes()).toContain(
+      "shimmer",
+    );
+    expect(wrapper.findComponent(TerminalIcon).exists()).toBe(true);
+  });
+
+  it("falls back to a plain check inside a folded group to avoid icon duplication", () => {
+    const wrapper = mount(ProjectToolCallMarker, {
+      props: {
+        toolCall: {
+          id: "tool-1",
+          input: { command: "bun run typecheck" },
+          name: "bash",
+          status: "complete",
+        },
+        nested: true,
+      },
+      global: { plugins: [createAppI18n("zh-CN")] },
+    });
+
+    expect(wrapper.findComponent(TerminalIcon).exists()).toBe(false);
+    expect(wrapper.findComponent(CheckIcon).exists()).toBe(true);
+  });
+
+  it("tints a failed call with the destructive alert color", () => {
+    const wrapper = mount(ProjectToolCallMarker, {
+      props: {
+        toolCall: {
+          id: "tool-1",
+          input: {},
+          name: "bash",
+          status: "error",
+        },
+      },
+      global: { plugins: [createAppI18n("zh-CN")] },
+    });
+
+    const content = wrapper.get('[data-slot="marker-content"]');
+    expect(content.classes()).not.toContain("shimmer");
+    const alert = wrapper.get("[data-slot=marker-icon] svg");
+    expect(alert.classes()).toContain("text-destructive");
   });
 
   it("shows the filename when a read completes", () => {
