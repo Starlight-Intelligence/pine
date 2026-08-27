@@ -90,7 +90,7 @@ function scrollToTurn(messageId: string): void {
       <HoverCardContent side="left" align="center" :side-offset="8" class="p-2">
         <nav
           v-scroll-fade
-          class="scroll-fade scrollbar-thin flex max-h-80 flex-col gap-1 overflow-y-auto"
+          class="scroll-fade no-scrollbar flex max-h-80 flex-col gap-1 overflow-y-auto"
           :aria-label="t('project.transcript.outline')"
         >
           <Button
