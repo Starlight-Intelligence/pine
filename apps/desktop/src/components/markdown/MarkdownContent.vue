@@ -34,19 +34,19 @@ const rendered = computed(() => renderMarkdown(props.source));
 }
 
 .markdown-content :deep(h1) {
-  @apply mt-8 scroll-m-20 text-2xl font-semibold tracking-tight text-balance;
+  @apply mt-8 mb-6 scroll-m-20 text-2xl font-semibold tracking-tight text-balance;
 }
 
 .markdown-content :deep(h2) {
-  @apply mt-8 scroll-m-20 border-b pb-2 text-xl font-semibold tracking-tight first:mt-0;
+  @apply mt-8 mb-6 scroll-m-20 border-b pb-2 text-xl font-semibold tracking-tight first:mt-0;
 }
 
 .markdown-content :deep(h3) {
-  @apply mt-6 scroll-m-20 text-lg font-semibold tracking-tight;
+  @apply mt-6 mb-4 scroll-m-20 text-lg font-semibold tracking-tight;
 }
 
 .markdown-content :deep(h4) {
-  @apply mt-6 scroll-m-20 text-base font-semibold tracking-tight;
+  @apply mt-6 mb-4 scroll-m-20 text-base font-semibold tracking-tight;
 }
 
 .markdown-content :deep(p) {
