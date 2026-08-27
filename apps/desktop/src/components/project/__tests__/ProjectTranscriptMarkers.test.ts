@@ -175,7 +175,8 @@ describe("project transcript markers", () => {
     const code = wrapper.get('[data-slot="marker-content"] code');
     expect(code.text()).toBe("main.ts");
     expect(code.classes()).toEqual(
-      expect.arrayContaining(["font-mono", "bg-muted"]),
+      expect.arrayContaining(["font-mono", "text-sm", "font-normal"]),
     );
+    expect(code.classes()).not.toEqual(expect.arrayContaining(["bg-muted"]));
   });
 });

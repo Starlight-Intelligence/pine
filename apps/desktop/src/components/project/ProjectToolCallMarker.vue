@@ -99,9 +99,9 @@ const fullText = computed(
     </MarkerIcon>
     <MarkerContent class="truncate" :title="fullText">
       <span v-if="presentation.before">{{ presentation.before }}</span>
-      <code
-        class="rounded bg-muted px-[0.3rem] py-[0.2rem] font-mono text-sm font-semibold"
-        >{{ presentation.target }}</code
+      <code class="font-mono text-sm font-normal">{{
+        presentation.target
+      }}</code
       ><span v-if="presentation.after">{{ presentation.after }}</span>
     </MarkerContent>
   </Marker>

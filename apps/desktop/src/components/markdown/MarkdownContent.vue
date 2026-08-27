@@ -78,7 +78,7 @@ const rendered = computed(() => renderMarkdown(props.source));
 }
 
 .markdown-content :deep(code) {
-  @apply rounded bg-muted px-[0.3rem] py-[0.2rem] font-mono text-sm font-semibold;
+  @apply rounded bg-muted px-[0.3rem] py-[0.2rem] font-mono text-sm font-normal;
 }
 
 .markdown-content :deep(pre) {
