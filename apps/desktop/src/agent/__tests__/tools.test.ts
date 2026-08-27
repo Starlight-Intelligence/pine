@@ -138,6 +138,9 @@ describe("createPineToolDefinitions", () => {
     expect(bashParams.required).toContain("description");
     expect(bashParams.required).toContain("command");
     expect(bashParams.properties?.description).toBeDefined();
+    // Streaming display relies on the model emitting `description` before
+    // `command`, which follows the schema's property order.
+    expect(Object.keys(bashParams.properties ?? {})[0]).toBe("description");
   });
 
   it("reads shared context and limits mutations to writable folders", async () => {

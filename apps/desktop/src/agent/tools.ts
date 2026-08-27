@@ -353,9 +353,11 @@ export async function createPineToolDefinitions(
   // command/timeout args and ignores the extra description, so we forward
   // straight to it.
   const pineBashParams = Type.Object({
+    // First property on purpose: models emit keys in schema order, so the
+    // description streams in before the command and can render immediately.
     description: Type.String({
       description:
-        "A short, imperative description of what this command does, for the user reading the transcript. Write it in the same language the user is using in this conversation, not the model's preferred language.",
+        "A short, imperative description of what this command does, for the user reading the transcript. Write this argument FIRST, before composing command, so readers see the intent while the call streams in. Write it in the same language the user is using in this conversation, not the model's preferred language.",
     }),
     command: Type.String({ description: "Bash command to execute" }),
     timeout: Type.Optional(
@@ -370,8 +372,8 @@ export async function createPineToolDefinitions(
     prepareArguments: (args) => args as Static<typeof pineBashParams>,
     execute: (toolCallId, params, signal, onUpdate, ctx) =>
       bashTool.execute(toolCallId, params, signal, onUpdate, ctx),
-    description: `${bashTool.description} Pine provides an isolated writable temporary directory through $TMPDIR; direct writes to /tmp are blocked. Explicitly describe what each command does in the description field, in the same language as the user's messages.`,
-    promptSnippet: `${bashTool.promptSnippet}. Use $TMPDIR for temporary files instead of /tmp; always describe what the command does in the description field, in the user's language`,
+    description: `${bashTool.description} Pine provides an isolated writable temporary directory through $TMPDIR; direct writes to /tmp are blocked. Explicitly describe what each command does in the description field, written first, in the same language as the user's messages.`,
+    promptSnippet: `${bashTool.promptSnippet}. Use $TMPDIR for temporary files instead of /tmp; always write the description argument before composing the command, in the user's language`,
   });
 
   return [readTool, pineBashTool, editTool, writeTool] as ToolDefinition[];
