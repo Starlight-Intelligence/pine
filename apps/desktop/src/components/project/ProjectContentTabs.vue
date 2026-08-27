@@ -196,22 +196,26 @@ watch(activeSession, (session) => {
 
     <div
       v-if="activeContentTab"
-      :key="activeContentTab.id"
       :id="`project-content-panel-${activeContentTab.id}`"
       role="tabpanel"
       :aria-labelledby="`project-content-tab-${activeContentTab.id}`"
       class="min-h-0 flex-1 overflow-hidden"
     >
-      <ProjectSessionView
-        v-if="activeContentTab.kind === 'session'"
-        :key="activeContentTab.id"
-        :tab-id="activeContentTab.id"
-        :session-id="
-          activeContentTab.state === 'bound'
-            ? activeContentTab.sessionId
-            : undefined
-        "
-      />
+      <!-- KeepAlive caches each tab's session view so scroll position, expand /
+           collapse state and the streaming DOM survive tab switches instead of
+           remounting. The :key keeps one cached instance per tab id. -->
+      <KeepAlive>
+        <ProjectSessionView
+          v-if="activeContentTab.kind === 'session'"
+          :key="activeContentTab.id"
+          :tab-id="activeContentTab.id"
+          :session-id="
+            activeContentTab.state === 'bound'
+              ? activeContentTab.sessionId
+              : undefined
+          "
+        />
+      </KeepAlive>
     </div>
   </div>
 </template>
