@@ -34,23 +34,20 @@ const summaryLabel = computed(() =>
   ),
 );
 
+const isStreaming = computed(() => props.message.status === "streaming");
+
 /**
- * Expand a tool run while it is the trailing activity in its message, so the
- * running calls stay visible. Collapse it as soon as a later thinking/text
- * block appears, mirroring the thinking marker's auto-collapse.
+ * Auto-expand a tool run only while it is the trailing activity of a live
+ * (still streaming) message, so the running calls stay visible. Anything
+ * else — a later thinking/text block, or a completed message loaded from
+ * history — stays collapsed, mirroring the thinking marker's auto-collapse.
  */
 watch(
-  () => props.message.id,
-  () => {
-    isExpanded.value = !props.followedByContent;
+  [() => props.message.id, isStreaming, () => props.followedByContent],
+  ([, streaming, followed]) => {
+    isExpanded.value = streaming && !followed;
   },
   { immediate: true },
-);
-watch(
-  () => props.followedByContent,
-  (followed) => {
-    if (followed) isExpanded.value = false;
-  },
 );
 
 function toggleExpanded(): void {

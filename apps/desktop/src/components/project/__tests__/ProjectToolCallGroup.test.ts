@@ -14,6 +14,11 @@ const message: PineTranscriptMessage = {
   blocks: [],
 };
 
+const streamingMessage: PineTranscriptMessage = {
+  ...message,
+  status: "streaming",
+};
+
 const toolCalls: PineToolCall[] = [
   {
     id: "tool-1",
@@ -67,8 +72,11 @@ describe("ProjectToolCallGroup", () => {
     expect(wrapper.findAllComponents(ProjectToolCallMarker)).toHaveLength(2);
   });
 
-  it("stays expanded for the trailing activity of a message", () => {
-    const wrapper = mountGroup({ followedByContent: false });
+  it("stays expanded for the trailing activity of a live message", () => {
+    const wrapper = mountGroup({
+      message: streamingMessage,
+      followedByContent: false,
+    });
 
     const trigger = wrapper.get('button[data-slot="marker"]');
     expect(trigger.attributes("aria-expanded")).toBe("true");
@@ -78,8 +86,22 @@ describe("ProjectToolCallGroup", () => {
     expect(wrapper.findAllComponents(ProjectToolCallMarker)).toHaveLength(2);
   });
 
-  it("auto-collapses when a later block follows the run", async () => {
+  it("collapses a completed message's tool run by default", () => {
     const wrapper = mountGroup({ followedByContent: false });
+
+    expect(
+      wrapper.get('button[data-slot="marker"]').attributes("aria-expanded"),
+    ).toBe("false");
+    expect(
+      wrapper.get("[data-tool-calls-content]").attributes("aria-hidden"),
+    ).toBe("true");
+  });
+
+  it("auto-collapses when a later block follows the run", async () => {
+    const wrapper = mountGroup({
+      message: streamingMessage,
+      followedByContent: false,
+    });
     expect(
       wrapper.get('button[data-slot="marker"]').attributes("aria-expanded"),
     ).toBe("true");
