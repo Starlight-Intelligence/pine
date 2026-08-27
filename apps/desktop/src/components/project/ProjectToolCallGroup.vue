@@ -7,32 +7,39 @@ import { Spinner } from "@/components/ui/spinner";
 import type { PineToolCall } from "@/shared/sessions";
 import type { PineTranscriptMessage } from "@/stores/session";
 import ProjectToolCallMarker from "./ProjectToolCallMarker.vue";
+import { countToolKinds, isRunningTool, TOOL_KIND_ORDER } from "./toolKinds";
 
 const props = defineProps<{
   message: PineTranscriptMessage;
   toolCalls: PineToolCall[];
   followedByContent: boolean;
 }>();
-const { t } = useI18n();
+const { locale, t } = useI18n();
 const contentId = useId();
 const isExpanded = ref(false);
 
-const count = computed(() => props.toolCalls.length);
 const anyRunning = computed(() =>
-  props.toolCalls.some(
-    (toolCall) =>
-      toolCall.status === "pending" || toolCall.status === "running",
-  ),
+  props.toolCalls.some((toolCall) => isRunningTool(toolCall)),
 );
 const allDone = computed(() => !anyRunning.value);
-const summaryLabel = computed(() =>
-  t(
-    allDone.value
-      ? "project.transcript.toolSteps.complete"
-      : "project.transcript.toolSteps.active",
-    { count: count.value },
-  ),
-);
+
+/**
+ * Summarize a tool run by grouping its calls by kind, e.g. "Read 3 files,
+ * edited 2 files, ran 5 commands". Kinds are emitted in a fixed order and
+ * joined with a separator, and each uses the active or complete tense
+ * depending on whether the run is still in flight.
+ */
+const summaryLabel = computed(() => {
+  const counts = countToolKinds(props.toolCalls);
+  const parts = TOOL_KIND_ORDER.flatMap((kind): string[] => {
+    const count = counts.get(kind);
+    if (!count) return [];
+    const tense = allDone.value ? "complete" : "active";
+    return [t(`project.transcript.toolSteps.${kind}.${tense}`, { count })];
+  });
+  const separator = locale.value.startsWith("zh") ? "，" : ", ";
+  return parts.join(separator);
+});
 
 const isStreaming = computed(() => props.message.status === "streaming");
 

@@ -1,0 +1,43 @@
+import type { PineToolCall } from "@/shared/sessions";
+
+export type ToolKind =
+  "bash" | "edit" | "generic" | "read" | "search" | "write";
+
+/** Order used to render a tool run's summary, matching the user's example
+ * ("read 3 files, edited 2, ran 5 commands"). */
+export const TOOL_KIND_ORDER: readonly ToolKind[] = [
+  "read",
+  "edit",
+  "write",
+  "search",
+  "bash",
+  "generic",
+];
+
+export function toolKind(name: string): ToolKind {
+  const normalized = name.toLowerCase().split(/[.:/]/).at(-1) ?? name;
+  if (["bash", "exec", "execute", "shell"].includes(normalized)) return "bash";
+  if (["edit", "apply_patch", "patch"].includes(normalized)) return "edit";
+  if (["read", "read_file", "view"].includes(normalized)) return "read";
+  if (["find", "grep", "search"].includes(normalized)) return "search";
+  if (["write", "write_file", "create_file"].includes(normalized)) {
+    return "write";
+  }
+  return "generic";
+}
+
+export function isRunningTool(toolCall: PineToolCall): boolean {
+  return toolCall.status === "pending" || toolCall.status === "running";
+}
+
+/** Count tool calls grouped by kind, preserving only kinds that appear. */
+export function countToolKinds(
+  toolCalls: readonly PineToolCall[],
+): Map<ToolKind, number> {
+  const counts = new Map<ToolKind, number>();
+  for (const toolCall of toolCalls) {
+    const kind = toolKind(toolCall.name);
+    counts.set(kind, (counts.get(kind) ?? 0) + 1);
+  }
+  return counts;
+}

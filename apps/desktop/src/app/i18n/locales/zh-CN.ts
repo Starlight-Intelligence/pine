@@ -162,8 +162,30 @@ export default {
         seconds: "{value} 秒",
       },
       toolSteps: {
-        active: "正在执行 {count} 个步骤",
-        complete: "进行了 {count} 个步骤",
+        bash: {
+          active: "正在运行 {count} 条命令",
+          complete: "运行了 {count} 条命令",
+        },
+        edit: {
+          active: "正在编辑 {count} 个文件",
+          complete: "编辑了 {count} 个文件",
+        },
+        generic: {
+          active: "正在调用 {count} 次工具",
+          complete: "调用了 {count} 次工具",
+        },
+        read: {
+          active: "正在读取 {count} 个文件",
+          complete: "读取了 {count} 个文件",
+        },
+        search: {
+          active: "正在搜索 {count} 次",
+          complete: "搜索了 {count} 次",
+        },
+        write: {
+          active: "正在写入 {count} 个文件",
+          complete: "写入了 {count} 个文件",
+        },
       },
       tools: {
         bash: {

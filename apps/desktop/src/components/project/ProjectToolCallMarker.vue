@@ -5,16 +5,12 @@ import { useI18n } from "vue-i18n";
 import { Marker, MarkerContent, MarkerIcon } from "@/components/ui/marker";
 import { Spinner } from "@/components/ui/spinner";
 import type { PineToolCall } from "@/shared/sessions";
-
-type ToolKind = "bash" | "edit" | "generic" | "read" | "search" | "write";
+import { isRunningTool, toolKind } from "./toolKinds";
 
 const props = defineProps<{ toolCall: PineToolCall }>();
 const { t } = useI18n();
 
-const isRunning = computed(
-  () =>
-    props.toolCall.status === "pending" || props.toolCall.status === "running",
-);
+const isRunning = computed(() => isRunningTool(props.toolCall));
 
 function inputRecord(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -43,18 +39,6 @@ function compactInline(value: string, maxLength = 80): string {
 
 function filename(value: string): string {
   return value.split(/[\\/]/).filter(Boolean).at(-1) ?? value;
-}
-
-function toolKind(name: string): ToolKind {
-  const normalized = name.toLowerCase().split(/[.:/]/).at(-1) ?? name;
-  if (["bash", "exec", "execute", "shell"].includes(normalized)) return "bash";
-  if (["edit", "apply_patch", "patch"].includes(normalized)) return "edit";
-  if (["read", "read_file", "view"].includes(normalized)) return "read";
-  if (["find", "grep", "search"].includes(normalized)) return "search";
-  if (["write", "write_file", "create_file"].includes(normalized)) {
-    return "write";
-  }
-  return "generic";
 }
 
 const presentation = computed(() => {

@@ -61,7 +61,7 @@ describe("ProjectToolCallGroup", () => {
 
     const trigger = wrapper.get('button[data-slot="marker"]');
     expect(trigger.attributes("aria-expanded")).toBe("false");
-    expect(trigger.text()).toContain("进行了 2 个步骤");
+    expect(trigger.text()).toContain("读取了 1 个文件，运行了 1 条命令");
 
     const content = wrapper.get("[data-tool-calls-content]");
     expect(content.attributes("aria-hidden")).toBe("true");
@@ -119,7 +119,7 @@ describe("ProjectToolCallGroup", () => {
     };
     const wrapper = mountGroup({ toolCalls: [running] });
     expect(wrapper.get('button[data-slot="marker"]').text()).toContain(
-      "正在执行 1 个步骤",
+      "正在运行 1 条命令",
     );
     expect(
       wrapper.get('[data-slot="marker"]').findComponent({ name: "Spinner" }),

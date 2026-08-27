@@ -167,8 +167,30 @@ export default {
         seconds: "{value}s",
       },
       toolSteps: {
-        active: "Performing {count} steps",
-        complete: "Performed {count} steps",
+        bash: {
+          active: "Running {count} commands",
+          complete: "Ran {count} commands",
+        },
+        edit: {
+          active: "Editing {count} files",
+          complete: "Edited {count} files",
+        },
+        generic: {
+          active: "Using {count} tools",
+          complete: "Used {count} tools",
+        },
+        read: {
+          active: "Reading {count} files",
+          complete: "Read {count} files",
+        },
+        search: {
+          active: "Searching {count} times",
+          complete: "Searched {count} times",
+        },
+        write: {
+          active: "Writing {count} files",
+          complete: "Wrote {count} files",
+        },
       },
       tools: {
         bash: {
