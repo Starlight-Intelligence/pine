@@ -48,6 +48,14 @@ function excerpt(text: string): string {
   return text.replace(/\s+/g, " ").trim();
 }
 
+function messageExcerpt(message: PineTranscriptMessage): string {
+  return excerpt(
+    message.blocks
+      .map((block) => (block.type === "text" ? block.text : ""))
+      .join("\n"),
+  );
+}
+
 function scrollToTurn(messageId: string): void {
   scrollToMessage(messageId, { align: "start", behavior: "smooth" });
 }
@@ -99,7 +107,7 @@ function scrollToTurn(messageId: string): void {
             @click="scrollToTurn(message.id)"
           >
             <span class="min-w-0 truncate">
-              {{ excerpt(message.text) }}
+              {{ messageExcerpt(message) }}
             </span>
           </Button>
         </nav>

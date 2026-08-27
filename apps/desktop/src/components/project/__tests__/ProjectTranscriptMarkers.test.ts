@@ -19,8 +19,7 @@ describe("project transcript markers", () => {
           id: "assistant-1",
           role: "assistant",
           status: "streaming",
-          text: "",
-          thinking: "Inspect the request.",
+          blocks: [{ type: "thinking", thinking: "Inspect the request." }],
           thinkingStartedAt: 1_000,
           thinkingStatus: "streaming",
         },
@@ -47,7 +46,12 @@ describe("project transcript markers", () => {
     await wrapper.setProps({
       message: {
         ...wrapper.props("message"),
-        thinking: "Inspect the request.\nCheck the active session.",
+        blocks: [
+          {
+            type: "thinking",
+            thinking: "Inspect the request.\nCheck the active session.",
+          },
+        ],
       },
     });
     expect(wrapper.get("[data-thinking-content]").text()).toContain(
@@ -71,8 +75,7 @@ describe("project transcript markers", () => {
           id: "assistant-1",
           role: "assistant",
           status: "streaming",
-          text: "",
-          thinking: "Inspect the request.",
+          blocks: [{ type: "thinking", thinking: "Inspect the request." }],
           thinkingStartedAt: Date.now(),
           thinkingStatus: "streaming",
         },
@@ -97,7 +100,10 @@ describe("project transcript markers", () => {
     await wrapper.setProps({
       message: {
         ...wrapper.props("message"),
-        text: "Here is the result.",
+        blocks: [
+          { type: "thinking", thinking: "Inspect the request." },
+          { type: "text", text: "Here is the result." },
+        ],
       },
     });
     expect(trigger.attributes("aria-expanded")).toBe("false");
@@ -111,8 +117,13 @@ describe("project transcript markers", () => {
           id: "assistant-1",
           role: "assistant",
           status: "streaming",
-          text: "Working on it",
-          thinking: "Inspect the request.\nCheck the active session.",
+          blocks: [
+            {
+              type: "thinking",
+              thinking: "Inspect the request.\nCheck the active session.",
+            },
+            { type: "text", text: "Working on it" },
+          ],
           thinkingDurationMs: 2_500,
           thinkingStatus: "complete",
         },

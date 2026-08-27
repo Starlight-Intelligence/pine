@@ -35,6 +35,14 @@ function serviceOptions(rootPath: string) {
   };
 }
 
+function textOf(message: {
+  blocks: { type: "text" | "thinking" | "toolCall"; text?: string }[];
+}): string {
+  return message.blocks
+    .map((block) => (block.type === "text" ? (block.text ?? "") : ""))
+    .join("");
+}
+
 describe("ProjectSessionService", () => {
   it("creates a new persistent Pi session", async () => {
     const rootPath = await createTemporaryProjectData();
@@ -133,7 +141,12 @@ describe("ProjectSessionService", () => {
         expect.objectContaining({
           messages: [
             expect.objectContaining({
-              text: "Conversation from the previous default folder",
+              blocks: [
+                {
+                  type: "text",
+                  text: "Conversation from the previous default folder",
+                },
+              ],
             }),
           ],
         }),
@@ -166,7 +179,7 @@ describe("ProjectSessionService", () => {
 
     try {
       const newest = await service.loadMessages(metadata.id, undefined, 2);
-      expect(newest.messages.map((message) => message.text)).toEqual([
+      expect(newest.messages.map((message) => textOf(message))).toEqual([
         "three",
         "four",
       ]);
@@ -177,7 +190,7 @@ describe("ProjectSessionService", () => {
         newest.nextBefore,
         2,
       );
-      expect(earlier.messages.map((message) => message.text)).toEqual([
+      expect(earlier.messages.map((message) => textOf(message))).toEqual([
         "one",
         "two",
       ]);
@@ -230,14 +243,17 @@ describe("ProjectSessionService", () => {
 
       expect(result.messages).toEqual([
         expect.objectContaining({
-          thinking: "Find the relevant file.",
           thinkingDurationMs: expect.any(Number),
-          toolCalls: [
-            expect.objectContaining({
-              id: toolCallId,
-              name: "read",
-              status: "complete",
-            }),
+          blocks: [
+            { type: "thinking", thinking: "Find the relevant file." },
+            {
+              type: "toolCall",
+              toolCall: expect.objectContaining({
+                id: toolCallId,
+                name: "read",
+                status: "complete",
+              }),
+            },
           ],
         }),
       ]);

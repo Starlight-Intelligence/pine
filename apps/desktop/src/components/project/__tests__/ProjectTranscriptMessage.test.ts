@@ -11,7 +11,7 @@ describe("ProjectTranscriptMessage", () => {
           id: "assistant-complete",
           role: "assistant",
           status: "complete",
-          text: "**Complete** output",
+          blocks: [{ type: "text", text: "**Complete** output" }],
         },
       },
     });
@@ -29,7 +29,7 @@ describe("ProjectTranscriptMessage", () => {
           id: "assistant-streaming",
           role: "assistant",
           status: "streaming",
-          text: "**Still streaming**",
+          blocks: [{ type: "text", text: "**Still streaming**" }],
         },
       },
     });
@@ -46,7 +46,7 @@ describe("ProjectTranscriptMessage", () => {
           id: "user-complete",
           role: "user",
           status: "complete",
-          text: "**Literal prompt**",
+          blocks: [{ type: "text", text: "**Literal prompt**" }],
         },
       },
     });

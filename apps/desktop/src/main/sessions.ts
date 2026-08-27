@@ -12,9 +12,9 @@ import type {
   LoadSessionMessagesResult,
   PineSessionSummary,
   PineTextMessage,
-  PineToolCall,
   SessionSearchResult,
 } from "../shared/sessions";
+import { parseContentBlocks } from "../shared/sessions";
 
 const SEARCH_RESULT_LIMIT = 50;
 const SEARCH_INDEX_FILE = "session-search.sqlite";
@@ -74,47 +74,6 @@ function textFromContent(content: unknown): string {
     .join("\n");
 }
 
-function thinkingFromContent(content: unknown): string {
-  if (!Array.isArray(content)) return "";
-
-  return content
-    .flatMap((part) => {
-      if (typeof part !== "object" || part === null) return [];
-      if ("thinking" in part && typeof part.thinking === "string") {
-        return [part.thinking];
-      }
-      return [];
-    })
-    .join("\n");
-}
-
-function toolCallsFromContent(content: unknown): PineToolCall[] {
-  if (!Array.isArray(content)) return [];
-
-  return content.flatMap((part) => {
-    if (
-      typeof part !== "object" ||
-      part === null ||
-      !("type" in part) ||
-      part.type !== "toolCall" ||
-      !("id" in part) ||
-      typeof part.id !== "string" ||
-      !("name" in part) ||
-      typeof part.name !== "string"
-    ) {
-      return [];
-    }
-    return [
-      {
-        id: part.id,
-        name: part.name,
-        status: "pending" as const,
-        ...("arguments" in part ? { input: part.arguments } : {}),
-      },
-    ];
-  });
-}
-
 function thinkingDurationMs(
   entry: Extract<SessionTreeEntry, { type: "message" }>,
 ): number | undefined {
@@ -156,27 +115,35 @@ function textMessages(entries: SessionTreeEntry[]): PineTextMessage[] {
       "content" in entryMessage
     ) {
       const owner = toolOwners.get(entryMessage.toolCallId);
-      if (!owner?.toolCalls) continue;
-      owner.toolCalls = owner.toolCalls.map((toolCall) =>
-        toolCall.id === entryMessage.toolCallId
-          ? {
-              ...toolCall,
-              status: entryMessage.isError ? "error" : "complete",
-              output: entryMessage.content,
-            }
-          : toolCall,
-      );
+      if (!owner) continue;
+      owner.blocks = owner.blocks.map((block) => {
+        if (
+          block.type !== "toolCall" ||
+          block.toolCall.id !== entryMessage.toolCallId
+        ) {
+          return block;
+        }
+        return {
+          ...block,
+          toolCall: {
+            ...block.toolCall,
+            status: entryMessage.isError
+              ? ("error" as const)
+              : ("complete" as const),
+            output: entryMessage.content,
+          },
+        };
+      });
       continue;
     }
     if (entry.message.role !== "user" && entry.message.role !== "assistant") {
       continue;
     }
 
-    const text = textFromMessage(entry).trim();
     const content = "content" in entry.message ? entry.message.content : null;
-    const thinking = thinkingFromContent(content).trim();
-    const toolCalls = toolCallsFromContent(content);
-    if (!text && !thinking && toolCalls.length === 0) continue;
+    const blocks = parseContentBlocks(content);
+    const hasThinking = blocks.some((block) => block.type === "thinking");
+    if (blocks.length === 0) continue;
     const messageTimestamp = entry.message.timestamp;
     const message: PineTextMessage = {
       createdAt:
@@ -185,21 +152,23 @@ function textMessages(entries: SessionTreeEntry[]): PineTextMessage[] {
           : entry.timestamp,
       id: entry.id,
       role: entry.message.role,
-      text,
-      ...(thinking ? { thinking } : {}),
-      ...(thinking ? { thinkingDurationMs: thinkingDurationMs(entry) } : {}),
-      ...(toolCalls.length > 0 ? { toolCalls } : {}),
+      blocks,
+      ...(hasThinking ? { thinkingDurationMs: thinkingDurationMs(entry) } : {}),
     };
     messages.push(message);
-    for (const toolCall of toolCalls) toolOwners.set(toolCall.id, message);
+    for (const block of blocks) {
+      if (block.type === "toolCall") toolOwners.set(block.toolCall.id, message);
+    }
   }
 
   for (const message of messages) {
-    if (!message.toolCalls) continue;
-    message.toolCalls = message.toolCalls.map((toolCall) =>
-      toolCall.status === "pending"
-        ? { ...toolCall, status: "error" }
-        : toolCall,
+    message.blocks = message.blocks.map((block) =>
+      block.type === "toolCall" && block.toolCall.status === "pending"
+        ? {
+            ...block,
+            toolCall: { ...block.toolCall, status: "error" as const },
+          }
+        : block,
     );
   }
 

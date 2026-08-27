@@ -27,10 +27,16 @@ let elapsedTimer: number | undefined;
 const isStreaming = computed(
   () => props.message.thinkingStatus === "streaming",
 );
-const hasResponseAfterThinking = computed(
-  () =>
-    Boolean(props.message.text.trim()) ||
-    Boolean(props.message.toolCalls?.length),
+
+const thinkingText = computed(() =>
+  props.message.blocks
+    .filter((block) => block.type === "thinking")
+    .map((block) => (block.type === "thinking" ? block.thinking : ""))
+    .join("\n"),
+);
+
+const hasResponseAfterThinking = computed(() =>
+  props.message.blocks.some((block) => block.type !== "thinking"),
 );
 
 function formatDuration(durationMs?: number): string | undefined {
@@ -115,7 +121,7 @@ watch(
 watch(
   [
     () => props.message.id,
-    () => Boolean(props.message.thinking),
+    () => Boolean(thinkingText.value),
     hasResponseAfterThinking,
   ],
   ([messageId, hasThinking, hasResponse], previous) => {
@@ -138,7 +144,7 @@ watch(
   { immediate: true },
 );
 watch(
-  () => props.message.thinking,
+  () => thinkingText.value,
   async () => {
     if (!isStreaming.value || !isExpanded.value || !isFollowingThinking.value) {
       return;
@@ -185,7 +191,7 @@ onBeforeUnmount(stopElapsedTimer);
           class="scroll-fade mt-2 max-h-64 overflow-y-auto overscroll-contain pl-6 pr-3 text-sm text-muted-foreground whitespace-pre-wrap"
           @scroll.passive="handleThinkingScroll"
         >
-          {{ message.thinking }}
+          {{ thinkingText }}
         </div>
       </div>
     </div>

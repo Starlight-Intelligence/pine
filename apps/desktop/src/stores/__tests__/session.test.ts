@@ -245,8 +245,10 @@ describe("session store", () => {
         id: "019cfe51-7166-79b9-a5b9-c652fcca9eac",
         role: "assistant",
         status: "complete",
-        text: "Hello, world",
-        thinking: "Check the incoming message.",
+        blocks: [
+          { type: "thinking", thinking: "Check the incoming message." },
+          { type: "text", text: "Hello, world" },
+        ],
       }),
     ]);
     expect(store.isRunning).toBe(true);
@@ -349,13 +351,17 @@ describe("session store", () => {
           id: messageId,
           thinkingDurationMs: 2_500,
           thinkingStatus: "complete",
-          toolCalls: [
-            expect.objectContaining({
-              durationMs: 1_000,
-              id: "call-read",
-              input: { path: "/project/src/main.ts" },
-              status: "complete",
-            }),
+          blocks: [
+            { type: "thinking", thinking: "Inspect.\nRead the file." },
+            {
+              type: "toolCall",
+              toolCall: expect.objectContaining({
+                durationMs: 1_000,
+                id: "call-read",
+                input: { path: "/project/src/main.ts" },
+                status: "complete",
+              }),
+            },
           ],
         }),
       ]);

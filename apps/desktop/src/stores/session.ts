@@ -2,11 +2,13 @@ import { acceptHMRUpdate, defineStore } from "pinia";
 import { ref, shallowRef } from "vue";
 import type { PineAgentEvent, PineJsonValue } from "@/shared/agent";
 import type {
+  PineContentBlock,
   PineSessionSummary,
   PineTextMessage,
   PineToolCall,
   SessionSearchResult,
 } from "@/shared/sessions";
+import { parseContentBlocks } from "@/shared/sessions";
 
 export interface PineTranscriptMessage extends PineTextMessage {
   status: "complete" | "streaming";
@@ -23,65 +25,37 @@ function messageRole(value: PineJsonValue): "assistant" | "user" | null {
     : null;
 }
 
-function messageText(value: PineJsonValue): string {
-  if (typeof value === "string") return value;
-  if (!Array.isArray(value)) return "";
-  return value
-    .flatMap((part) => {
-      if (typeof part !== "object" || part === null || Array.isArray(part)) {
-        return [];
-      }
-      return typeof part.text === "string" ? [part.text] : [];
-    })
-    .join("\n");
+function blocksHasThinking(blocks: readonly PineContentBlock[]): boolean {
+  return blocks.some((block) => block.type === "thinking");
 }
 
-function messageThinking(value: PineJsonValue): string {
-  if (!Array.isArray(value)) return "";
-  return value
-    .flatMap((part) => {
-      if (typeof part !== "object" || part === null || Array.isArray(part)) {
-        return [];
-      }
-      return typeof part.thinking === "string" ? [part.thinking] : [];
-    })
-    .join("\n");
-}
-
-function messageToolCalls(value: PineJsonValue): PineToolCall[] {
-  if (!Array.isArray(value)) return [];
-  return value.flatMap((part) => {
-    if (
-      typeof part !== "object" ||
-      part === null ||
-      Array.isArray(part) ||
-      part.type !== "toolCall" ||
-      typeof part.id !== "string" ||
-      typeof part.name !== "string"
-    ) {
-      return [];
+function mergeToolCallBlocks(
+  blocks: PineContentBlock[],
+  toolCallId: string,
+  patch: Partial<PineToolCall>,
+): PineContentBlock[] {
+  return blocks.map((block) => {
+    if (block.type !== "toolCall" || block.toolCall.id !== toolCallId) {
+      return block;
     }
-    return [
-      {
-        id: part.id,
-        name: part.name,
-        status: "pending" as const,
-        ...(part.arguments !== undefined ? { input: part.arguments } : {}),
-      },
-    ];
+    return { ...block, toolCall: { ...block.toolCall, ...patch } };
   });
 }
 
-function mergeToolCalls(
-  content: PineJsonValue,
-  previous: readonly PineToolCall[] = [],
-): PineToolCall[] | undefined {
-  const parsed = messageToolCalls(content);
-  if (parsed.length === 0)
-    return previous.length > 0 ? [...previous] : undefined;
-  return parsed.map((toolCall) => {
-    const existing = previous.find((candidate) => candidate.id === toolCall.id);
-    return existing ? { ...toolCall, ...existing } : toolCall;
+function mergeBlockStatuses(
+  blocks: PineContentBlock[],
+  previous: readonly PineContentBlock[] | undefined,
+): PineContentBlock[] {
+  if (!previous || previous.length === 0) return blocks;
+  return blocks.map((block) => {
+    if (block.type !== "toolCall") return block;
+    const prior = previous.find(
+      (candidate) =>
+        candidate.type === "toolCall" &&
+        candidate.toolCall.id === block.toolCall.id,
+    );
+    if (prior?.type !== "toolCall") return block;
+    return { ...block, toolCall: { ...block.toolCall, ...prior.toolCall } };
   });
 }
 
@@ -231,7 +205,9 @@ export const useSessionStore = defineStore("session", () => {
       messages.value = result.messages.map((message) => ({
         ...message,
         status: "complete",
-        ...(message.thinking ? { thinkingStatus: "complete" as const } : {}),
+        ...(blocksHasThinking(message.blocks)
+          ? { thinkingStatus: "complete" as const }
+          : {}),
       }));
       hasEarlierMessages.value = result.hasMore;
       nextBefore.value = result.nextBefore;
@@ -263,7 +239,9 @@ export const useSessionStore = defineStore("session", () => {
         ...result.messages.map((message): PineTranscriptMessage => ({
           ...message,
           status: "complete",
-          ...(message.thinking ? { thinkingStatus: "complete" as const } : {}),
+          ...(blocksHasThinking(message.blocks)
+            ? { thinkingStatus: "complete" as const }
+            : {}),
         })),
         ...messages.value,
       ];
@@ -361,7 +339,10 @@ export const useSessionStore = defineStore("session", () => {
     ) {
       const now = Date.now();
       let messageIndex = messages.value.findIndex((message) =>
-        message.toolCalls?.some((toolCall) => toolCall.id === event.toolCallId),
+        message.blocks.some(
+          (block) =>
+            block.type === "toolCall" && block.toolCall.id === event.toolCallId,
+        ),
       );
       if (messageIndex < 0) {
         messages.value.push({
@@ -369,12 +350,14 @@ export const useSessionStore = defineStore("session", () => {
           id: `tool-${event.toolCallId}`,
           role: "assistant",
           status: "complete",
-          text: "",
-          toolCalls: [
+          blocks: [
             {
-              id: event.toolCallId,
-              name: event.toolName,
-              status: "pending",
+              type: "toolCall",
+              toolCall: {
+                id: event.toolCallId,
+                name: event.toolName,
+                status: "pending",
+              },
             },
           ],
         });
@@ -382,37 +365,40 @@ export const useSessionStore = defineStore("session", () => {
       }
 
       const message = messages.value[messageIndex];
-      const toolCalls = (message.toolCalls ?? []).map((toolCall) => {
-        if (toolCall.id !== event.toolCallId) return toolCall;
-        const startedAt =
-          toolCall.startedAt ??
-          (event.type === "tool-start"
-            ? new Date(now).toISOString()
-            : undefined);
-        return {
-          ...toolCall,
-          name: event.toolName,
-          status:
-            event.type === "tool-end"
-              ? event.isError
-                ? ("error" as const)
-                : ("complete" as const)
-              : ("running" as const),
-          ...(event.type === "tool-start" && event.payload !== undefined
-            ? { input: event.payload }
-            : {}),
-          ...(event.type !== "tool-start" && event.payload !== undefined
-            ? { output: event.payload }
-            : {}),
-          ...(startedAt ? { startedAt } : {}),
-          ...(event.type === "tool-end" && startedAt
-            ? {
-                durationMs: Math.max(0, now - new Date(startedAt).getTime()),
-              }
-            : {}),
-        };
-      });
-      messages.value[messageIndex] = { ...message, toolCalls };
+      const existing = message.blocks.find(
+        (block) =>
+          block.type === "toolCall" && block.toolCall.id === event.toolCallId,
+      );
+      const existingToolCall =
+        existing?.type === "toolCall" ? existing.toolCall : undefined;
+      const startedAt =
+        existingToolCall?.startedAt ??
+        (event.type === "tool-start" ? new Date(now).toISOString() : undefined);
+      const patch: Partial<PineToolCall> = {
+        name: event.toolName,
+        status:
+          event.type === "tool-end"
+            ? event.isError
+              ? ("error" as const)
+              : ("complete" as const)
+            : ("running" as const),
+        ...(event.type === "tool-start" && event.payload !== undefined
+          ? { input: event.payload }
+          : {}),
+        ...(event.type !== "tool-start" && event.payload !== undefined
+          ? { output: event.payload }
+          : {}),
+        ...(startedAt ? { startedAt } : {}),
+        ...(event.type === "tool-end" && startedAt
+          ? {
+              durationMs: Math.max(0, now - new Date(startedAt).getTime()),
+            }
+          : {}),
+      };
+      messages.value[messageIndex] = {
+        ...message,
+        blocks: mergeToolCallBlocks(message.blocks, event.toolCallId, patch),
+      };
       return;
     }
     if (
@@ -427,12 +413,16 @@ export const useSessionStore = defineStore("session", () => {
     const role = messageRole(event.message);
     if (!role) return;
     const content = messageContent(event.message);
-    const thinking = messageThinking(content);
     const previous = messages.value.find(
       (message) => message.id === event.messageId,
     );
     const now = Date.now();
-    const thinkingStartedAt = thinking
+    const blocks = mergeBlockStatuses(
+      parseContentBlocks(content),
+      previous?.blocks,
+    );
+    const hasThinking = blocksHasThinking(blocks);
+    const thinkingStartedAt = hasThinking
       ? (previous?.thinkingStartedAt ?? now)
       : undefined;
     const updateType =
@@ -441,30 +431,26 @@ export const useSessionStore = defineStore("session", () => {
         : undefined;
     const thinkingEnded =
       event.type === "message-end" || updateType === "thinking_end";
-    const thinkingStatus = thinking
+    const thinkingStatus = hasThinking
       ? thinkingEnded || previous?.thinkingStatus === "complete"
         ? ("complete" as const)
         : ("streaming" as const)
       : undefined;
-    const toolCalls = mergeToolCalls(content, previous?.toolCalls);
+    const thinkingDurationMs =
+      thinkingStartedAt && thinkingStatus === "complete"
+        ? (previous?.thinkingDurationMs ?? Math.max(0, now - thinkingStartedAt))
+        : undefined;
     const nextMessage: PineTranscriptMessage = {
       createdAt: messageCreatedAt(event.message),
       id: event.messageId,
       role,
       status: event.type === "message-end" ? "complete" : "streaming",
-      text: messageText(content),
-      ...(thinking ? { thinking } : {}),
+      blocks,
+      ...(thinkingDurationMs ? { thinkingDurationMs } : {}),
       ...(thinkingStatus ? { thinkingStatus } : {}),
       ...(thinkingStartedAt ? { thinkingStartedAt } : {}),
-      ...(thinkingStartedAt && thinkingStatus === "complete"
-        ? {
-            thinkingDurationMs:
-              previous?.thinkingDurationMs ??
-              Math.max(0, now - thinkingStartedAt),
-          }
-        : {}),
-      ...(toolCalls ? { toolCalls } : {}),
     };
+
     const index = messages.value.findIndex(
       (message) => message.id === event.messageId,
     );

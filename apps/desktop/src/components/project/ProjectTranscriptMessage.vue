@@ -12,39 +12,57 @@ const props = defineProps<{
 }>();
 
 const isUser = computed(() => props.message.role === "user");
+
+/**
+ * The message body text is the concatenation of every `text` block, so user
+ * messages and markdown rendering keep working regardless of where thinking /
+ * tool-call markers sit in the block order.
+ */
+const text = computed(() =>
+  props.message.blocks
+    .map((block) => (block.type === "text" ? block.text : ""))
+    .join("\n"),
+);
+
+const blocks = computed(() => props.message.blocks);
 </script>
 
 <template>
   <Message :align="isUser ? 'end' : 'start'">
     <MessageContent>
-      <div
-        v-if="!isUser && (message.thinking || message.toolCalls?.length)"
-        class="mb-2 flex flex-col gap-2"
-      >
-        <ProjectThinkingMarker v-if="message.thinking" :message="message" />
-        <ProjectToolCallMarker
-          v-for="toolCall in message.toolCalls"
-          :key="toolCall.id"
-          :tool-call="toolCall"
-        />
-      </div>
-      <Bubble
-        v-if="isUser || message.text"
-        :variant="isUser ? 'secondary' : 'ghost'"
-      >
-        <BubbleContent
-          v-if="isUser || message.status === 'streaming'"
-          class="whitespace-pre-wrap"
-        >
-          {{ message.text }}
-          <span
-            v-if="message.status === 'streaming'"
-            class="ml-0.5 inline-block h-[1em] w-0.5 animate-pulse bg-current align-[-0.12em]"
-            aria-hidden="true"
+      <!-- Non-user messages render blocks in their original order so a tool
+           call that happens after body text appears after that text. -->
+      <template v-if="!isUser">
+        <template v-for="(block, index) in blocks" :key="index">
+          <ProjectThinkingMarker
+            v-if="block.type === 'thinking'"
+            :message="message"
           />
-        </BubbleContent>
-        <BubbleContent v-else>
-          <MarkdownContent :source="message.text" />
+          <div v-else-if="block.type === 'toolCall'" class="mb-2">
+            <ProjectToolCallMarker :tool-call="block.toolCall" />
+          </div>
+          <Bubble v-else-if="block.type === 'text'" :variant="'ghost'">
+            <BubbleContent
+              v-if="message.status === 'streaming'"
+              class="whitespace-pre-wrap"
+            >
+              {{ block.text }}
+              <span
+                class="ml-0.5 inline-block h-[1em] w-0.5 animate-pulse bg-current align-[-0.12em]"
+                aria-hidden="true"
+              />
+            </BubbleContent>
+            <BubbleContent v-else>
+              <MarkdownContent :source="block.text" />
+            </BubbleContent>
+          </Bubble>
+        </template>
+      </template>
+
+      <!-- User messages are plain text in a secondary bubble. -->
+      <Bubble v-else variant="secondary">
+        <BubbleContent class="whitespace-pre-wrap">
+          {{ text }}
         </BubbleContent>
       </Bubble>
     </MessageContent>
