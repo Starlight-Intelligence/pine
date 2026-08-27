@@ -1,7 +1,26 @@
+import {
+  FilePlusIcon,
+  FileTextIcon,
+  SearchIcon,
+  SquarePenIcon,
+  TerminalIcon,
+  WrenchIcon,
+} from "@lucide/vue";
+import type { Component } from "vue";
 import type { PineToolCall } from "@/shared/sessions";
 
 export type ToolKind =
   "bash" | "edit" | "generic" | "read" | "search" | "write";
+
+/** Icon shown for each tool call, keyed by its kind. */
+export const TOOL_KIND_ICON: Record<ToolKind, Component> = {
+  bash: TerminalIcon,
+  edit: SquarePenIcon,
+  generic: WrenchIcon,
+  read: FileTextIcon,
+  search: SearchIcon,
+  write: FilePlusIcon,
+};
 
 /** Order used to render a tool run's summary, matching the user's example
  * ("read 3 files, edited 2, ran 5 commands"). */

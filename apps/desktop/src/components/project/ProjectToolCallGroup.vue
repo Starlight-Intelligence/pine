@@ -7,7 +7,13 @@ import { Spinner } from "@/components/ui/spinner";
 import type { PineToolCall } from "@/shared/sessions";
 import type { PineTranscriptMessage } from "@/stores/session";
 import ProjectToolCallMarker from "./ProjectToolCallMarker.vue";
-import { countToolKinds, isRunningTool, TOOL_KIND_ORDER } from "./toolKinds";
+import {
+  countToolKinds,
+  isRunningTool,
+  toolKind,
+  TOOL_KIND_ICON,
+  TOOL_KIND_ORDER,
+} from "./toolKinds";
 
 const props = defineProps<{
   message: PineTranscriptMessage;
@@ -41,6 +47,10 @@ const summaryLabel = computed(() => {
   return parts.join(separator);
 });
 
+const iconByToolCall = computed(() =>
+  props.toolCalls.map((toolCall) => toolKind(toolCall.name)),
+);
+
 const isStreaming = computed(() => props.message.status === "streaming");
 
 /**
@@ -72,6 +82,18 @@ function toggleExpanded(): void {
       :aria-expanded="isExpanded"
       @click="toggleExpanded"
     >
+      <span class="flex shrink-0 items-center gap-1" data-tool-icons>
+        <component
+          :is="TOOL_KIND_ICON[iconByToolCall[index]]"
+          v-for="(_, index) in iconByToolCall"
+          :key="index"
+          class="size-4"
+          :aria-hidden="true"
+        />
+      </span>
+
+      <MarkerContent>{{ summaryLabel }}</MarkerContent>
+
       <MarkerIcon>
         <Spinner v-if="anyRunning && !isExpanded" />
         <ChevronRightIcon
@@ -80,7 +102,6 @@ function toggleExpanded(): void {
           :class="isExpanded && 'rotate-90'"
         />
       </MarkerIcon>
-      <MarkerContent>{{ summaryLabel }}</MarkerContent>
     </Marker>
 
     <div

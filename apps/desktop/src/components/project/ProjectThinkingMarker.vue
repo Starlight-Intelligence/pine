@@ -166,13 +166,14 @@ onBeforeUnmount(stopElapsedTimer);
       :aria-expanded="isExpanded"
       @click="toggleExpanded"
     >
+      <MarkerContent>{{ summaryLabel }}</MarkerContent>
+
       <MarkerIcon>
         <ChevronRightIcon
           class="transition-transform duration-300 ease-out motion-reduce:transition-none"
           :class="isExpanded && 'rotate-90'"
         />
       </MarkerIcon>
-      <MarkerContent>{{ summaryLabel }}</MarkerContent>
     </Marker>
 
     <div

@@ -125,4 +125,44 @@ describe("ProjectToolCallGroup", () => {
       wrapper.get('[data-slot="marker"]').findComponent({ name: "Spinner" }),
     ).not.toBeUndefined();
   });
+
+  it("shows icons in actual call order, before the label", () => {
+    const ordered: PineToolCall[] = [
+      { id: "t-bash", input: {}, name: "bash", status: "complete" },
+      {
+        id: "t-read",
+        input: { path: "/a.ts" },
+        name: "read",
+        status: "complete",
+      },
+      {
+        id: "t-read-2",
+        input: { path: "/b.ts" },
+        name: "read",
+        status: "complete",
+      },
+    ];
+    const wrapper = mountGroup({ toolCalls: ordered });
+
+    const iconNames = wrapper
+      .get("[data-tool-icons]")
+      .findAll("svg")
+      .map((icon) => icon.attributes("class") ?? "");
+
+    expect(iconNames.filter((name) => name.includes("file-text")).length).toBe(
+      2,
+    );
+    // Every icon keeps its own fixed size so multiple icons never share width.
+    for (const name of iconNames) {
+      expect(name).toContain("size-4");
+    }
+    const firstFileText = iconNames.findIndex((name) =>
+      name.includes("file-text"),
+    );
+    const firstTerminal = iconNames.findIndex((name) =>
+      name.includes("terminal"),
+    );
+    // bash (terminal) happens before the read (file-text) calls in actual order.
+    expect(firstTerminal).toBeLessThan(firstFileText);
+  });
 });
