@@ -82,6 +82,7 @@ function abort(): void {
     auto-scroll
     default-scroll-position="last-anchor"
     :scroll-previous-item-peek="64"
+    :follow-animated="isRunning"
   >
     <div class="session-layout flex h-full min-h-0 flex-col">
       <div class="relative min-h-0 w-full flex-1">
