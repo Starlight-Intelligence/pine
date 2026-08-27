@@ -219,6 +219,7 @@ describe("project transcript markers", () => {
 
     const content = wrapper.get('[data-slot="marker-content"]');
     expect(content.classes()).not.toContain("shimmer");
+    expect(content.classes()).toContain("text-destructive");
     const alert = wrapper.get("[data-slot=marker-icon] svg");
     expect(alert.classes()).toContain("text-destructive");
   });
@@ -269,6 +270,65 @@ describe("project transcript markers", () => {
       "已执行 Checks types across the app：bun run typecheck",
     );
     expect(content.get("code").text()).toBe("bun run typecheck");
+  });
+
+  it("renders read line ranges and edit line tallies semantically", () => {
+    const wrapper = mount(ProjectToolCallMarker, {
+      props: {
+        toolCall: {
+          id: "tool-1",
+          input: {
+            path: "/project/src/main.ts",
+            offset: 12,
+            limit: 20,
+          },
+          name: "read",
+          status: "complete",
+        },
+      },
+      global: { plugins: [createAppI18n("zh-CN")] },
+    });
+    expect(wrapper.get('[data-slot="marker-content"] code').text()).toBe(
+      "main.ts:12-31",
+    );
+
+    const editor = mount(ProjectToolCallMarker, {
+      props: {
+        toolCall: {
+          id: "tool-2",
+          input: {
+            path: "/project/src/main.ts",
+            edits: [
+              { oldText: "a\nb\nc", newText: "1\n2\n3\n4\n5" },
+              { oldText: "d\ne", newText: "6" },
+              {},
+            ],
+          },
+          name: "edit",
+          status: "complete",
+        },
+      },
+      global: { plugins: [createAppI18n("zh-CN")] },
+    });
+    expect(editor.get('[data-slot="marker-content"] code').text()).toBe(
+      "main.ts +6 -5",
+    );
+
+    // No range when a whole file was read.
+    const whole = mount(ProjectToolCallMarker, {
+      props: {
+        toolCall: {
+          id: "tool-3",
+          input: { path: "/project/src/main.ts" },
+          name: "read",
+          status: "complete",
+        },
+      },
+      global: { plugins: [createAppI18n("zh-CN")] },
+    });
+    expect(whole.get('[data-slot="marker-content"] code').text()).toBe(
+      "main.ts",
+    );
   });
 
   it("falls back to the command when a bash call has no description", () => {

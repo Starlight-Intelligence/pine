@@ -47,6 +47,52 @@ function filename(value: string): string {
   return value.split(/[\\/]/).filter(Boolean).at(-1) ?? value;
 }
 
+function nonEmptyLineCount(value: unknown): number {
+  if (typeof value !== "string" || !value.trim()) return 0;
+  return value.split("\n").filter((line) => line.trim()).length;
+}
+
+function firstKey(record: Record<string, unknown>, keys: readonly string[]) {
+  for (const key of keys) {
+    const value = record[key];
+    if (value !== undefined && value !== null) return value;
+  }
+  return undefined;
+}
+
+/** ':12-31' when a read streams or declares an explicit line window. */
+function readRangeSuffix(input: Record<string, unknown>): string {
+  const offset = input.offset;
+  const limit = input.limit;
+  if (typeof offset !== "number" && typeof limit !== "number") return "";
+  const start =
+    typeof offset === "number" ? Math.max(1, Math.round(offset)) : 1;
+  const end =
+    typeof limit === "number" && limit > 0
+      ? start + Math.round(limit) - 1
+      : undefined;
+  return end === undefined ? `:${start}-` : `:${start}-${end}`;
+}
+
+/** ' +6 -4' tallying every edit hunk's touched lines (streaming-safe). */
+function editDiffSuffix(input: Record<string, unknown>): string {
+  const edits = input.edits;
+  if (!Array.isArray(edits)) return "";
+  let added = 0;
+  let removed = 0;
+  for (const edit of edits) {
+    if (typeof edit !== "object" || edit === null) continue;
+    const record = edit as Record<string, unknown>;
+    added += nonEmptyLineCount(
+      firstKey(record, ["newText", "newStr", "new_string"]),
+    );
+    removed += nonEmptyLineCount(
+      firstKey(record, ["oldText", "oldStr", "old_string"]),
+    );
+  }
+  return added || removed ? ` +${added} -${removed}` : "";
+}
+
 const presentation = computed(() => {
   const kind = toolKind(props.toolCall.name);
   const input = inputRecord(props.toolCall.input);
@@ -54,13 +100,19 @@ const presentation = computed(() => {
   const path = firstString(input, ["path", "filePath", "file_path"]);
   const command = firstString(input, ["command", "cmd"]);
   const query = firstString(input, ["pattern", "query", "search"]);
+  const suffix =
+    kind === "edit"
+      ? editDiffSuffix(input)
+      : kind === "read"
+        ? readRangeSuffix(input)
+        : "";
   const target =
     kind === "bash" && command
       ? compactInline(command)
       : kind === "search" && query
         ? compactInline(query)
         : path
-          ? filename(path)
+          ? `${filename(path)}${suffix}`
           : props.toolCall.name;
   const state = isRunning.value
     ? "running"
@@ -105,11 +157,15 @@ const fullText = computed(() => {
     </MarkerIcon>
     <MarkerContent
       class="truncate"
-      :class="isRunning && 'shimmer'"
+      :class="
+        isRunning
+          ? 'shimmer'
+          : toolCall.status === 'error' && 'text-destructive'
+      "
       :title="fullText"
     >
       <span v-if="presentation.before">{{ presentation.before }}</span>
-      <span v-if="presentation.operation"
+      <span v-if="presentation.operation" class="font-medium"
         >{{ presentation.operation }}{{ presentation.separator }}</span
       >
       <code class="font-mono text-sm font-normal">{{
