@@ -355,7 +355,7 @@ export async function createPineToolDefinitions(
   const pineBashParams = Type.Object({
     description: Type.String({
       description:
-        "A short, imperative description of what this command does, for the user reading the transcript.",
+        "A short, imperative description of what this command does, for the user reading the transcript. Write it in the same language the user is using in this conversation, not the model's preferred language.",
     }),
     command: Type.String({ description: "Bash command to execute" }),
     timeout: Type.Optional(
@@ -370,8 +370,8 @@ export async function createPineToolDefinitions(
     prepareArguments: (args) => args as Static<typeof pineBashParams>,
     execute: (toolCallId, params, signal, onUpdate, ctx) =>
       bashTool.execute(toolCallId, params, signal, onUpdate, ctx),
-    description: `${bashTool.description} Pine provides an isolated writable temporary directory through $TMPDIR; direct writes to /tmp are blocked. Explicitly describe what each command does in the description field.`,
-    promptSnippet: `${bashTool.promptSnippet}. Use $TMPDIR for temporary files instead of /tmp; always describe what the command does in the description field`,
+    description: `${bashTool.description} Pine provides an isolated writable temporary directory through $TMPDIR; direct writes to /tmp are blocked. Explicitly describe what each command does in the description field, in the same language as the user's messages.`,
+    promptSnippet: `${bashTool.promptSnippet}. Use $TMPDIR for temporary files instead of /tmp; always describe what the command does in the description field, in the user's language`,
   });
 
   return [readTool, pineBashTool, editTool, writeTool] as ToolDefinition[];
