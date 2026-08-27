@@ -10,6 +10,7 @@ import {
   watch,
 } from "vue";
 import { useI18n } from "vue-i18n";
+import { animateScrollTop } from "@/lib/animateScroll";
 import { Marker, MarkerContent, MarkerIcon } from "@/components/ui/marker";
 import type { PineTranscriptMessage } from "@/stores/session";
 
@@ -23,6 +24,7 @@ const isExpanded = ref(false);
 const isFollowingThinking = ref(true);
 const now = ref(Date.now());
 let elapsedTimer: number | undefined;
+let scrollAnimation: (() => void) | undefined;
 
 const isStreaming = computed(
   () => props.message.thinkingStatus === "streaming",
@@ -94,7 +96,8 @@ function syncElapsedTimer(streaming: boolean): void {
 
 function scrollThinkingToBottom(): void {
   const content = thinkingContent.value;
-  if (content) content.scrollTop = content.scrollHeight;
+  if (!content) return;
+  scrollAnimation = animateScrollTop(content, content.scrollHeight);
 }
 
 async function toggleExpanded(): Promise<void> {
@@ -153,7 +156,10 @@ watch(
     scrollThinkingToBottom();
   },
 );
-onBeforeUnmount(stopElapsedTimer);
+onBeforeUnmount(() => {
+  stopElapsedTimer();
+  scrollAnimation?.();
+});
 </script>
 
 <template>
@@ -170,7 +176,7 @@ onBeforeUnmount(stopElapsedTimer);
 
       <MarkerIcon>
         <ChevronRightIcon
-          class="transition-transform duration-300 ease-out motion-reduce:transition-none"
+          class="transition-transform duration-300 ease-out-expo motion-reduce:transition-none"
           :class="isExpanded && 'rotate-90'"
         />
       </MarkerIcon>
@@ -178,7 +184,7 @@ onBeforeUnmount(stopElapsedTimer);
 
     <div
       :id="contentId"
-      class="grid transition-[grid-template-rows,opacity] duration-300 ease-out motion-reduce:transition-none"
+      class="grid transition-[grid-template-rows,opacity] duration-300 ease-out-expo motion-reduce:transition-none"
       :class="
         isExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
       "

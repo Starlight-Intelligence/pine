@@ -107,7 +107,7 @@ function toggleExpanded(): void {
     <div
       :id="contentId"
       data-tool-calls-content
-      class="grid transition-[grid-template-rows,opacity] duration-300 ease-out motion-reduce:transition-none"
+      class="grid transition-[grid-template-rows,opacity] duration-300 ease-out-expo motion-reduce:transition-none"
       :class="
         isExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
       "
