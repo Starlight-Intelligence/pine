@@ -58,6 +58,60 @@ describe("session store", () => {
     expect(store.activeSession).toEqual(session);
   });
 
+  it("reuses the cached transcript array across resumes without re-fetching", async () => {
+    const loadedMessages = [
+      {
+        id: "m1",
+        blocks: [],
+        createdAt: "2026-01-01T00:00:00.000Z",
+        role: "assistant" as const,
+      },
+    ];
+    const loadSessionMessages = vi.fn().mockResolvedValue({
+      hasMore: false,
+      messages: loadedMessages,
+    });
+    Object.defineProperty(window, "pine", {
+      configurable: true,
+      value: {
+        loadSessionMessages,
+        resumeSession: vi.fn().mockResolvedValue({ session }),
+      },
+    });
+    const store = useSessionStore();
+
+    await store.resume(session.id);
+    const firstArray = store.messages;
+    expect(loadSessionMessages).toHaveBeenCalledTimes(1);
+
+    // Switching back to the same session restores the same array reference and
+    // must not re-fetch from disk.
+    await store.resume(session.id);
+    expect(store.messages).toBe(firstArray);
+    expect(loadSessionMessages).toHaveBeenCalledTimes(1);
+  });
+
+  it("evicts a session from the cache when it is deleted", async () => {
+    Object.defineProperty(window, "pine", {
+      configurable: true,
+      value: {
+        deleteSession: vi.fn().mockResolvedValue({ deleted: true }),
+        loadSessionMessages: vi.fn().mockResolvedValue({
+          hasMore: false,
+          messages: [],
+        }),
+        resumeSession: vi.fn().mockResolvedValue({ session }),
+      },
+    });
+    const store = useSessionStore();
+
+    await store.resume(session.id);
+    await store.deleteSession(session.id);
+
+    // Re-resume must re-fetch because the cached slice was dropped.
+    expect(store.messages).toEqual([]);
+  });
+
   it("keeps the indexed title when the live resume summary omits it", async () => {
     const liveSession = { ...session };
     delete liveSession.name;

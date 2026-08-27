@@ -113,6 +113,36 @@ export const useSessionStore = defineStore("session", () => {
   const contextUsage = ref<PineContextUsage | null>(null);
   const hasEarlierMessages = ref(false);
   const nextBefore = ref<string | undefined>();
+
+  // Each open session keeps its own transcript slice so switching tabs never
+  // clobbers a sibling's loaded messages or forces a re-fetch. `messages` (
+  // active projection) points at the focused session's array; keeping the same
+  // array reference across restores lets KeepAlive'd views diff minimally.
+  interface CachedSession {
+    summary: PineSessionSummary | null;
+    messages: PineTranscriptMessage[];
+    isLoadingMessages: boolean;
+    hasEarlierMessages: boolean;
+    nextBefore?: string;
+  }
+  const sessionCache = new Map<string, CachedSession>();
+
+  /** Snapshot the active transcript projection into the session cache. */
+  function syncSessionCache(sessionId: string): void {
+    if (!sessionId) return;
+    sessionCache.set(sessionId, {
+      summary: activeSession.value,
+      messages: messages.value,
+      isLoadingMessages: isLoadingMessages.value,
+      hasEarlierMessages: hasEarlierMessages.value,
+      nextBefore: nextBefore.value,
+    });
+  }
+
+  /** Drop a session's cached transcript (e.g. when it is closed/deleted). */
+  function dropSessionCache(sessionId: string): void {
+    sessionCache.delete(sessionId);
+  }
   let currentSessionId: string | null = null;
   let stopAgentEvents: (() => void) | null = null;
   let searchSequence = 0;
@@ -190,6 +220,20 @@ export const useSessionStore = defineStore("session", () => {
     const sequence = ++activationSequence;
     currentSessionId = sessionId;
     isStartingPrompt = false;
+
+    // Restore the cached transcript without re-fetching so switching back to a
+    // tab keeps its messages (same array reference) and never reloads.
+    const cached = sessionCache.get(sessionId);
+    if (cached && cached.summary) {
+      activeSession.value = cached.summary;
+      messages.value = cached.messages;
+      isLoadingMessages.value = cached.isLoadingMessages;
+      hasEarlierMessages.value = cached.hasEarlierMessages;
+      nextBefore.value = cached.nextBefore;
+      if (sequence === activationSequence) return cached.summary;
+      return cached.summary;
+    }
+
     activeSession.value = null;
     messages.value = [];
     hasEarlierMessages.value = false;
@@ -232,14 +276,16 @@ export const useSessionStore = defineStore("session", () => {
       }));
       hasEarlierMessages.value = result.hasMore;
       nextBefore.value = result.nextBefore;
+      syncSessionCache(sessionId);
     } finally {
       if (currentSessionId === sessionId) isLoadingMessages.value = false;
     }
   }
 
   async function loadEarlierMessages(): Promise<void> {
+    const sessionId = currentSessionId;
     if (
-      !currentSessionId ||
+      !sessionId ||
       !hasEarlierMessages.value ||
       !nextBefore.value ||
       isLoadingMessages.value
@@ -247,7 +293,6 @@ export const useSessionStore = defineStore("session", () => {
       return;
     }
 
-    const sessionId = currentSessionId;
     isLoadingMessages.value = true;
     try {
       const result = await window.pine.loadSessionMessages({
@@ -268,6 +313,7 @@ export const useSessionStore = defineStore("session", () => {
       ];
       hasEarlierMessages.value = result.hasMore;
       nextBefore.value = result.nextBefore;
+      syncSessionCache(sessionId);
     } finally {
       if (currentSessionId === sessionId) isLoadingMessages.value = false;
     }
@@ -296,6 +342,7 @@ export const useSessionStore = defineStore("session", () => {
       isStartingPrompt = false;
       activeSession.value = nextSession;
       currentSessionId = nextSession.id;
+      syncSessionCache(nextSession.id);
       return nextSession;
     } catch (error) {
       if (sequence === activationSequence) {
@@ -322,6 +369,7 @@ export const useSessionStore = defineStore("session", () => {
     searchResults.value = searchResults.value.filter(
       (session) => session.id !== sessionId,
     );
+    dropSessionCache(sessionId);
     if (currentSessionId === sessionId) startDraft();
     return true;
   }
@@ -516,6 +564,7 @@ export const useSessionStore = defineStore("session", () => {
     messages.value = [];
     recentSessions.value = [];
     searchResults.value = [];
+    sessionCache.clear();
     isLoadingRecent.value = false;
     isSearching.value = false;
     isLoadingMessages.value = false;
