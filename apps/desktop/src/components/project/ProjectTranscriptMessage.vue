@@ -11,9 +11,17 @@ import ProjectToolCallMarker from "./ProjectToolCallMarker.vue";
 
 const props = defineProps<{
   message: PineTranscriptMessage;
+  /** Keys of the tool runs currently held open by the transcript-level
+   * expansion policy; absent for static history reads. */
+  expandedToolRuns?: ReadonlySet<string>;
 }>();
 
 const isUser = computed(() => props.message.role === "user");
+
+/** Stable key shared with useToolActivityExpansion's transcript-level scan. */
+function runKey(toolCalls: PineToolCall[]): string {
+  return `${props.message.id}:${toolCalls[0]?.id ?? ""}`;
+}
 
 /**
  * The message body text is the concatenation of every `text` block, so user
@@ -28,14 +36,14 @@ const text = computed(() =>
 
 /**
  * Collapse ordering for a message's blocks: consecutive `toolCall` blocks
- * merge into a single tool run that opens while it is the trailing activity
- * and closes once a later thinking/text block appears (followedByContent).
- * Single thinking/text blocks pass through unchanged.
+ * merge into a single tool run whose expansion is driven by the transcript
+ * level (the last two runs of an active response stay open). Single
+ * thinking/text/tool-call blocks pass through unchanged.
  */
 type RenderItem =
   | { kind: "block"; block: PineContentBlock }
   | { kind: "toolCall"; toolCall: PineToolCall }
-  | { kind: "toolRun"; toolCalls: PineToolCall[]; followedByContent: boolean };
+  | { kind: "toolRun"; toolCalls: PineToolCall[] };
 
 const renderItems = computed<RenderItem[]>(() => {
   const blocks = props.message.blocks;
@@ -58,11 +66,7 @@ const renderItems = computed<RenderItem[]>(() => {
       if (toolCalls.length === 1) {
         items.push({ kind: "toolCall", toolCall: toolCalls[0] });
       } else {
-        items.push({
-          kind: "toolRun",
-          toolCalls,
-          followedByContent: index < blocks.length,
-        });
+        items.push({ kind: "toolRun", toolCalls });
       }
     } else {
       items.push({ kind: "block", block });
@@ -72,7 +76,6 @@ const renderItems = computed<RenderItem[]>(() => {
   return items;
 });
 </script>
-
 <template>
   <Message :align="isUser ? 'end' : 'start'">
     <MessageContent>
@@ -92,7 +95,7 @@ const renderItems = computed<RenderItem[]>(() => {
             v-else-if="item.kind === 'toolRun'"
             :message="message"
             :tool-calls="item.toolCalls"
-            :followed-by-content="item.followedByContent"
+            :expanded="expandedToolRuns?.has(runKey(item.toolCalls))"
           />
           <Bubble
             v-else-if="item.kind === 'block' && item.block.type === 'text'"

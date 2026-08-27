@@ -18,7 +18,10 @@ import {
 const props = defineProps<{
   message: PineTranscriptMessage;
   toolCalls: PineToolCall[];
-  followedByContent: boolean;
+  /** Transcript-level expansion policy: the last two tool runs of an active
+   * response stay open until it ends. Absent for static history — the reader
+   * can still toggle any run manually. */
+  expanded?: boolean;
 }>();
 const { locale, t } = useI18n();
 const contentId = useId();
@@ -51,18 +54,16 @@ const iconByToolCall = computed(() =>
   props.toolCalls.map((toolCall) => toolKind(toolCall.name)),
 );
 
-const isStreaming = computed(() => props.message.status === "streaming");
-
 /**
- * Auto-expand a tool run only while it is the trailing activity of a live
- * (still streaming) message, so the running calls stay visible. Anything
- * else — a later thinking/text block, or a completed message loaded from
- * history — stays collapsed, mirroring the thinking marker's auto-collapse.
+ * The transcript owns expansion policy; a defined prop value takes effect
+ * immediately (opening newly trailing runs, folding runs that fell out of
+ * the activity window or when the response ends), while manual toggles keep
+ * working between policy updates.
  */
 watch(
-  [() => props.message.id, isStreaming, () => props.followedByContent],
-  ([, streaming, followed]) => {
-    isExpanded.value = streaming && !followed;
+  () => props.expanded,
+  (expanded) => {
+    if (expanded !== undefined) isExpanded.value = expanded;
   },
   { immediate: true },
 );

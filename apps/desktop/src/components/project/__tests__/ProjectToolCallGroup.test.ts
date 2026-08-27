@@ -14,11 +14,6 @@ const message: PineTranscriptMessage = {
   blocks: [],
 };
 
-const streamingMessage: PineTranscriptMessage = {
-  ...message,
-  status: "streaming",
-};
-
 const toolCalls: PineToolCall[] = [
   {
     id: "tool-1",
@@ -38,14 +33,13 @@ function mountGroup(
   overrides: Partial<{
     message: PineTranscriptMessage;
     toolCalls: PineToolCall[];
-    followedByContent: boolean;
+    expanded: boolean;
   }> = {},
 ) {
   return mount(ProjectToolCallGroup, {
     props: {
       message,
       toolCalls,
-      followedByContent: true,
       ...overrides,
     },
     global: {
@@ -56,8 +50,8 @@ function mountGroup(
 }
 
 describe("ProjectToolCallGroup", () => {
-  it("collapses by default when followed by content, then expands on click", async () => {
-    const wrapper = mountGroup({ followedByContent: true });
+  it("collapses by default and expands on click", async () => {
+    const wrapper = mountGroup();
 
     const trigger = wrapper.get('button[data-slot="marker"]');
     expect(trigger.attributes("aria-expanded")).toBe("false");
@@ -72,11 +66,8 @@ describe("ProjectToolCallGroup", () => {
     expect(wrapper.findAllComponents(ProjectToolCallMarker)).toHaveLength(2);
   });
 
-  it("stays expanded for the trailing activity of a live message", () => {
-    const wrapper = mountGroup({
-      message: streamingMessage,
-      followedByContent: false,
-    });
+  it("follows the transcript-level expansion policy while active", () => {
+    const wrapper = mountGroup({ expanded: true });
 
     const trigger = wrapper.get('button[data-slot="marker"]');
     expect(trigger.attributes("aria-expanded")).toBe("true");
@@ -86,8 +77,8 @@ describe("ProjectToolCallGroup", () => {
     expect(wrapper.findAllComponents(ProjectToolCallMarker)).toHaveLength(2);
   });
 
-  it("collapses a completed message's tool run by default", () => {
-    const wrapper = mountGroup({ followedByContent: false });
+  it("collapses static history runs by default", () => {
+    const wrapper = mountGroup();
 
     expect(
       wrapper.get('button[data-slot="marker"]').attributes("aria-expanded"),
@@ -97,16 +88,13 @@ describe("ProjectToolCallGroup", () => {
     ).toBe("true");
   });
 
-  it("auto-collapses when a later block follows the run", async () => {
-    const wrapper = mountGroup({
-      message: streamingMessage,
-      followedByContent: false,
-    });
+  it("folds when the run drops out of the window or the response ends", async () => {
+    const wrapper = mountGroup({ expanded: true });
     expect(
       wrapper.get('button[data-slot="marker"]').attributes("aria-expanded"),
     ).toBe("true");
 
-    await wrapper.setProps({ followedByContent: true });
+    await wrapper.setProps({ expanded: false });
     expect(
       wrapper.get('button[data-slot="marker"]').attributes("aria-expanded"),
     ).toBe("false");

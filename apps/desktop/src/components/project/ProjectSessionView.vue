@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/message-scroller";
 import { Spinner } from "@/components/ui/spinner";
 import { useContentTabNavigation } from "@/composables/useContentTabNavigation";
+import { useToolActivityExpansion } from "@/composables/useToolActivityExpansion";
 import { useContentTabsStore } from "@/stores/contentTabs";
 import { useSessionStore } from "@/stores/session";
 import ProjectSessionComposer from "./ProjectSessionComposer.vue";
@@ -37,6 +38,10 @@ const sessionStore = useSessionStore();
 const { hasEarlierMessages, isLoadingMessages, isRunning, messages } =
   storeToRefs(sessionStore);
 const draft = ref("");
+
+/** While a response runs, its last two tool units (folded groups and
+ * standalone calls alike) stay expanded; everything folds when it ends. */
+const expandedToolRuns = useToolActivityExpansion({ messages, isRunning });
 
 onMounted(() => sessionStore.connectAgentEvents());
 
@@ -115,7 +120,10 @@ function abort(): void {
                 :message-id="message.id"
                 :scroll-anchor="message.role === 'user'"
               >
-                <ProjectTranscriptMessage :message="message" />
+                <ProjectTranscriptMessage
+                  :message="message"
+                  :expanded-tool-runs="expandedToolRuns"
+                />
               </MessageScrollerItem>
             </MessageScrollerContent>
           </MessageScrollerViewport>

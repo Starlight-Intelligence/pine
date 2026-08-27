@@ -1,6 +1,6 @@
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { PineAgentEvent } from "@/shared/agent";
+import type { PineAgentEvent, PineJsonValue } from "@/shared/agent";
 import type { PineSessionSummary } from "@/shared/sessions";
 import { useSessionStore } from "../session";
 
@@ -368,6 +368,86 @@ describe("session store", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("surfaces progressively streamed tool arguments before execution", async () => {
+    let listener: ((event: PineAgentEvent) => void) | undefined;
+    Object.defineProperty(window, "pine", {
+      configurable: true,
+      value: {
+        onSessionEvent: vi.fn((nextListener) => {
+          listener = nextListener;
+          return () => undefined;
+        }),
+        promptSession: vi.fn().mockResolvedValue({ accepted: true, session }),
+      },
+    });
+    const store = useSessionStore();
+    store.connectAgentEvents();
+    await store.prompt("go");
+    const sessionId = session.id;
+    const messageId = "assistant-streaming-tool";
+
+    listener?.({ type: "run-state", sessionId, state: "running" });
+    const emitToolUpdate = (
+      arguments_: Record<string, PineJsonValue> | undefined,
+    ) => {
+      listener?.({
+        type: "message-update",
+        sessionId,
+        messageId,
+        update: { type: "toolcall_delta", delta: "..." },
+        message: {
+          role: "assistant",
+          timestamp: 1000,
+          content: [
+            arguments_ === undefined
+              ? { type: "toolCall", id: "call-bash", name: "bash" }
+              : {
+                  type: "toolCall",
+                  id: "call-bash",
+                  name: "bash",
+                  arguments: arguments_,
+                },
+          ],
+        },
+      });
+    };
+
+    // toolcall_start: no arguments parsed yet.
+    emitToolUpdate(undefined);
+    let blocks = store.messages[0]?.blocks ?? [];
+    expect(
+      blocks[0]?.type === "toolCall" && blocks[0].toolCall.input,
+    ).toBeUndefined();
+
+    // First delta: partial arguments parsed from the stream so far.
+    emitToolUpdate({ command: "bun run" });
+    blocks = store.messages[0]?.blocks ?? [];
+    expect(blocks[0]?.type === "toolCall" && blocks[0].toolCall.input).toEqual({
+      command: "bun run",
+    });
+
+    // Later delta: arguments grow — never shadowed by the stale snapshot.
+    emitToolUpdate({ command: "bun run check" });
+    blocks = store.messages[0]?.blocks ?? [];
+    expect(blocks[0]?.type === "toolCall" && blocks[0].toolCall.input).toEqual({
+      command: "bun run check",
+    });
+
+    // Execution start pins the complete payload without regressions.
+    listener?.({
+      type: "tool-start",
+      sessionId,
+      toolCallId: "call-bash",
+      toolName: "bash",
+      payload: { command: "bun run check", description: "Checks types" },
+    });
+    blocks = store.messages[0]?.blocks ?? [];
+    expect(blocks[0]?.type === "toolCall" && blocks[0].toolCall.input).toEqual({
+      command: "bun run check",
+      description: "Checks types",
+    });
   });
 
   it("keeps the prompt title when a runtime summary omits display fields", async () => {
