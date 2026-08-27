@@ -55,7 +55,19 @@ function mergeBlockStatuses(
         candidate.toolCall.id === block.toolCall.id,
     );
     if (prior?.type !== "toolCall") return block;
-    return { ...block, toolCall: { ...block.toolCall, ...prior.toolCall } };
+    // Execution runtime fields (status/startedAt/durationMs/output) come from
+    // the prior snapshot, but streaming input grows on every update — a stale
+    // snapshot (e.g. an empty arguments object from toolcall_start) must not
+    // shadow the freshly parsed progressive arguments.
+    const toolCall = {
+      ...prior.toolCall,
+      id: block.toolCall.id,
+      name: block.toolCall.name,
+    };
+    if (block.toolCall.input !== undefined) {
+      toolCall.input = block.toolCall.input;
+    }
+    return { ...block, toolCall };
   });
 }
 
