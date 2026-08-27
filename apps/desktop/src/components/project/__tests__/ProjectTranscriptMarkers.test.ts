@@ -310,9 +310,18 @@ describe("project transcript markers", () => {
       },
       global: { plugins: [createAppI18n("zh-CN")] },
     });
-    expect(editor.get('[data-slot="marker-content"] code').text()).toBe(
-      "main.ts +6 -5",
-    );
+    const added = editor
+      .get('[data-slot="marker-content"]')
+      .findAll("span")
+      .find((node) => node.text() === "+6");
+    expect(added?.classes()).toContain("text-emerald-600");
+    expect(editor.get('[data-slot="marker-content"]').text()).toContain("-5");
+    expect(
+      editor
+        .get('[data-slot="marker-content"]')
+        .findAll("span")
+        .some((node) => node.classes().includes("text-destructive")),
+    ).toBe(true);
 
     // No range when a whole file was read.
     const whole = mount(ProjectToolCallMarker, {

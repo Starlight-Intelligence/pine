@@ -74,10 +74,12 @@ function readRangeSuffix(input: Record<string, unknown>): string {
   return end === undefined ? `:${start}-` : `:${start}-${end}`;
 }
 
-/** ' +6 -4' tallying every edit hunk's touched lines (streaming-safe). */
-function editDiffSuffix(input: Record<string, unknown>): string {
+/** Per-hunk tally of touched lines (streaming-safe). */
+function editDiff(
+  input: Record<string, unknown>,
+): { added: number; removed: number } | undefined {
   const edits = input.edits;
-  if (!Array.isArray(edits)) return "";
+  if (!Array.isArray(edits)) return undefined;
   let added = 0;
   let removed = 0;
   for (const edit of edits) {
@@ -90,8 +92,14 @@ function editDiffSuffix(input: Record<string, unknown>): string {
       firstKey(record, ["oldText", "oldStr", "old_string"]),
     );
   }
-  return added || removed ? ` +${added} -${removed}` : "";
+  return added || removed ? { added, removed } : undefined;
 }
+
+const editDiffCount = computed(() =>
+  toolKind(props.toolCall.name) === "edit"
+    ? editDiff(inputRecord(props.toolCall.input))
+    : undefined,
+);
 
 const presentation = computed(() => {
   const kind = toolKind(props.toolCall.name);
@@ -100,12 +108,7 @@ const presentation = computed(() => {
   const path = firstString(input, ["path", "filePath", "file_path"]);
   const command = firstString(input, ["command", "cmd"]);
   const query = firstString(input, ["pattern", "query", "search"]);
-  const suffix =
-    kind === "edit"
-      ? editDiffSuffix(input)
-      : kind === "read"
-        ? readRangeSuffix(input)
-        : "";
+  const suffix = kind === "read" ? readRangeSuffix(input) : "";
   const target =
     kind === "bash" && command
       ? compactInline(command)
@@ -171,6 +174,14 @@ const fullText = computed(() => {
       <code class="font-mono text-sm font-normal">{{
         presentation.target
       }}</code
+      ><template v-if="editDiffCount"
+        ><span
+          class="mr-1 font-mono text-xs font-normal text-emerald-600 dark:text-emerald-400"
+          >+{{ editDiffCount.added }}</span
+        >
+        <span class="font-mono text-xs font-normal text-destructive"
+          >-{{ editDiffCount.removed }}</span
+        ></template
       ><span v-if="presentation.after">{{ presentation.after }}</span>
     </MarkerContent>
   </Marker>
