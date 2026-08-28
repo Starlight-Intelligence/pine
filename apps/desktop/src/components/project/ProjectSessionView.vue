@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { storeToRefs } from "pinia";
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
+import type { PineApprovalAction, PineApprovalMode } from "@/shared/agent";
 import { PineCharacter } from "@/components/pine";
 import { Button } from "@/components/ui/button";
 import {
@@ -36,9 +37,22 @@ const props = defineProps<{
 const contentTabsStore = useContentTabsStore();
 const tabNavigation = useContentTabNavigation();
 const sessionStore = useSessionStore();
-const { hasEarlierMessages, isLoadingMessages, isRunning, messages } =
-  storeToRefs(sessionStore);
+const {
+  hasEarlierMessages,
+  isLoadingMessages,
+  isRunning,
+  messages,
+  pendingApprovals,
+  reviewingToolCallIds,
+} = storeToRefs(sessionStore);
 const draft = ref("");
+const approvalMode = ref<PineApprovalMode>("agent-decides");
+/** The oldest pending approval renders above the composer. */
+const pendingApproval = computed(() => pendingApprovals.value[0]);
+/** Tool calls waiting for the user's decision (ask mode). */
+const awaitingApprovalToolCallIds = computed(
+  () => new Set(pendingApprovals.value.map((approval) => approval.toolCallId)),
+);
 
 /** While a response runs, its last two tool units (folded groups and
  * standalone calls alike) stay expanded; everything folds when it ends. */
@@ -58,7 +72,7 @@ function submit(message: string): void {
   if (!contentTabsStore.beginPrompt(props.tabId, message)) return;
   draft.value = "";
   void sessionStore
-    .prompt(message, sessionId)
+    .prompt(message, sessionId, approvalMode.value)
     .then((session) => tabNavigation.bindSession(props.tabId, session))
     .catch(() => {
       tabNavigation.failPrompt(props.tabId);
@@ -66,6 +80,13 @@ function submit(message: string): void {
         description: t("errors.sessionPrompt.description"),
       });
     });
+}
+
+function respondToApproval(
+  action: PineApprovalAction,
+  guidance?: string,
+): void {
+  void sessionStore.respondApproval(action, guidance);
 }
 
 function abort(): void {
@@ -137,6 +158,8 @@ function abort(): void {
                 <ProjectTranscriptMessage
                   :message="message"
                   :expanded-tool-runs="expandedToolRuns"
+                  :reviewing-tool-call-ids="reviewingToolCallIds"
+                  :awaiting-approval-tool-call-ids="awaitingApprovalToolCallIds"
                 />
               </MessageScrollerItem>
             </MessageScrollerContent>
@@ -148,8 +171,11 @@ function abort(): void {
 
       <ProjectSessionComposer
         v-model="draft"
+        v-model:approvalMode="approvalMode"
         :is-running="isRunning"
+        :pending-approval="pendingApproval"
         @abort="abort"
+        @respond="respondToApproval"
         @submit="submit"
       />
     </div>

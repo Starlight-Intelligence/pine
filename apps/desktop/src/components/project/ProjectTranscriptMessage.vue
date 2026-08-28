@@ -14,6 +14,10 @@ const props = defineProps<{
   /** Keys of the tool runs currently held open by the transcript-level
    * expansion policy; absent for static history reads. */
   expandedToolRuns?: ReadonlySet<string>;
+  /** Tool calls held by the auto-reviewer (agent-decides mode). */
+  reviewingToolCallIds?: ReadonlySet<string>;
+  /** Tool calls waiting for the user's decision (ask mode). */
+  awaitingApprovalToolCallIds?: ReadonlySet<string>;
 }>();
 
 const isUser = computed(() => props.message.role === "user");
@@ -90,12 +94,18 @@ const renderItems = computed<RenderItem[]>(() => {
           <ProjectToolCallMarker
             v-else-if="item.kind === 'toolCall'"
             :tool-call="item.toolCall"
+            :reviewing="reviewingToolCallIds?.has(item.toolCall.id) ?? false"
+            :awaiting-approval="
+              awaitingApprovalToolCallIds?.has(item.toolCall.id) ?? false
+            "
           />
           <ProjectToolCallGroup
             v-else-if="item.kind === 'toolRun'"
             :message="message"
             :tool-calls="item.toolCalls"
             :expanded="expandedToolRuns?.has(runKey(item.toolCalls))"
+            :reviewing-tool-call-ids="reviewingToolCallIds"
+            :awaiting-approval-tool-call-ids="awaitingApprovalToolCallIds"
           />
           <Bubble
             v-else-if="item.kind === 'block' && item.block.type === 'text'"

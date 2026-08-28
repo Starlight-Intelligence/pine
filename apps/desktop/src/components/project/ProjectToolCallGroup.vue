@@ -22,6 +22,10 @@ const props = defineProps<{
    * response stay open until it ends. Absent for static history — the reader
    * can still toggle any run manually. */
   expanded?: boolean;
+  /** Tool calls held by the auto-reviewer (agent-decides mode). */
+  reviewingToolCallIds?: ReadonlySet<string>;
+  /** Tool calls waiting for the user's decision (ask mode). */
+  awaitingApprovalToolCallIds?: ReadonlySet<string>;
 }>();
 const { locale, t } = useI18n();
 const contentId = useId();
@@ -121,6 +125,10 @@ function toggleExpanded(): void {
             :key="toolCall.id"
             :tool-call="toolCall"
             nested
+            :reviewing="props.reviewingToolCallIds?.has(toolCall.id) ?? false"
+            :awaiting-approval="
+              props.awaitingApprovalToolCallIds?.has(toolCall.id) ?? false
+            "
           />
         </div>
       </div>

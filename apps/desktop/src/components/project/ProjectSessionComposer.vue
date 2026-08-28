@@ -13,6 +13,7 @@ import { storeToRefs } from "pinia";
 import { computed, onMounted, ref, useId } from "vue";
 import { useI18n } from "vue-i18n";
 import ModelPickerDialog from "@/components/models/ModelPickerDialog.vue";
+import ProjectApprovalCard from "@/components/project/ProjectApprovalCard.vue";
 import ContextUsageIndicator from "@/components/project/ContextUsageIndicator.vue";
 import { Button } from "@/components/ui/button";
 import {
@@ -41,13 +42,17 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import type { PineApprovalAction } from "@/shared/agent";
 import type { PineThinkingLevel } from "@/shared/models";
+import type { PinePendingApproval } from "@/stores/session";
 import { pineModelKey, useModelsStore } from "@/stores/models";
 
 type ApprovalMode = "ask-for-permission" | "agent-decides" | "yolo";
 
 const approvalModeColorClasses: Record<ApprovalMode, string> = {
-  "ask-for-permission": "text-foreground",
+  // Warning tone: manual supervision mode needs your attention, sitting
+  // between the neutral agent-decides and the destructive yolo.
+  "ask-for-permission": "text-warning",
   "agent-decides": "text-foreground",
   yolo: "text-destructive",
 };
@@ -60,12 +65,15 @@ interface ApprovalModeOption {
 
 const emit = defineEmits<{
   abort: [];
+  respond: [action: PineApprovalAction, guidance?: string];
   submit: [message: string];
 }>();
 
 const props = withDefaults(
   defineProps<{
     isRunning?: boolean;
+    /** When set, the approval questionnaire replaces the message input. */
+    pendingApproval?: PinePendingApproval | null;
   }>(),
   { isRunning: false },
 );
@@ -168,7 +176,12 @@ function openModelPicker(): void {
       {{ t("project.composer.label") }}
     </label>
 
-    <InputGroup>
+    <ProjectApprovalCard
+      v-if="props.pendingApproval"
+      :approval="props.pendingApproval"
+      @respond="(action, guidance) => emit('respond', action, guidance)"
+    />
+    <InputGroup v-else>
       <InputGroupTextarea
         :id="messageId"
         v-model="message"
@@ -206,7 +219,13 @@ function openModelPicker(): void {
       </InputGroupAddon>
     </InputGroup>
 
-    <div class="flex min-w-0 items-center justify-between gap-3 pt-2">
+    <!-- While an approval is pending the card owns the whole composer area:
+         the mode selector, context ring, and model picker are all moot
+         until the decision is made. -->
+    <div
+      v-if="!props.pendingApproval"
+      class="flex min-w-0 items-center justify-between gap-3 pt-2"
+    >
       <div class="flex min-w-0 items-center gap-1">
         <DropdownMenu>
           <DropdownMenuTrigger as-child>

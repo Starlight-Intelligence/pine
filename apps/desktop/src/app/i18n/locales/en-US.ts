@@ -153,10 +153,25 @@ export default {
         label: "Context usage",
         usedTokens: "Tokens used",
         contextWindow: "Context window",
-        precisePercent: "Precise percentage",
+        utilization: "Utilization",
         cost: "Conversation cost",
         unknown: "Unknown",
       },
+    },
+    approvalRequest: {
+      title: "Approval required",
+      triggerPreExecution:
+        "Pine requests confirmation before running this operation.",
+      triggerSandboxDenied:
+        "This operation was blocked by the sandbox. Approving re-runs it outside the sandbox.",
+      triggerAuthorizeDenied:
+        "This operation accesses a path outside the folders shared with Pine. Approving proceeds regardless of folder grants.",
+      triggerDestructivePattern:
+        "This operation matches a destructive-command heuristic. Please review it before execution.",
+      evidence: "Details",
+      approve: "Approve",
+      reject: "Reject",
+      guide: "Reject with guidance",
     },
     transcript: {
       emptyDescription: "Start with a question, a task, or a bold idea.",
@@ -200,8 +215,18 @@ export default {
           complete: "Wrote {count} files",
         },
       },
+      toolKinds: {
+        bash: "command execution",
+        edit: "edit",
+        generic: "tool",
+        read: "read",
+        search: "search",
+        write: "write",
+      },
       tools: {
         operationSeparator: ": ",
+        reviewing: "Reviewing {tool}: ",
+        awaitingApproval: "Awaiting your approval for this {tool}: ",
         bash: {
           complete: { before: "Ran ", after: "" },
           error: { before: "Failed to run ", after: "" },

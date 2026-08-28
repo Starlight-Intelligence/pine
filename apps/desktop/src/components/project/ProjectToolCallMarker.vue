@@ -11,6 +11,10 @@ const props = defineProps<{
   /** Nested rows repeat the folded header's kind icons, so they fall back
    * to a plain check once the call succeeds. */
   nested?: boolean;
+  /** The call is being held by the auto-reviewer (agent-decides). */
+  reviewing?: boolean;
+  /** The call is waiting for the user's decision (ask mode). */
+  awaitingApproval?: boolean;
 }>();
 const { t } = useI18n();
 
@@ -117,11 +121,33 @@ const presentation = computed(() => {
         : path
           ? `${filename(path)}${suffix}`
           : props.toolCall.name;
-  const state = isRunning.value
-    ? "running"
-    : props.toolCall.status === "error"
-      ? "error"
-      : "complete";
+  // Review holds replace the tense label entirely: the reader must see that
+  // the call is gated, not that it is running.
+  const state = props.reviewing
+    ? "reviewing"
+    : props.awaitingApproval
+      ? "awaiting"
+      : isRunning.value
+        ? "running"
+        : props.toolCall.status === "error"
+          ? "error"
+          : "complete";
+  if (state === "reviewing" || state === "awaiting") {
+    // The state name differs from its i18n key ("awaiting" →
+    // "awaitingApproval"), so map it explicitly.
+    const stateKey = state === "awaiting" ? "awaitingApproval" : "reviewing";
+    return {
+      // The gate label carries its own trailing separator so the target
+      // reads as one sentence, e.g. "正在审核Bash操作：osascript …".
+      before: t(`project.transcript.tools.${stateKey}`, {
+        tool: t(`project.transcript.toolKinds.${kind}`),
+      }),
+      operation: undefined,
+      separator: "",
+      target,
+      after: "",
+    };
+  }
   const key = `project.transcript.tools.${kind}.${state}`;
   return {
     before: t(`${key}.before`),
@@ -135,21 +161,32 @@ const presentation = computed(() => {
   };
 });
 
+const isActive = computed(
+  () => props.reviewing || props.awaitingApproval || isRunning.value,
+);
+
+// Waiting calls shimmer in the warning tone to read as "needs your
+// attention", distinct from the neutral running shimmer.
+const shimmerClass = computed(() =>
+  props.awaitingApproval ? "shimmer shimmer-color-warning" : "shimmer",
+);
+
 const fullText = computed(() => {
   const before = presentation.value.before;
   const operation = presentation.value.operation;
   const separator = presentation.value.separator;
   const target = presentation.value.target;
   const after = presentation.value.after;
-  return `${before}${operation}${operation ? separator : ""}${target}${after}`;
+  return `${before}${operation ?? ""}${operation ? separator : ""}${target}${after}`;
 });
 </script>
 
 <template>
-  <Marker :role="isRunning ? 'status' : undefined">
-    <!-- While running the label shimmers instead of showing a spinner; on
-         success the kind icon matches the folded group header, and failures
-         stay recognizable through the destructive alert tint. -->
+  <Marker :role="isActive ? 'status' : undefined">
+    <!-- While running (or held by a gate) the label shimmers instead of
+         showing a spinner; on success the kind icon matches the folded group
+         header, and failures stay recognizable through the destructive alert
+         tint. -->
     <MarkerIcon>
       <AlertCircleIcon
         v-if="toolCall.status === 'error'"
@@ -161,8 +198,8 @@ const fullText = computed(() => {
     <MarkerContent
       class="truncate"
       :class="
-        isRunning
-          ? 'shimmer'
+        isActive
+          ? shimmerClass
           : toolCall.status === 'error' && 'text-destructive'
       "
       :title="fullText"

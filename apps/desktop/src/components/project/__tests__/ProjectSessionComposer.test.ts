@@ -135,7 +135,7 @@ describe("ProjectSessionComposer", () => {
     );
     expect(
       wrapper.get('[data-slot="approval-mode-trigger"] span').classes(),
-    ).toContain("text-foreground");
+    ).toContain("text-warning");
 
     const yoloWrapper = mountComposer({ approvalMode: "yolo" });
 

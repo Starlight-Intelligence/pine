@@ -135,7 +135,7 @@ const costText = computed(() =>
               value: contextWindowText,
             },
             {
-              label: t('project.composer.contextUsage.precisePercent'),
+              label: t('project.composer.contextUsage.utilization'),
               value: precisePercentText,
             },
             {

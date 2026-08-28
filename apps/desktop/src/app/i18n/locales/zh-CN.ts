@@ -148,10 +148,23 @@ export default {
         label: "上下文占用",
         usedTokens: "已用 Token",
         contextWindow: "上下文窗口",
-        precisePercent: "精确百分率",
+        utilization: "占用率",
         cost: "对话花费",
         unknown: "未知",
       },
+    },
+    approvalRequest: {
+      title: "需要确认",
+      triggerPreExecution: "Pine 请求在执行前获得确认。",
+      triggerSandboxDenied:
+        "该操作已被安全沙盒拦截。批准后将在沙盒外重新执行。",
+      triggerAuthorizeDenied:
+        "该操作访问了未共享给 Pine 的路径。批准后将继续执行。",
+      triggerDestructivePattern: "该操作命中破坏性命令检查，请先确认再执行。",
+      evidence: "详情",
+      approve: "批准",
+      reject: "拒绝",
+      guide: "拒绝并说明要求",
     },
     transcript: {
       emptyDescription: "从一个问题、一项任务，或一个大胆的想法开始。",
@@ -195,8 +208,18 @@ export default {
           complete: "写入了 {count} 个文件",
         },
       },
+      toolKinds: {
+        bash: "命令执行",
+        edit: "编辑",
+        generic: "工具",
+        read: "读取",
+        search: "搜索",
+        write: "写入",
+      },
       tools: {
         operationSeparator: "：",
+        reviewing: "正在审核 {tool}：",
+        awaitingApproval: "等待确认 {tool}：",
         bash: {
           complete: { before: "已执行 ", after: "" },
           error: { before: "执行 ", after: " 失败" },
