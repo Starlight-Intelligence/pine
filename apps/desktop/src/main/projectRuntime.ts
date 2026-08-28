@@ -1,8 +1,10 @@
 import type { ProjectEntry } from "../shared/projectFiles";
 import type { PineProject, PineProjectFolder } from "../shared/projects";
 import type {
+  PineApprovalMode,
   PromptSessionRequest,
   PromptSessionResult,
+  RespondApprovalRequest,
 } from "../shared/agent";
 import type {
   LoginProviderRequest,
@@ -19,6 +21,20 @@ import { listProjectDirectory } from "./projectFiles";
 import type { ProjectDataPaths } from "./projects/projectRepository";
 import { ProjectSessionService } from "./sessions";
 import type { AgentHost } from "./agentProcessHost";
+import type { GateDecision } from "../agent/protocol";
+
+/** Maps the renderer's approval action to the worker-side gate decision. */
+function toGateDecision(request: RespondApprovalRequest): GateDecision {
+  if (request.action === "approve") return { kind: "allow" };
+  const guidance = request.guidance?.trim();
+  if (request.action === "guide" && guidance) {
+    return {
+      kind: "deny",
+      reason: `The user rejected this call with guidance: ${guidance}`,
+    };
+  }
+  return { kind: "deny", reason: "The user rejected this tool call." };
+}
 
 type RuntimeSessionState =
   | { status: "idle" }
@@ -32,6 +48,7 @@ type RuntimeSessionState =
     };
 
 interface ProjectRuntime {
+  approvalMode: PineApprovalMode;
   dataPaths: ProjectDataPaths;
   project: PineProject;
   session: RuntimeSessionState;
@@ -40,6 +57,8 @@ interface ProjectRuntime {
 
 export class ProjectRuntimeRegistry {
   private readonly runtimes = new Map<number, ProjectRuntime>();
+  /** approval requestId → owning webContentsId, for response validation. */
+  private readonly pendingApprovals = new Map<string, number>();
 
   constructor(
     private readonly agentHost: AgentHost,
@@ -66,6 +85,7 @@ export class ProjectRuntimeRegistry {
       sessionsRoot: dataPaths.sessionsRoot,
     });
     this.runtimes.set(webContentsId, {
+      approvalMode: "agent-decides",
       dataPaths,
       project,
       session: { status: "idle" },
@@ -197,6 +217,7 @@ export class ProjectRuntimeRegistry {
     request: PromptSessionRequest,
   ): Promise<PromptSessionResult> {
     const runtime = this.get(webContentsId);
+    runtime.approvalMode = request.approvalMode ?? "agent-decides";
     const activeSession =
       request.target.kind === "new"
         ? await this.createNewSession(webContentsId)
@@ -272,10 +293,38 @@ export class ProjectRuntimeRegistry {
     return undefined;
   }
 
+  /** Remember which window an approval request was routed to. */
+  trackApproval(requestId: string, webContentsId: number): void {
+    this.pendingApprovals.set(requestId, webContentsId);
+  }
+
+  forgetApproval(requestId: string): void {
+    this.pendingApprovals.delete(requestId);
+  }
+
+  respondApproval(
+    webContentsId: number,
+    request: RespondApprovalRequest,
+  ): { accepted: boolean } {
+    const owner = this.pendingApprovals.get(request.requestId);
+    if (owner === undefined) {
+      throw new Error("This approval request is no longer pending.");
+    }
+    if (owner !== webContentsId) {
+      throw new Error("Approval request does not belong to this window.");
+    }
+    this.pendingApprovals.delete(request.requestId);
+    this.agentHost.respondApproval(request.requestId, toGateDecision(request));
+    return { accepted: true };
+  }
+
   async dispose(webContentsId: number): Promise<void> {
     const runtime = this.runtimes.get(webContentsId);
     if (!runtime) return;
 
+    for (const [requestId, owner] of this.pendingApprovals) {
+      if (owner === webContentsId) this.pendingApprovals.delete(requestId);
+    }
     this.runtimes.delete(webContentsId);
     await this.releaseSession(runtime);
     await runtime.sessions.dispose();
@@ -323,6 +372,7 @@ export class ProjectRuntimeRegistry {
     );
     return {
       agentDir: this.agentDir,
+      approvalMode: runtime.approvalMode,
       cwd: defaultFolder.path,
       folders: runtime.project.folders
         .filter((folder) => folder.isAvailable)

@@ -1,6 +1,12 @@
 import { acceptHMRUpdate, defineStore } from "pinia";
 import { ref, shallowRef } from "vue";
-import type { PineAgentEvent, PineJsonValue } from "@/shared/agent";
+import type {
+  PineAgentEvent,
+  PineApprovalAction,
+  PineApprovalMode,
+  PineApprovalTrigger,
+  PineJsonValue,
+} from "@/shared/agent";
 import type {
   PineContentBlock,
   PineSessionSummary,
@@ -21,6 +27,18 @@ export interface PineContextUsage {
   contextWindow: number;
   percent: number | null;
   cost: number;
+}
+
+/** A tool call awaiting the user's approve/reject/guide decision. */
+export interface PinePendingApproval {
+  requestId: string;
+  toolCallId: string;
+  toolName: string;
+  trigger: PineApprovalTrigger;
+  subject?: string;
+  /** The tool call's imperative summary, shown above the raw arguments. */
+  description?: string;
+  evidence?: string;
 }
 
 function messageRole(value: PineJsonValue): "assistant" | "user" | null {
@@ -111,6 +129,9 @@ export const useSessionStore = defineStore("session", () => {
   const isLoadingMessages = ref(false);
   const isRunning = ref(false);
   const contextUsage = ref<PineContextUsage | null>(null);
+  const pendingApprovals = ref<PinePendingApproval[]>([]);
+  /** Tool calls currently held by the auto-reviewer (agent-decides). */
+  const reviewingToolCallIds = ref<ReadonlySet<string>>(new Set());
   const hasEarlierMessages = ref(false);
   const nextBefore = ref<string | undefined>();
 
@@ -322,6 +343,7 @@ export const useSessionStore = defineStore("session", () => {
   async function prompt(
     message: string,
     sessionId?: string,
+    approvalMode?: PineApprovalMode,
   ): Promise<PineSessionSummary> {
     const sequence = ++activationSequence;
     currentSessionId = sessionId ?? null;
@@ -331,6 +353,7 @@ export const useSessionStore = defineStore("session", () => {
       const result = await window.pine.promptSession({
         message,
         target: sessionId ? { kind: "session", sessionId } : { kind: "new" },
+        approvalMode,
       });
       const session = {
         ...result.session,
@@ -355,6 +378,26 @@ export const useSessionStore = defineStore("session", () => {
 
   async function abort(): Promise<void> {
     await window.pine.abortSession();
+  }
+
+  /** Answer the oldest pending approval (approve / reject / guide). */
+  async function respondApproval(
+    action: PineApprovalAction,
+    guidance?: string,
+  ): Promise<void> {
+    const pending = pendingApprovals.value[0];
+    if (!pending) return;
+    pendingApprovals.value = pendingApprovals.value.slice(1);
+    try {
+      await window.pine.respondApproval({
+        requestId: pending.requestId,
+        action,
+        guidance,
+      });
+    } catch {
+      // The request may already be gone (session closed, run aborted); the
+      // optimistic removal above matches that outcome.
+    }
   }
 
   async function deleteSession(sessionId: string): Promise<boolean> {
@@ -385,6 +428,50 @@ export const useSessionStore = defineStore("session", () => {
       }
       if (currentSessionId !== event.sessionId) return;
       isRunning.value = event.state === "running" || event.state === "aborting";
+      // Aborted turns resolve pending approvals without a decided event.
+      if (event.state === "idle") {
+        pendingApprovals.value = [];
+        reviewingToolCallIds.value = new Set();
+      }
+      return;
+    }
+    if (event.type === "tool-review") {
+      if (currentSessionId !== event.sessionId) return;
+      reviewingToolCallIds.value = new Set([
+        ...reviewingToolCallIds.value,
+        event.toolCallId,
+      ]);
+      return;
+    }
+    if (event.type === "approval-request") {
+      if (currentSessionId !== event.sessionId) return;
+      const input = event.input as
+        { subject?: unknown; description?: unknown } | undefined;
+      pendingApprovals.value = [
+        ...pendingApprovals.value,
+        {
+          requestId: event.requestId,
+          toolCallId: event.toolCallId,
+          toolName: event.toolName,
+          trigger: event.trigger,
+          subject:
+            typeof input?.subject === "string" ? input.subject : undefined,
+          description:
+            typeof input?.description === "string"
+              ? input.description
+              : undefined,
+          evidence: event.evidence,
+        },
+      ];
+      return;
+    }
+    if (event.type === "approval-decided") {
+      pendingApprovals.value = pendingApprovals.value.filter(
+        (approval) => approval.requestId !== event.requestId,
+      );
+      const remaining = new Set(reviewingToolCallIds.value);
+      remaining.delete(event.toolCallId);
+      reviewingToolCallIds.value = remaining;
       return;
     }
     if (event.type === "session-updated") {
@@ -551,6 +638,8 @@ export const useSessionStore = defineStore("session", () => {
     hasEarlierMessages.value = false;
     nextBefore.value = undefined;
     contextUsage.value = null;
+    pendingApprovals.value = [];
+    reviewingToolCallIds.value = new Set();
     isRunning.value = false;
     isLoadingMessages.value = false;
   }
@@ -570,6 +659,8 @@ export const useSessionStore = defineStore("session", () => {
     isLoadingMessages.value = false;
     isRunning.value = false;
     isStartingPrompt = false;
+    pendingApprovals.value = [];
+    reviewingToolCallIds.value = new Set();
     hasEarlierMessages.value = false;
     nextBefore.value = undefined;
     contextUsage.value = null;
@@ -589,10 +680,13 @@ export const useSessionStore = defineStore("session", () => {
     loadRecent,
     loadEarlierMessages,
     messages,
+    pendingApprovals,
     prompt,
     recentSessions,
     reset,
+    respondApproval,
     resume,
+    reviewingToolCallIds,
     search,
     searchResults,
     startDraft,

@@ -10,8 +10,11 @@ import {
 import {
   getSupportedThinkingLevels,
   type Api,
+  type AssistantMessage,
   type AuthPrompt,
+  type Context,
   type Model,
+  type ModelsApiStreamOptions,
 } from "@earendil-works/pi-ai";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
@@ -28,20 +31,104 @@ import {
   type AgentSessionLocation,
   type AgentWorkerPromptResult,
   type AgentWorkerSessionResult,
+  GateDecision,
   toErrorMessage,
   toPineJsonValue,
 } from "./protocol";
+import {
+  AutoReviewGate,
+  RULING_TOOL,
+  UserApprovalGate,
+  type GateHost,
+  type GateTurnContext,
+  type JudgeRequest,
+  type JudgeRuling,
+  type ToolGate,
+  type UserApprovalRequest,
+} from "./gate";
 import { createPineToolDefinitions } from "./tools";
 
 const PINE_TOOL_NAMES = ["read", "bash", "edit", "write"];
 
+const JUDGE_TIMEOUT_MS = 60_000;
+
+const JUDGE_SYSTEM_PROMPT = `You are the automated safety reviewer inside Pine, a desktop coding agent. The agent tried to make a tool call that Pine's deterministic sandbox or folder policy blocked, or that matched a destructive-command heuristic. You decide whether the agent may proceed.
+
+Be permissive about ordinary development work: builds, test runs, package installs, scaffolding, formatters, git operations on local branches, and file edits inside the project. Be strict about anything destructive, irreversible, or that leaves the machine.
+
+Deny when the call:
+- destroys data that is hard or impossible to recreate: uncommitted work, untracked files, database tables or databases, Docker volumes, files outside the project
+- rewrites shared history (git push --force) or force-deletes branches others may use
+- publishes or uploads anything publicly (npm/bun publish, curl POST of project files, secrets, or environment data to external services)
+- exfiltrates credentials: sends .env files, tokens, SSH keys, or browser profiles over the network
+- pipes downloaded scripts straight into a shell
+- appears to have partially applied side effects before the sandbox blocked it, making a blind re-run unsafe
+
+Allow destructive-looking commands whose target is clearly safe to regenerate (build output, dependency caches, temporary files inside the project).
+
+Call submit_ruling exactly once with your verdict. Set scope to "session" only when identical commands should skip re-review for the rest of this session (for example a package manager the project clearly relies on). Write reason in the same language the user's messages use; for denials make it actionable by naming the safer alternative.`;
+
+const TRIGGER_DESCRIPTIONS: Record<JudgeRequest["trigger"], string> = {
+  "sandbox-denied":
+    "The macOS sandbox blocked the command at runtime (EPERM). An allowance re-runs the exact command outside the sandbox.",
+  "authorize-denied":
+    "Pine's folder policy rejected the path. An allowance performs the operation regardless of folder grants.",
+  "destructive-pattern":
+    "A destructive-command heuristic matched before execution. The sandbox has NOT run; an allowance runs the command (sandboxed as usual).",
+};
+
+function truncateText(value: string, maxLength: number): string {
+  if (value.length <= maxLength) return value;
+  return `${value.slice(0, maxLength)}\n…[truncated]`;
+}
+
+function buildJudgeEvidence(request: JudgeRequest): string {
+  const sections = [
+    `Review trigger: ${TRIGGER_DESCRIPTIONS[request.trigger]}`,
+    `Tool: ${request.toolName}`,
+    `Call subject:\n${truncateText(request.subject, 4_000)}`,
+  ];
+  if (request.evidence) {
+    sections.push(
+      `Evidence from the sandbox or policy:\n${truncateText(request.evidence, 2_000)}`,
+    );
+  }
+  if (request.turn.lastUserPrompt) {
+    sections.push(
+      `The user's most recent message:\n${truncateText(request.turn.lastUserPrompt, 2_000)}`,
+    );
+  }
+  if (request.turn.lastAssistantText) {
+    sections.push(
+      `The agent's current response so far:\n${truncateText(request.turn.lastAssistantText, 3_000)}`,
+    );
+  }
+  if (request.turn.lastThinking) {
+    sections.push(
+      `The agent's current reasoning (truncated):\n${truncateText(request.turn.lastThinking, 2_000)}`,
+    );
+  }
+  return sections.join("\n\n");
+}
+
 interface LiveAgentSession {
   session: AgentSession;
   unsubscribe: () => void;
+  agentDir: string;
+  /** Null in YOLO mode (no gate at all). */
+  gate: ToolGate | null;
+  /** Latest user/assistant context fed to gate reviews. */
+  turn: GateTurnContext;
 }
 
 export interface PineAgentRuntimeOptions {
   emit: (event: PineAgentEvent | PineProviderAuthEvent) => void;
+}
+
+interface PendingUserApproval {
+  resolve: (decision: GateDecision) => void;
+  sessionId: string;
+  toolCallId: string;
 }
 
 interface PendingAuthPrompt {
@@ -77,12 +164,37 @@ function sessionSummary(session: AgentSession): PineSessionSummary {
   };
 }
 
+/**
+ * Judge calls must minimize latency, so reasoning is disabled wherever the
+ * API exposes an explicit switch. openai-completions-family APIs send an
+ * explicit "thinking disabled" flag when no effort option is present, so
+ * omitting options is the off state there (passing an effort would ENABLE
+ * thinking); Responses-style APIs default to medium effort unless lowered;
+ * Anthropic needs thinkingEnabled: false.
+ */
+export function judgeStreamOptions(
+  model: Model<Api>,
+  signal: AbortSignal,
+): ModelsApiStreamOptions<Api> {
+  switch (model.api) {
+    case "anthropic-messages":
+      return { signal, thinkingEnabled: false };
+    case "openai-responses":
+    case "openai-codex-responses":
+    case "azure-openai-responses":
+      return { signal, reasoningEffort: "minimal" };
+    default:
+      return { signal };
+  }
+}
+
 export class PineAgentRuntime {
   private readonly activeMessageIds = new Map<string, string>();
   private readonly liveSessions = new Map<string, LiveAgentSession>();
   private readonly modelRuntimes = new Map<string, Promise<ModelRuntime>>();
   private readonly loginControllers = new Map<string, AbortController>();
   private readonly pendingAuthPrompts = new Map<string, PendingAuthPrompt>();
+  private readonly pendingApprovals = new Map<string, PendingUserApproval>();
 
   constructor(private readonly options: PineAgentRuntimeOptions) {}
 
@@ -114,6 +226,8 @@ export class PineAgentRuntime {
     streamingBehavior?: "followUp" | "steer",
   ): Promise<AgentWorkerPromptResult> {
     const live = this.getSession(sessionId);
+    live.turn.lastUserPrompt = message;
+    live.gate?.resetTurn();
     let accepted = false;
 
     this.options.emit({ type: "run-state", sessionId, state: "running" });
@@ -164,6 +278,11 @@ export class PineAgentRuntime {
 
     this.liveSessions.delete(sessionId);
     this.activeMessageIds.delete(sessionId);
+    for (const [requestId, pending] of this.pendingApprovals) {
+      if (pending.sessionId !== sessionId) continue;
+      this.pendingApprovals.delete(requestId);
+      pending.resolve({ kind: "deny", reason: "The session was closed." });
+    }
     if (!live.session.isIdle) await live.session.abort();
     live.unsubscribe();
     await live.session.settingsManager.flush();
@@ -173,6 +292,13 @@ export class PineAgentRuntime {
 
   async dispose(): Promise<{ disposed: boolean }> {
     for (const controller of this.loginControllers.values()) controller.abort();
+    for (const [requestId, pending] of this.pendingApprovals) {
+      this.pendingApprovals.delete(requestId);
+      pending.resolve({
+        kind: "deny",
+        reason: "The agent runtime was disposed.",
+      });
+    }
     await Promise.all(
       [...this.liveSessions.keys()].map((sessionId) =>
         this.disposeSession(sessionId),
@@ -360,7 +486,23 @@ export class PineAgentRuntime {
       noThemes: true,
     });
     await resourceLoader.reload();
-    const customTools = await createPineToolDefinitions(location);
+    const live: LiveAgentSession = {
+      session: undefined as never,
+      unsubscribe: () => undefined,
+      agentDir: location.agentDir,
+      gate: null,
+      turn: {},
+    };
+    if (
+      location.approvalMode === "ask-for-permission" ||
+      location.approvalMode === "agent-decides"
+    ) {
+      live.gate = this.createGate(
+        live,
+        location.approvalMode === "ask-for-permission" ? "user" : "auto",
+      );
+    }
+    const customTools = await createPineToolDefinitions(location, live.gate);
 
     const { session } = await createAgentSession({
       cwd: location.cwd,
@@ -372,10 +514,11 @@ export class PineAgentRuntime {
       customTools,
       tools: PINE_TOOL_NAMES,
     });
-    const unsubscribe = session.subscribe((event) =>
+    live.session = session;
+    live.unsubscribe = session.subscribe((event) =>
       this.forwardEvent(session, event),
     );
-    this.liveSessions.set(session.sessionId, { session, unsubscribe });
+    this.liveSessions.set(session.sessionId, live);
     // A resumed session already carries usage history; surface it before the
     // next turn completes.
     this.emitContextUsage(session);
@@ -384,6 +527,175 @@ export class PineAgentRuntime {
       session: sessionSummary(session),
       ...(session.sessionFile ? { sessionFile: session.sessionFile } : {}),
     };
+  }
+
+  private createGate(live: LiveAgentSession, mode: "user" | "auto"): ToolGate {
+    const host: GateHost = {
+      get sessionId() {
+        return live.session.sessionId;
+      },
+      emit: (event) => this.options.emit(event),
+      turnContext: () => live.turn,
+      judge: (request) => this.runJudge(live, request),
+      requestUserApproval: (request) => this.requestUserApproval(live, request),
+    };
+    return mode === "user"
+      ? new UserApprovalGate(host)
+      : new AutoReviewGate(host);
+  }
+
+  /** Cross-process round trip: renderer answers, worker resumes. */
+  private requestUserApproval(
+    live: LiveAgentSession,
+    request: UserApprovalRequest,
+  ): Promise<GateDecision> {
+    const sessionId = live.session.sessionId;
+    const requestId = randomUUID();
+    return new Promise<GateDecision>((resolve) => {
+      const pending: PendingUserApproval = {
+        resolve,
+        sessionId,
+        toolCallId: request.toolCallId,
+      };
+      this.pendingApprovals.set(requestId, pending);
+      const onAbort = () => {
+        if (this.pendingApprovals.get(requestId) !== pending) return;
+        this.pendingApprovals.delete(requestId);
+        resolve({ kind: "deny", reason: "aborted" });
+      };
+      request.signal?.addEventListener("abort", onAbort, { once: true });
+      const reviewInput: Record<string, string> = {};
+      if (request.subject !== undefined) reviewInput.subject = request.subject;
+      if (request.description !== undefined) {
+        reviewInput.description = request.description;
+      }
+      this.options.emit({
+        type: "approval-request",
+        sessionId,
+        requestId,
+        toolCallId: request.toolCallId,
+        toolName: request.toolName,
+        trigger: request.trigger,
+        input: Object.keys(reviewInput).length > 0 ? reviewInput : undefined,
+        evidence: request.evidence,
+      });
+    });
+  }
+
+  /** Entry point for the worker's inbound `approval:response` messages. */
+  resolveApproval(
+    requestId: string,
+    decision: GateDecision,
+  ): { accepted: boolean } {
+    const pending = this.pendingApprovals.get(requestId);
+    if (!pending) return { accepted: false };
+    this.pendingApprovals.delete(requestId);
+    pending.resolve(decision);
+    this.options.emit({
+      type: "approval-decided",
+      sessionId: pending.sessionId,
+      requestId,
+      toolCallId: pending.toolCallId,
+      verdict: decision.kind === "allow" ? "approved" : "denied",
+      decidedBy: "user",
+      reason: decision.kind === "deny" ? decision.reason : undefined,
+    });
+    return { accepted: true };
+  }
+
+  /**
+   * Structured-output judge: one direct stream call against the session's
+   * selected model with a submit_ruling tool, then read the tool call back.
+   * Never goes through session.prompt (no recursion into the tool pipeline).
+   */
+  private async runJudge(
+    live: LiveAgentSession,
+    request: JudgeRequest,
+  ): Promise<JudgeRuling> {
+    const model = live.session.model;
+    if (!model) throw new Error("No model is selected for this session.");
+    const modelRuntime = await this.getModelRuntime(live.agentDir);
+    const timeout = AbortSignal.timeout(JUDGE_TIMEOUT_MS);
+    const signal = request.signal
+      ? AbortSignal.any([request.signal, timeout])
+      : timeout;
+    const context: Context = {
+      systemPrompt: JUDGE_SYSTEM_PROMPT,
+      messages: [
+        {
+          role: "user",
+          timestamp: Date.now(),
+          content: buildJudgeEvidence(request),
+        },
+      ],
+      tools: [RULING_TOOL],
+    };
+    const stream = modelRuntime.stream(
+      model,
+      context,
+      judgeStreamOptions(model, signal),
+    );
+    let final: AssistantMessage | undefined;
+    for await (const event of stream) {
+      if (event.type === "done") final = event.message;
+      else if (event.type === "error") {
+        if (event.reason === "aborted") throw new Error("aborted");
+        throw new Error(
+          event.error.errorMessage ?? "The reviewer stream failed.",
+        );
+      }
+    }
+    if (!final) throw new Error("The reviewer returned no response.");
+    const call = final.content.find(
+      (block) => block.type === "toolCall" && block.name === RULING_TOOL.name,
+    );
+    if (!call || call.type !== "toolCall") {
+      throw new Error("The reviewer did not submit a ruling.");
+    }
+    const args = call.arguments as
+      { verdict?: unknown; reason?: unknown; scope?: unknown } | undefined;
+    if (args?.verdict !== "allow" && args?.verdict !== "deny") {
+      throw new Error("The reviewer's ruling was malformed.");
+    }
+    const ruling: JudgeRuling = { verdict: args.verdict };
+    if (typeof args.reason === "string" && args.reason.trim()) {
+      ruling.reason = args.reason.trim();
+    }
+    if (args.scope === "session" || args.scope === "once") {
+      ruling.scope = args.scope;
+    }
+    return ruling;
+  }
+
+  /** Keep the latest assistant text/thinking as gate review context. */
+  private rememberAssistantTurn(sessionId: string, message: unknown): void {
+    const live = this.liveSessions.get(sessionId);
+    if (!live) return;
+    const { role, content } = message as {
+      role?: unknown;
+      content?: unknown;
+    };
+    if (role !== "assistant" || !Array.isArray(content)) return;
+    let text = "";
+    let thinking = "";
+    for (const block of content) {
+      if (typeof block !== "object" || block === null) continue;
+      const candidate = block as {
+        type?: unknown;
+        text?: unknown;
+        thinking?: unknown;
+      };
+      if (candidate.type === "text" && typeof candidate.text === "string") {
+        text += candidate.text;
+      } else if (
+        candidate.type === "thinking" &&
+        typeof candidate.thinking === "string"
+      ) {
+        thinking += candidate.thinking;
+      }
+    }
+    live.turn.lastAssistantText = text.trim() || undefined;
+    live.turn.lastThinking = thinking.trim() || undefined;
   }
 
   private getSession(sessionId: string): LiveAgentSession {
@@ -483,7 +795,10 @@ export class PineAgentRuntime {
           messageId,
           message: toPineJsonValue(event.message),
         });
-        if (event.type === "message_end") this.emitContextUsage(session);
+        if (event.type === "message_end") {
+          this.rememberAssistantTurn(sessionId, event.message);
+          this.emitContextUsage(session);
+        }
         break;
       }
       case "message_update":

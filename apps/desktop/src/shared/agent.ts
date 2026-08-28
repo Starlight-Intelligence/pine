@@ -4,6 +4,34 @@ export const PROMPT_SESSION_CHANNEL = "sessions:prompt" as const;
 export const ABORT_SESSION_CHANNEL = "sessions:abort" as const;
 export const SESSION_EVENT_CHANNEL = "sessions:event" as const;
 
+/**
+ * How strictly Pine gates the agent's tool calls.
+ *
+ * - `ask-for-permission`: confirm every tool call before it runs.
+ * - `agent-decides`: let the agent decide which actions need confirmation.
+ * - `yolo`: close all sandboxes and grant the agent full permissions, keeping
+ *   only whatever guardrails the pi harness itself provides.
+ */
+export type PineApprovalMode = "ask-for-permission" | "agent-decides" | "yolo";
+
+/** Why a tool call needed an approval decision before it could proceed. */
+export type PineApprovalTrigger =
+  | "pre-execution"
+  | "sandbox-denied"
+  | "authorize-denied"
+  | "destructive-pattern";
+
+export type PineApprovalAction = "approve" | "reject" | "guide";
+
+export interface RespondApprovalRequest {
+  requestId: string;
+  action: PineApprovalAction;
+  /** Required when action is "guide": steering text fed back to the agent. */
+  guidance?: string;
+}
+
+export const APPROVAL_RESPONSE_CHANNEL = "sessions:approval-response" as const;
+
 export type PineJsonValue =
   | boolean
   | number
@@ -58,6 +86,36 @@ export type PineAgentEvent =
       percent: number | null;
       /** Cumulative conversation cost in USD. */
       cost: number;
+    }
+  | {
+      type: "approval-request";
+      sessionId: string;
+      requestId: string;
+      toolCallId: string;
+      toolName: string;
+      trigger: PineApprovalTrigger;
+      /** Tool arguments as captured when the gate escalated. */
+      input?: PineJsonValue;
+      /** Why the gate escalated (sandbox stderr excerpt, policy error, …). */
+      evidence?: string;
+    }
+  | {
+      type: "approval-decided";
+      sessionId: string;
+      requestId: string;
+      toolCallId: string;
+      verdict: "approved" | "denied";
+      /** Who decided: the user (ask mode) or the model judge (agent-decides). */
+      decidedBy: "user" | "judge";
+      reason?: string;
+    }
+  | {
+      type: "tool-review";
+      sessionId: string;
+      toolCallId: string;
+      toolName: string;
+      /** The auto-reviewer is holding the call before it may execute. */
+      state: "reviewing";
     };
 
 export interface PromptSessionRequest {
@@ -69,6 +127,9 @@ export interface PromptSessionRequest {
         sessionId: string;
       };
   streamingBehavior?: "follow-up" | "steer";
+  /** Sandbox/permission mode for the targeted session. Defaults to
+   * `agent-decides` when omitted. */
+  approvalMode?: PineApprovalMode;
 }
 
 export interface PromptSessionResult {

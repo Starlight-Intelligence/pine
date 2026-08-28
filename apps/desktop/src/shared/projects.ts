@@ -2,6 +2,7 @@ import type {
   AbortSessionResult,
   PromptSessionRequest,
   PromptSessionResult,
+  RespondApprovalRequest,
   SessionEventListener,
 } from "./agent";
 import type {
@@ -147,5 +148,8 @@ export interface PineDesktopApi extends PineWindowApi {
     request: SearchSessionsRequest,
   ) => Promise<SearchSessionsResult>;
   onSessionEvent: (listener: SessionEventListener) => () => void;
+  respondApproval: (
+    request: RespondApprovalRequest,
+  ) => Promise<{ accepted: boolean }>;
   updateProject: (request: UpdateProjectRequest) => Promise<ProjectResult>;
 }

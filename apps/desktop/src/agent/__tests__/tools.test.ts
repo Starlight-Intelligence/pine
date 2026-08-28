@@ -9,13 +9,45 @@ import {
 } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentSessionLocation } from "../protocol";
+import type { ToolGate } from "../gate";
 import {
   createMacOsBashSandboxProfile,
   createPineToolDefinitions,
+  matchSandboxDenial,
   PineToolAccessPolicy,
+  SandboxDeniedError,
 } from "../tools";
+
+function createFakeGate(
+  overrides: {
+    reviewBashCommand?: ToolGate["reviewBashCommand"];
+    reviewFileCall?: ToolGate["reviewFileCall"];
+    reviewDenial?: ToolGate["reviewDenial"];
+  } = {},
+): ToolGate & {
+  reviewBashCommand: ReturnType<typeof vi.fn>;
+  reviewFileCall: ReturnType<typeof vi.fn>;
+  reviewDenial: ReturnType<typeof vi.fn>;
+} {
+  return {
+    reviewBashCommand: vi.fn(
+      overrides.reviewBashCommand ??
+        (() => Promise.resolve({ kind: "allow" as const })),
+    ),
+    reviewFileCall: vi.fn(
+      overrides.reviewFileCall ??
+        (() => Promise.resolve({ kind: "allow" as const })),
+    ),
+    reviewDenial: vi.fn(
+      overrides.reviewDenial ??
+        (() => Promise.resolve({ kind: "allow" as const })),
+    ),
+    isApprovedCommand: () => false,
+    resetTurn: () => undefined,
+  };
+}
 
 const temporaryDirectories: string[] = [];
 
@@ -209,6 +241,114 @@ describe("createPineToolDefinitions", () => {
     expect(profile).toContain("(deny default)");
   });
 
+  describe("matchSandboxDenial", () => {
+    it("recognizes every denial dialect seen in real sandbox runs", () => {
+      expect(matchSandboxDenial("zsh:1: operation not permitted: ps")).toBe(
+        true,
+      );
+      expect(
+        matchSandboxDenial(
+          "_LSOpenURLsWithCompletionHandler() failed for the application /System/Applications/Music.app with error -54.",
+        ),
+      ).toBe(true);
+      expect(
+        matchSandboxDenial(
+          "sandbox_extension_issue_file failed for /System/Library/CoreServices/System Events.app: 1 (Operation not permitted)",
+        ),
+      ).toBe(true);
+      expect(
+        matchSandboxDenial(
+          "32:44: execution error: Music got an error: Application isn’t running. (-600)",
+        ),
+      ).toBe(true);
+    });
+
+    it("ignores ordinary command failures", () => {
+      expect(
+        matchSandboxDenial("cat: missing.txt: No such file or directory"),
+      ).toBe(false);
+      expect(matchSandboxDenial("Application isn’t running. (-601)")).toBe(
+        false,
+      );
+    });
+  });
+
+  it.runIf(process.platform === "darwin" && !process.env.CODEX_SANDBOX)(
+    "escalates denials that hide inside pipelines",
+    async () => {
+      const { location } = await createFixture();
+      const gate = createFakeGate({
+        reviewDenial: () =>
+          Promise.resolve({
+            kind: "deny" as const,
+            reason: "pipeline denied",
+          }),
+      });
+      const tools = await createPineToolDefinitions(location, gate);
+      const bash = tools.find((tool) => tool.name === "bash");
+      if (!bash) throw new Error("Bash tool was not registered.");
+
+      // pipefail makes the denied `ps` stage fail the whole pipeline, so the
+      // gate sees the denial even though `head` succeeds.
+      await expect(
+        bash.execute(
+          "p1",
+          { command: "ps aux | head -20", description: "list processes" },
+          undefined,
+          undefined,
+          undefined as never,
+        ),
+      ).rejects.toThrow("pipeline denied");
+      expect(gate.reviewDenial).toHaveBeenCalledWith(
+        "sandbox",
+        expect.objectContaining({
+          evidence: expect.stringMatching(/operation not permitted/i),
+        }),
+      );
+    },
+  );
+
+  it.runIf(process.platform === "darwin" && !process.env.CODEX_SANDBOX)(
+    "classifies sandboxed AppleScript failures as denials, not tool errors",
+    async () => {
+      const { location } = await createFixture();
+      const gate = createFakeGate({
+        reviewDenial: () =>
+          Promise.resolve({
+            kind: "deny" as const,
+            reason: "no Apple Events in tests",
+          }),
+      });
+      const tools = await createPineToolDefinitions(location, gate);
+      const bash = tools.find((tool) => tool.name === "bash");
+      if (!bash) throw new Error("Bash tool was not registered.");
+
+      // A tell block to a live system service fails with -600 inside the
+      // sandbox; the widened signature must route it to the gate instead of
+      // surfacing it as a plain command error.
+      await expect(
+        bash.execute(
+          "apple-events",
+          {
+            command:
+              "osascript -e 'tell application \"Finder\" to get name of startup disk'",
+            description: "probe Apple Events",
+          },
+          undefined,
+          undefined,
+          undefined as never,
+        ),
+      ).rejects.toThrow("no Apple Events in tests");
+
+      expect(gate.reviewDenial).toHaveBeenCalledWith(
+        "sandbox",
+        expect.objectContaining({
+          evidence: expect.stringMatching(/\(-600\)/),
+        }),
+      );
+    },
+  );
+
   it.runIf(process.platform === "darwin" && !process.env.CODEX_SANDBOX)(
     "enforces writable and read-only grants for shell commands",
     async () => {
@@ -303,6 +443,226 @@ describe("createPineToolDefinitions", () => {
           undefined as never,
         ),
       ).rejects.toThrow("operation not permitted");
+    },
+  );
+
+  it("escalates authorize denials and writes beyond grants on approval", async () => {
+    const { location, outside } = await createFixture();
+    const gate = createFakeGate();
+    const tools = await createPineToolDefinitions(location, gate);
+    const write = tools.find((tool) => tool.name === "write");
+    if (!write) throw new Error("Write tool is missing.");
+    const outsideFile = path.join(outside, "approved.txt");
+
+    await write.execute(
+      "approved-write",
+      { content: "granted", path: outsideFile },
+      undefined,
+      undefined,
+      undefined as never,
+    );
+
+    await expect(readFile(outsideFile, "utf8")).resolves.toBe("granted");
+    expect(gate.reviewFileCall).toHaveBeenCalledWith(
+      expect.objectContaining({ toolName: "write", path: outsideFile }),
+    );
+    expect(gate.reviewDenial).toHaveBeenCalledWith(
+      "authorize",
+      expect.objectContaining({ subject: outsideFile }),
+    );
+  });
+
+  it("escalates out-of-scope reads through the gate on approval", async () => {
+    const { location, outside } = await createFixture();
+    const gate = createFakeGate();
+    const tools = await createPineToolDefinitions(location, gate);
+    const read = tools.find((tool) => tool.name === "read");
+    if (!read) throw new Error("Read tool was not registered.");
+    const outsideFile = path.join(outside, "secret.txt");
+    await writeFile(outsideFile, "elevated-read");
+
+    await expect(
+      read.execute(
+        "r1",
+        { path: outsideFile },
+        undefined,
+        undefined,
+        undefined as never,
+      ),
+    ).resolves.toBeDefined();
+    expect(gate.reviewDenial).toHaveBeenCalledWith(
+      "authorize",
+      expect.objectContaining({ toolName: "read", subject: outsideFile }),
+    );
+  });
+
+  it("propagates the gate's pre-execution denial for file tools", async () => {
+    const { location } = await createFixture();
+    const gate = createFakeGate({
+      reviewFileCall: () =>
+        Promise.resolve({ kind: "deny" as const, reason: "not allowed" }),
+    });
+    const tools = await createPineToolDefinitions(location, gate);
+    const write = tools.find((tool) => tool.name === "write");
+    if (!write) throw new Error("Write tool is missing.");
+
+    await expect(
+      write.execute(
+        "denied-write",
+        { content: "x", path: path.join(location.cwd, "in-grant.txt") },
+        undefined,
+        undefined,
+        undefined as never,
+      ),
+    ).rejects.toThrow("not allowed");
+  });
+
+  it("rejects bash commands denied before execution", async () => {
+    const { location } = await createFixture();
+    const gate = createFakeGate({
+      reviewBashCommand: () =>
+        Promise.resolve({ kind: "deny" as const, reason: "user said no" }),
+    });
+    const tools = await createPineToolDefinitions(location, gate);
+    const bash = tools.find((tool) => tool.name === "bash");
+    if (!bash) throw new Error("Bash tool was not registered.");
+
+    await expect(
+      bash.execute(
+        "b1",
+        { command: "echo hi", description: "greet" },
+        undefined,
+        undefined,
+        undefined as never,
+      ),
+    ).rejects.toThrow("user said no");
+    expect(gate.reviewBashCommand).toHaveBeenCalledWith(
+      expect.objectContaining({ command: "echo hi" }),
+    );
+  });
+
+  it.runIf(process.platform === "darwin" && !process.env.CODEX_SANDBOX)(
+    "re-runs sandbox-denied commands outside the sandbox on approval",
+    async () => {
+      const { location, outside } = await createFixture();
+      const gate = createFakeGate();
+      const tools = await createPineToolDefinitions(location, gate);
+      const bash = tools.find((tool) => tool.name === "bash");
+      if (!bash) throw new Error("Bash tool was not registered.");
+      const outsideFile = path.join(outside, "elevated.txt");
+
+      await bash.execute(
+        "elevated",
+        {
+          command: `printf elevated > ${JSON.stringify(outsideFile)}`,
+          description: "write outside the project",
+        },
+        undefined,
+        undefined,
+        undefined as never,
+      );
+
+      expect(gate.reviewDenial).toHaveBeenCalledWith(
+        "sandbox",
+        expect.objectContaining({
+          subject: expect.stringContaining("printf"),
+          evidence: expect.stringMatching(/operation not permitted/i),
+        }),
+      );
+      await expect(readFile(outsideFile, "utf8")).resolves.toBe("elevated");
+    },
+  );
+
+  it.runIf(process.platform === "darwin" && !process.env.CODEX_SANDBOX)(
+    "surfaces the gate's denial when the sandboxed command may not re-run",
+    async () => {
+      const { location, outside } = await createFixture();
+      const gate = createFakeGate({
+        reviewDenial: () =>
+          Promise.resolve({
+            kind: "deny" as const,
+            reason: "reviewer refused",
+          }),
+      });
+      const tools = await createPineToolDefinitions(location, gate);
+      const bash = tools.find((tool) => tool.name === "bash");
+      if (!bash) throw new Error("Bash tool was not registered.");
+
+      await expect(
+        bash.execute(
+          "blocked",
+          {
+            command: `printf x > ${JSON.stringify(path.join(outside, "no.txt"))}`,
+            description: "write outside the project",
+          },
+          undefined,
+          undefined,
+          undefined as never,
+        ),
+      ).rejects.toThrow("reviewer refused");
+      await expect(
+        readFile(path.join(outside, "no.txt"), "utf8"),
+      ).rejects.toThrow();
+    },
+  );
+
+  it("carries the captured output as review evidence", () => {
+    const error = new SandboxDeniedError("zsh:1: operation not permitted: ps");
+    expect(error.outputTail).toContain("operation not permitted");
+  });
+
+  it("yolo mode grants file tools access beyond the shared folders", async () => {
+    const { location, outside } = await createFixture();
+    const tools = await createPineToolDefinitions({
+      ...location,
+      approvalMode: "yolo",
+    });
+    const read = tools.find((tool) => tool.name === "read");
+    const write = tools.find((tool) => tool.name === "write");
+    if (!read || !write) throw new Error("File tools are missing.");
+    const outsideFile = path.join(outside, "yolo.txt");
+    await write.execute(
+      "write-yolo",
+      { content: "yolo", path: outsideFile },
+      undefined,
+      undefined,
+      undefined as never,
+    );
+    await expect(readFile(outsideFile, "utf8")).resolves.toBe("yolo");
+    await expect(
+      read.execute(
+        "read-yolo",
+        { path: outsideFile },
+        undefined,
+        undefined,
+        undefined as never,
+      ),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        content: [expect.objectContaining({ text: "yolo" })],
+      }),
+    );
+  });
+
+  it.runIf(process.platform === "darwin" && !process.env.CODEX_SANDBOX)(
+    "yolo mode runs shell commands without the sandbox",
+    async () => {
+      const { location, outside } = await createFixture();
+      const tools = await createPineToolDefinitions({
+        ...location,
+        approvalMode: "yolo",
+      });
+      const bash = tools.find((tool) => tool.name === "bash");
+      if (!bash) throw new Error("Bash tool was not registered.");
+      const outsideFile = path.join(outside, "yolo-shell.txt");
+      await bash.execute(
+        "yolo-shell",
+        { command: `printf yolo > ${JSON.stringify(outsideFile)}` },
+        undefined,
+        undefined,
+        undefined as never,
+      );
+      await expect(readFile(outsideFile, "utf8")).resolves.toBe("yolo");
     },
   );
 });

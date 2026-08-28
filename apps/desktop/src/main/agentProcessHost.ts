@@ -9,12 +9,14 @@ import type {
 } from "../shared/models";
 import type {
   AgentSessionLocation,
+  AgentWorkerInbound,
   AgentWorkerMessage,
   AgentWorkerPromptResult,
   AgentWorkerRequest,
   AgentWorkerRequestInput,
   AgentWorkerResult,
   AgentWorkerSessionResult,
+  GateDecision,
   PineRuntimeEvent,
 } from "../agent/protocol";
 
@@ -22,7 +24,7 @@ interface AgentProcess {
   kill(): boolean;
   on(event: "exit", listener: (code: number) => void): this;
   on(event: "message", listener: (message: unknown) => void): this;
-  postMessage(message: AgentWorkerRequest): void;
+  postMessage(message: AgentWorkerInbound): void;
 }
 
 export interface AgentHost {
@@ -63,6 +65,8 @@ export interface AgentHost {
     sessionId?: string,
   ): Promise<{ disposed: boolean }>;
   subscribe(listener: (event: PineRuntimeEvent) => void): () => void;
+  /** Resolve a pending user-approval round trip inside the agent worker. */
+  respondApproval(requestId: string, decision: GateDecision): void;
 }
 
 type AgentProcessFactory = () => AgentProcess;
@@ -180,6 +184,14 @@ export class AgentProcessHost implements AgentHost {
   subscribe(listener: (event: PineRuntimeEvent) => void): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
+  }
+
+  respondApproval(requestId: string, decision: GateDecision): void {
+    this.process?.postMessage({
+      type: "approval:response",
+      requestId,
+      decision,
+    });
   }
 
   async dispose(): Promise<void> {

@@ -1,8 +1,13 @@
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import type { Api, Model } from "@earendil-works/pi-ai";
 import { afterEach, describe, expect, it } from "vitest";
-import { PineAgentRuntime, projectSessionDirectory } from "../runtime";
+import {
+  judgeStreamOptions,
+  PineAgentRuntime,
+  projectSessionDirectory,
+} from "../runtime";
 
 const temporaryDirectories: string[] = [];
 
@@ -12,6 +17,25 @@ afterEach(async () => {
       .splice(0)
       .map((directory) => rm(directory, { recursive: true, force: true })),
   );
+});
+
+describe("judgeStreamOptions", () => {
+  const signal = new AbortController().signal;
+  const modelWithApi = (api: Api) => ({ api }) as unknown as Model<Api>;
+
+  it("disables reasoning wherever the API exposes a switch", () => {
+    expect(
+      judgeStreamOptions(modelWithApi("anthropic-messages"), signal),
+    ).toEqual({ signal, thinkingEnabled: false });
+    expect(
+      judgeStreamOptions(modelWithApi("openai-responses"), signal),
+    ).toEqual({ signal, reasoningEffort: "minimal" });
+    // Omitting options is the off state for completions-family formats;
+    // passing an effort would enable thinking.
+    expect(
+      judgeStreamOptions(modelWithApi("openai-completions"), signal),
+    ).toEqual({ signal });
+  });
 });
 
 describe("PineAgentRuntime", () => {

@@ -31,6 +31,7 @@ function createAgentHost(): AgentHost {
       accepted: true,
       session: { ...sessionSummary, messageCount: 2 },
     }),
+    respondApproval: vi.fn(),
     subscribe: vi.fn().mockReturnValue(() => undefined),
   };
 }

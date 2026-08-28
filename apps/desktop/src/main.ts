@@ -17,10 +17,12 @@ import { AgentProcessHost } from "./main/agentProcessHost";
 import { ProjectRepository } from "./main/projects/projectRepository";
 import {
   ABORT_SESSION_CHANNEL,
+  APPROVAL_RESPONSE_CHANNEL,
   PROMPT_SESSION_CHANNEL,
   SESSION_EVENT_CHANNEL,
   type AbortSessionResult,
   type PromptSessionResult,
+  type RespondApprovalRequest,
 } from "./shared/agent";
 import {
   CANCEL_PROVIDER_AUTH_CHANNEL,
@@ -135,6 +137,14 @@ const PromptSessionRequestSchema = z.object({
     z.object({ kind: z.literal("session"), sessionId: z.uuid() }),
   ]),
   streamingBehavior: z.enum(["follow-up", "steer"]).optional(),
+  approvalMode: z
+    .enum(["ask-for-permission", "agent-decides", "yolo"])
+    .optional(),
+});
+const RespondApprovalRequestSchema = z.object({
+  requestId: z.uuid(),
+  action: z.enum(["approve", "reject", "guide"]),
+  guidance: z.string().trim().min(1).max(10_000).optional(),
 });
 const LoginProviderRequestSchema = z.object({
   authType: z.enum(["api_key", "oauth"]),
@@ -188,6 +198,39 @@ function getProjectRuntimes(): ProjectRuntimeRegistry {
   return projectRuntimes;
 }
 
+/** macOS dock bounce id for the pending approval attention request. */
+let approvalBounceId: number | null = null;
+
+/**
+ * Surface a pending approval at the OS level: the dock icon bounces on
+ * macOS and the taskbar button flashes on Windows until the decision (or
+ * window focus) clears it.
+ */
+function requestApprovalAttention(ownerId: number): void {
+  if (process.platform === "darwin") {
+    approvalBounceId = app.dock?.bounce("informational") ?? null;
+    return;
+  }
+  if (process.platform === "win32") {
+    const sender = webContents.fromId(ownerId);
+    const window = sender ? BrowserWindow.fromWebContents(sender) : undefined;
+    window?.flashFrame(true);
+  }
+}
+
+function clearApprovalAttention(): void {
+  if (process.platform === "darwin") {
+    if (approvalBounceId !== null) app.dock?.cancelBounce(approvalBounceId);
+    approvalBounceId = null;
+    return;
+  }
+  if (process.platform === "win32") {
+    for (const window of BrowserWindow.getAllWindows()) {
+      window.flashFrame(false);
+    }
+  }
+}
+
 const createWindow = () => {
   const mainWindow = new BrowserWindow({
     title: "Pine",
@@ -210,6 +253,10 @@ const createWindow = () => {
     },
   });
   const webContentsId = mainWindow.webContents.id;
+
+  // Focus stops the approval attention request (Windows flashes until the
+  // window is focused; macOS bounces until the app activates).
+  mainWindow.on("focus", clearApprovalAttention);
 
   mainWindow.once("ready-to-show", () => {
     mainWindow.show();
@@ -472,6 +519,17 @@ ipcMain.handle(
 );
 
 ipcMain.handle(
+  APPROVAL_RESPONSE_CHANNEL,
+  (event, request: unknown): { accepted: boolean } =>
+    getProjectRuntimes().respondApproval(
+      event.sender.id,
+      RespondApprovalRequestSchema.parse(
+        request,
+      ) satisfies RespondApprovalRequest,
+    ),
+);
+
+ipcMain.handle(
   SET_SIDEBAR_VIBRANCY_CHANNEL,
   (event, request: unknown): SetSidebarVibrancyResult => {
     const { enabled } = SetSidebarVibrancyRequestSchema.parse(request);
@@ -514,6 +572,13 @@ app.on("ready", () => {
     }
     const ownerId = projectRuntimes?.ownerOfSession(agentEvent.sessionId);
     if (ownerId === undefined) return;
+    if (agentEvent.type === "approval-request") {
+      projectRuntimes?.trackApproval(agentEvent.requestId, ownerId);
+      requestApprovalAttention(ownerId);
+    } else if (agentEvent.type === "approval-decided") {
+      projectRuntimes?.forgetApproval(agentEvent.requestId);
+      clearApprovalAttention();
+    }
     webContents.fromId(ownerId)?.send(SESSION_EVENT_CHANNEL, agentEvent);
   });
   createWindow();

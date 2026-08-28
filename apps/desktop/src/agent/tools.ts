@@ -11,9 +11,11 @@ import {
   writeFile,
 } from "node:fs/promises";
 import path from "node:path";
+import type { TSchema } from "typebox";
 import {
   createBashToolDefinition,
   createEditToolDefinition,
+  createLocalBashOperations,
   createReadToolDefinition,
   createWriteToolDefinition,
   defineTool,
@@ -22,7 +24,10 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import type { Static } from "typebox";
-import type { AgentFolderGrant, AgentSessionLocation } from "./protocol";
+import type { AgentSessionLocation } from "./protocol";
+import type { AgentFolderGrant } from "./protocol";
+import { createBashEnvironment, resolveLoginPath } from "./bash-env";
+import type { ToolGate } from "./gate";
 
 type AccessMode = "read" | "write";
 
@@ -75,6 +80,7 @@ export class PineToolAccessPolicy {
   private constructor(
     readonly cwd: string,
     readonly folders: CanonicalFolderGrant[],
+    private readonly permissive = false,
   ) {}
 
   static async create(
@@ -98,7 +104,16 @@ export class PineToolAccessPolicy {
         "The project default folder must be an available read-write folder.",
       );
     }
-    return new PineToolAccessPolicy(canonicalCwd, canonicalFolders);
+    return new PineToolAccessPolicy(canonicalCwd, canonicalFolders, false);
+  }
+
+  /**
+   * A policy that authorizes every path (YOLO mode). Drops Pine's folder
+   * grants and read/write restrictions entirely, leaving the pi harness's own
+   * tool behavior (no path sandbox) as the only remaining guardrail.
+   */
+  static permissive(cwd: string): PineToolAccessPolicy {
+    return new PineToolAccessPolicy(cwd, [], true);
   }
 
   async authorize(
@@ -110,6 +125,7 @@ export class PineToolAccessPolicy {
       path.resolve(targetPath),
       options.allowMissing ?? false,
     );
+    if (this.permissive) return canonicalPath;
     const containingGrant = this.folders.find((folder) =>
       pathContains(folder.path, canonicalPath),
     );
@@ -125,6 +141,7 @@ export class PineToolAccessPolicy {
   }
 
   writableFolders(): string[] {
+    if (this.permissive) return [];
     return this.folders
       .filter((folder) => folder.access === "read-write")
       .map((folder) => folder.path);
@@ -165,6 +182,42 @@ function escapeSandboxString(value: string): string {
   return value.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
 }
 
+/**
+ * Thrown when the macOS sandbox denied a command at runtime: an EPERM-class
+ * failure, a blocked LaunchServices launch, or blocked Apple Events. Carries
+ * the captured output tail (either stream) as review evidence for the gate.
+ */
+export class SandboxDeniedError extends Error {
+  constructor(readonly outputTail: string) {
+    super("The sandbox denied this command (operation not permitted).");
+  }
+}
+
+/**
+ * Recognizes sandbox denial evidence in captured command output. These
+ * failures announce themselves in several dialects: zsh prints EPERM for
+ * denied syscalls, LaunchServices reports blocked app launches with an
+ * "LSOpenURLsWithCompletionHandler … error -54" message, and Apple Events
+ * that the sandbox cannot deliver surface as the -600 "Application isn't
+ * running" error (natively a tell block would auto-launch the app instead).
+ * The apostrophe in "isn't" is matched loosely because AppleScript emits a
+ * Unicode right single quote.
+ */
+export function matchSandboxDenial(output: string): boolean {
+  return /operation not permitted|sandbox_extension_issue_file|LSOpenURLsWithCompletionHandler|Application isn.t running\. \(-600\)/i.test(
+    output,
+  );
+}
+
+/** Matches the two denial errors PineToolAccessPolicy.authorize throws. */
+function isAuthorizeDenial(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    message.includes("outside the folders shared with Pine") ||
+    message.includes("Folder is read-only")
+  );
+}
+
 export function createMacOsBashSandboxProfile(
   writableFolders: string[],
   temporaryDirectory: string,
@@ -186,27 +239,6 @@ export function createMacOsBashSandboxProfile(
 ${writeRules})`;
 }
 
-function createBashEnvironment(
-  environment: NodeJS.ProcessEnv | undefined,
-  temporaryDirectory: string,
-): NodeJS.ProcessEnv {
-  const source = environment ?? process.env;
-  const result: NodeJS.ProcessEnv = {
-    HOME: path.join(temporaryDirectory, "home"),
-    LANG: source.LANG,
-    LOGNAME: source.LOGNAME,
-    PATH: "/usr/bin:/bin:/usr/sbin:/sbin",
-    SHELL: "/bin/zsh",
-    TERM: source.TERM,
-    TMPDIR: temporaryDirectory,
-    USER: source.USER,
-  };
-  for (const [name, value] of Object.entries(source)) {
-    if (name.startsWith("LC_")) result[name] = value;
-  }
-  return result;
-}
-
 function terminateProcess(child: ChildProcess): void {
   if (!child.pid) return;
   try {
@@ -219,6 +251,7 @@ function terminateProcess(child: ChildProcess): void {
 function createScopedBashOperations(
   policy: PineToolAccessPolicy,
   temporaryDirectory: string,
+  loginPath: string,
 ): BashOperations {
   return {
     exec: async (command, cwd, options) => {
@@ -244,18 +277,37 @@ function createScopedBashOperations(
       );
       const child = spawn(
         "/usr/bin/sandbox-exec",
-        ["-p", profile, shellPath, "-c", command],
+        // pipefail: a sandbox denial at the head of a pipeline (`ps aux | head`)
+        // must surface in the exit code, or the gate never sees it — the last
+        // stage succeeds and the default exit code would be 0.
+        ["-p", profile, shellPath, "-o", "pipefail", "-c", command],
         {
           cwd: policy.cwd,
           detached: true,
-          env: createBashEnvironment(options.env, temporaryDirectory),
+          env: createBashEnvironment(
+            options.env,
+            temporaryDirectory,
+            loginPath,
+            policy.cwd,
+          ),
           stdio: ["ignore", "pipe", "pipe"],
           windowsHide: true,
         },
       );
 
       child.stdout.on("data", options.onData);
-      child.stderr.on("data", options.onData);
+      // Keep bounded tails of BOTH streams as gate evidence: tool-emitted
+      // messages (LaunchServices, AppleScript) follow the command's own
+      // redirections, so denial text can land on stdout via `2>&1`.
+      let stdoutTail = "";
+      child.stdout.on("data", (chunk: Buffer) => {
+        stdoutTail = (stdoutTail + chunk.toString("utf8")).slice(-8_192);
+      });
+      let stderrTail = "";
+      child.stderr.on("data", (chunk: Buffer) => {
+        options.onData(chunk);
+        stderrTail = (stderrTail + chunk.toString("utf8")).slice(-8_192);
+      });
       let timedOut = false;
       let timeoutHandle: NodeJS.Timeout | undefined;
       const onAbort = () => terminateProcess(child);
@@ -275,7 +327,16 @@ function createScopedBashOperations(
         });
         if (options.signal?.aborted) throw new Error("aborted");
         if (timedOut) throw new Error(`timeout:${options.timeout}`);
-        return { exitCode };
+        // With pipefail a writer killed by SIGPIPE (`… | head`) reports 141;
+        // that truncation is the intended behavior, not a failure.
+        const effectiveExit = exitCode === 141 ? 0 : exitCode;
+        if (effectiveExit !== 0) {
+          const outputTail = `${stdoutTail}\n${stderrTail}`;
+          if (matchSandboxDenial(outputTail)) {
+            throw new SandboxDeniedError(outputTail);
+          }
+        }
+        return { exitCode: effectiveExit };
       } finally {
         if (timeoutHandle) clearTimeout(timeoutHandle);
         options.signal?.removeEventListener("abort", onAbort);
@@ -284,69 +345,182 @@ function createScopedBashOperations(
   };
 }
 
+function createReadOperations(policy: PineToolAccessPolicy) {
+  return {
+    access: async (targetPath: string) => {
+      const authorizedPath = await policy.authorize(targetPath, "read");
+      await access(authorizedPath, constants.R_OK);
+    },
+    detectImageMimeType: (targetPath: string) =>
+      detectImageMimeType(policy, targetPath),
+    readFile: async (targetPath: string) =>
+      readFile(await policy.authorize(targetPath, "read")),
+  };
+}
+
+function createEditOperations(policy: PineToolAccessPolicy) {
+  return {
+    access: async (targetPath: string) => {
+      const authorizedPath = await policy.authorize(targetPath, "write");
+      await access(authorizedPath, constants.R_OK | constants.W_OK);
+    },
+    readFile: async (targetPath: string) =>
+      readFile(await policy.authorize(targetPath, "write")),
+    writeFile: async (targetPath: string, content: string) =>
+      writeFile(await policy.authorize(targetPath, "write"), content, "utf8"),
+  };
+}
+
+function createWriteOperations(policy: PineToolAccessPolicy) {
+  return {
+    mkdir: async (targetPath: string) =>
+      mkdir(
+        await policy.authorize(targetPath, "write", { allowMissing: true }),
+        {
+          recursive: true,
+        },
+      ).then(() => undefined),
+    writeFile: async (targetPath: string, content: string) =>
+      writeFile(
+        await policy.authorize(targetPath, "write", { allowMissing: true }),
+        content,
+        "utf8",
+      ),
+  };
+}
+
+/**
+ * Wrap a file-mutating tool with the approval gate: ask mode confirms before
+ * every call, and an authorize denial (outside grants / read-only) escalates
+ * to the gate, whose allowance re-runs the call with permissive operations.
+ */
+function gateFileTool<TParams extends TSchema, TDetails, TState>(
+  tool: ToolDefinition<TParams, TDetails, TState>,
+  permissive: ToolDefinition<TParams, TDetails, TState>,
+  gate: ToolGate | null | undefined,
+): ToolDefinition<TParams, TDetails, TState> {
+  if (!gate) return tool;
+  return {
+    ...tool,
+    execute: async (toolCallId, params, signal, onUpdate, ctx) => {
+      const targetPath = (params as { path?: unknown }).path;
+      const subject = typeof targetPath === "string" ? targetPath : undefined;
+      const pre = await gate.reviewFileCall({
+        toolCallId,
+        toolName: tool.name,
+        path: subject,
+        signal,
+      });
+      if (pre.kind === "deny") {
+        throw new Error(pre.reason ?? "This call was denied.");
+      }
+      try {
+        return await tool.execute(toolCallId, params, signal, onUpdate, ctx);
+      } catch (error) {
+        if (!isAuthorizeDenial(error)) throw error;
+        const decision = await gate.reviewDenial("authorize", {
+          toolCallId,
+          toolName: tool.name,
+          subject: subject ?? "",
+          evidence: error instanceof Error ? error.message : String(error),
+          signal,
+        });
+        if (decision.kind === "allow") {
+          return await permissive.execute(
+            toolCallId,
+            params,
+            signal,
+            onUpdate,
+            ctx,
+          );
+        }
+        throw new Error(
+          decision.reason ??
+            (error instanceof Error ? error.message : String(error)),
+        );
+      }
+    },
+  };
+}
+
 export async function createPineToolDefinitions(
   location: AgentSessionLocation,
+  gate?: ToolGate | null,
 ): Promise<ToolDefinition[]> {
-  const policy = await PineToolAccessPolicy.create(
-    location.cwd,
-    location.folders,
-  );
+  // YOLO mode drops Pine's folder grants and shell sandbox entirely, giving
+  // the agent full permissions and leaving only the pi harness's built-in
+  // tool behavior (no path sandbox, native shell execution) as a guardrail.
+  const isYolo = location.approvalMode === "yolo";
+  const policy = isYolo
+    ? PineToolAccessPolicy.permissive(location.cwd)
+    : await PineToolAccessPolicy.create(location.cwd, location.folders);
+  // Permissive twin used to re-run a call the gate approved beyond the grants.
+  const permissivePolicy = PineToolAccessPolicy.permissive(location.cwd);
+  const loginPath = await resolveLoginPath();
+
   const bashTemporaryDirectory = path.join(
     path.dirname(location.sessionsRoot),
     "tmp",
   );
   await mkdir(bashTemporaryDirectory, { recursive: true });
-  await mkdir(path.join(bashTemporaryDirectory, "home"), { recursive: true });
   const canonicalBashTemporaryDirectory = await realpath(
     bashTemporaryDirectory,
   );
+
+  // Native (unsandboxed) execution with Pine's smart environment. Used for
+  // YOLO mode, session-approved commands, and gate-approved re-runs. The
+  // spawnHook keeps the environment identical between the sandboxed run and
+  // the re-run, isolating the sandbox as the only variable.
+  const nativeBashTool = createBashToolDefinition(location.cwd, {
+    operations: createLocalBashOperations(),
+    spawnHook: (context) => ({
+      ...context,
+      env: isYolo
+        ? {
+            ...context.env,
+            PATH: `${path.join(location.cwd, "node_modules", ".bin")}:${loginPath}`,
+          }
+        : createBashEnvironment(
+            context.env,
+            canonicalBashTemporaryDirectory,
+            loginPath,
+            location.cwd,
+          ),
+    }),
+  });
+
   const readTool = createReadToolDefinition(location.cwd, {
-    operations: {
-      access: async (targetPath) => {
-        const authorizedPath = await policy.authorize(targetPath, "read");
-        await access(authorizedPath, constants.R_OK);
-      },
-      detectImageMimeType: (targetPath) =>
-        detectImageMimeType(policy, targetPath),
-      readFile: async (targetPath) =>
-        readFile(await policy.authorize(targetPath, "read")),
-    },
+    operations: createReadOperations(policy),
   });
   const editTool = createEditToolDefinition(location.cwd, {
-    operations: {
-      access: async (targetPath) => {
-        const authorizedPath = await policy.authorize(targetPath, "write");
-        await access(authorizedPath, constants.R_OK | constants.W_OK);
-      },
-      readFile: async (targetPath) =>
-        readFile(await policy.authorize(targetPath, "write")),
-      writeFile: async (targetPath, content) =>
-        writeFile(await policy.authorize(targetPath, "write"), content, "utf8"),
-    },
+    operations: createEditOperations(policy),
   });
   const writeTool = createWriteToolDefinition(location.cwd, {
-    operations: {
-      mkdir: async (targetPath) =>
-        mkdir(
-          await policy.authorize(targetPath, "write", { allowMissing: true }),
-          {
-            recursive: true,
-          },
-        ).then(() => undefined),
-      writeFile: async (targetPath, content) =>
-        writeFile(
-          await policy.authorize(targetPath, "write", { allowMissing: true }),
-          content,
-          "utf8",
+    operations: createWriteOperations(policy),
+  });
+  const permissiveEditTool = createEditToolDefinition(location.cwd, {
+    operations: createEditOperations(permissivePolicy),
+  });
+  const permissiveWriteTool = createWriteToolDefinition(location.cwd, {
+    operations: createWriteOperations(permissivePolicy),
+  });
+  const permissiveReadTool = createReadToolDefinition(location.cwd, {
+    operations: createReadOperations(permissivePolicy),
+  });
+
+  const gatedReadTool = gateFileTool(readTool, permissiveReadTool, gate);
+  const gatedEditTool = gateFileTool(editTool, permissiveEditTool, gate);
+  const gatedWriteTool = gateFileTool(writeTool, permissiveWriteTool, gate);
+
+  const bashTool = isYolo
+    ? nativeBashTool
+    : createBashToolDefinition(location.cwd, {
+        operations: createScopedBashOperations(
+          policy,
+          canonicalBashTemporaryDirectory,
+          loginPath,
         ),
-    },
-  });
-  const bashTool = createBashToolDefinition(location.cwd, {
-    operations: createScopedBashOperations(
-      policy,
-      canonicalBashTemporaryDirectory,
-    ),
-  });
+      });
 
   // Rebuild the bash tool with a required `description` field so the agent
   // must state what each command does. The original execute handles the
@@ -366,15 +540,86 @@ export async function createPineToolDefinitions(
       }),
     ),
   });
+  // Sandboxed mode advertises Pine's isolated temp directory and its /tmp
+  // write restriction; YOLO mode drops both, so the guidance must not claim
+  // they still apply.
+  const sandboxGuidance = isYolo
+    ? " Pine does not sandbox the shell here; commands run with the full user environment."
+    : " Pine provides an isolated writable temporary directory through $TMPDIR; direct writes to /tmp are blocked.";
   const pineBashTool = defineTool({
     ...bashTool,
     parameters: pineBashParams,
     prepareArguments: (args) => args as Static<typeof pineBashParams>,
-    execute: (toolCallId, params, signal, onUpdate, ctx) =>
-      bashTool.execute(toolCallId, params, signal, onUpdate, ctx),
-    description: `${bashTool.description} Pine provides an isolated writable temporary directory through $TMPDIR; direct writes to /tmp are blocked. Explicitly describe what each command does in the description field, written first, in the same language as the user's messages.`,
-    promptSnippet: `${bashTool.promptSnippet}. Use $TMPDIR for temporary files instead of /tmp; always write the description argument before composing the command, in the user's language`,
+    execute: async (toolCallId, params, signal, onUpdate, ctx) => {
+      const command = params.command;
+      const description = params.description;
+      if (gate) {
+        const pre = await gate.reviewBashCommand({
+          toolCallId,
+          command,
+          description,
+          signal,
+        });
+        if (pre.kind === "deny") {
+          throw new Error(pre.reason ?? "This call was denied.");
+        }
+      }
+      const runNative = () =>
+        nativeBashTool.execute(toolCallId, params, signal, onUpdate, ctx);
+      // Session-scope approved commands skip the sandbox entirely.
+      if (gate?.isApprovedCommand(command)) return runNative();
+
+      try {
+        return await bashTool.execute(
+          toolCallId,
+          params,
+          signal,
+          onUpdate,
+          ctx,
+        );
+      } catch (error) {
+        if (!gate) throw error;
+        if (error instanceof SandboxDeniedError) {
+          const decision = await gate.reviewDenial("sandbox", {
+            toolCallId,
+            toolName: "bash",
+            subject: command,
+            description,
+            evidence: error.outputTail,
+            signal,
+          });
+          if (decision.kind === "allow") return runNative();
+          throw new Error(
+            decision.reason ??
+              "The sandbox denied this command and the reviewer did not allow a re-run.",
+          );
+        }
+        if (isAuthorizeDenial(error)) {
+          const decision = await gate.reviewDenial("authorize", {
+            toolCallId,
+            toolName: "bash",
+            subject: command,
+            description,
+            evidence: error instanceof Error ? error.message : String(error),
+            signal,
+          });
+          if (decision.kind === "allow") return runNative();
+          throw new Error(
+            decision.reason ??
+              (error instanceof Error ? error.message : String(error)),
+          );
+        }
+        throw error;
+      }
+    },
+    description: `${bashTool.description}${sandboxGuidance} Explicitly describe what each command does in the description field, written first, in the same language as the user's messages.`,
+    promptSnippet: `${bashTool.promptSnippet}.${isYolo ? "" : " Use $TMPDIR for temporary files instead of /tmp;"} Always write the description argument before composing the command, in the user's language`,
   });
 
-  return [readTool, pineBashTool, editTool, writeTool] as ToolDefinition[];
+  return [
+    gatedReadTool,
+    pineBashTool,
+    gatedEditTool,
+    gatedWriteTool,
+  ] as ToolDefinition[];
 }

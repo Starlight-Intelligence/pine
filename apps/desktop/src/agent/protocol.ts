@@ -1,4 +1,9 @@
-import type { PineAgentEvent, PineJsonValue } from "../shared/agent";
+import type {
+  PineAgentEvent,
+  PineApprovalMode,
+  PineApprovalTrigger,
+  PineJsonValue,
+} from "../shared/agent";
 import type {
   LoginProviderRequest,
   PineModelCatalog,
@@ -18,7 +23,19 @@ export interface AgentSessionLocation {
   cwd: string;
   folders: AgentFolderGrant[];
   sessionsRoot: string;
+  /** Sandbox/permission mode for the session. `yolo` disables Pine's folder
+   * grants and shell sandbox; omitted defaults to `agent-decides`. */
+  approvalMode?: PineApprovalMode;
 }
+
+/** How a gate resolved an escalated tool call. */
+export type GateDecision =
+  | { kind: "allow"; scope?: "once" | "session" }
+  | { kind: "deny"; reason?: string };
+
+export type AgentWorkerInbound =
+  | AgentWorkerRequest
+  | { type: "approval:response"; requestId: string; decision: GateDecision };
 
 export type PineRuntimeEvent = PineAgentEvent | PineProviderAuthEvent;
 
@@ -134,9 +151,24 @@ export type AgentWorkerMessage =
     }
   | { type: "event"; event: PineRuntimeEvent };
 
+export type GateReviewInput = {
+  sessionId: string;
+  toolCallId: string;
+  toolName: string;
+  trigger: PineApprovalTrigger;
+  input?: PineJsonValue;
+  evidence?: string;
+  signal?: AbortSignal;
+};
+
 export function toPineJsonValue(value: unknown): PineJsonValue {
   if (value === undefined) return null;
-  return JSON.parse(JSON.stringify(value)) as PineJsonValue;
+  if (typeof value === "string") return value;
+  try {
+    return JSON.parse(JSON.stringify(value)) as PineJsonValue;
+  } catch {
+    return null;
+  }
 }
 
 export function toErrorMessage(error: unknown): string {

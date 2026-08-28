@@ -3,12 +3,14 @@
 import { contextBridge, ipcRenderer } from "electron";
 import {
   ABORT_SESSION_CHANNEL,
+  APPROVAL_RESPONSE_CHANNEL,
   PROMPT_SESSION_CHANNEL,
   SESSION_EVENT_CHANNEL,
   type AbortSessionResult,
   type PineAgentEvent,
   type PromptSessionRequest,
   type PromptSessionResult,
+  type RespondApprovalRequest,
   type SessionEventListener,
 } from "./shared/agent";
 import {
@@ -156,6 +158,10 @@ const pineApi: PineDesktopApi = {
     ipcRenderer.on(SESSION_EVENT_CHANNEL, handler);
     return () => ipcRenderer.removeListener(SESSION_EVENT_CHANNEL, handler);
   },
+  respondApproval: (
+    request: RespondApprovalRequest,
+  ): Promise<{ accepted: boolean }> =>
+    ipcRenderer.invoke(APPROVAL_RESPONSE_CHANNEL, request),
   updateProject: (request: UpdateProjectRequest): Promise<ProjectResult> =>
     ipcRenderer.invoke(UPDATE_PROJECT_CHANNEL, request),
 };

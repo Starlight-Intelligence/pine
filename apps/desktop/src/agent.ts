@@ -1,4 +1,5 @@
 import type {
+  AgentWorkerInbound,
   AgentWorkerMessage,
   AgentWorkerRequest,
   AgentWorkerResult,
@@ -86,7 +87,14 @@ async function handleRequest(request: AgentWorkerRequest): Promise<void> {
 }
 
 parentPort.on("message", (event) => {
-  const request = event.data as AgentWorkerRequest;
+  const inbound = event.data as AgentWorkerInbound;
+  // Approval decisions from the renderer ride a dedicated inbound message;
+  // they resolve pending gate promises instead of being handled as requests.
+  if (inbound.type === "approval:response") {
+    runtime.resolveApproval(inbound.requestId, inbound.decision);
+    return;
+  }
+  const request = inbound;
   void handleRequest(request).catch((error: unknown) => {
     parentPort.postMessage({
       type: "response",
