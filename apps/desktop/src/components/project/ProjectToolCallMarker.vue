@@ -165,10 +165,15 @@ const isActive = computed(
   () => props.reviewing || props.awaitingApproval || isRunning.value,
 );
 
-// Waiting calls shimmer in the warning tone to read as "needs your
-// attention", distinct from the neutral running shimmer.
+// Gate calls get distinct shimmer tones: amber while waiting on the user
+// ("needs your attention"), blue while the auto-reviewer deliberates — both
+// distinct from the neutral running shimmer.
 const shimmerClass = computed(() =>
-  props.awaitingApproval ? "shimmer shimmer-color-warning" : "shimmer",
+  props.awaitingApproval
+    ? "shimmer shimmer-color-warning"
+    : props.reviewing
+      ? "shimmer shimmer-color-info"
+      : "shimmer",
 );
 
 const fullText = computed(() => {
