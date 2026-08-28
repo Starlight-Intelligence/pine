@@ -139,7 +139,6 @@ watch(activeProject, resetRoots, { immediate: true });
 
   <TreeRoot
     v-else
-    v-scroll-fade
     :items="items"
     :get-key="nodeKey"
     :get-children="(item) => item.children"

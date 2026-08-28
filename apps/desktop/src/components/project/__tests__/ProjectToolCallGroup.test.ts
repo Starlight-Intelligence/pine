@@ -43,7 +43,6 @@ function mountGroup(
       ...overrides,
     },
     global: {
-      directives: { "scroll-fade": {} },
       plugins: [createAppI18n("zh-CN")],
     },
   });

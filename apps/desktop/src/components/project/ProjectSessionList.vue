@@ -182,7 +182,6 @@ watch(
 
     <div v-else ref="scrollHost" class="min-h-0 flex-1">
       <ScrollArea
-        v-scroll-fade="'[data-slot=scroll-area-viewport]'"
         class="h-full [&_[data-slot=scroll-area-viewport]]:scroll-fade"
       >
         <SidebarMenu

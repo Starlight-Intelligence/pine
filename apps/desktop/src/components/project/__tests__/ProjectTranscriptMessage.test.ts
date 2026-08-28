@@ -10,7 +10,6 @@ function mountMessage(message: PineTranscriptMessage) {
   return mount(ProjectTranscriptMessage, {
     props: { message },
     global: {
-      directives: { "scroll-fade": {} },
       plugins: [createAppI18n("zh-CN")],
     },
   });

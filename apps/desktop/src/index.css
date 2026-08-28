@@ -8,7 +8,6 @@
 @import "tw-animate-css";
 @import "shadcn-vue/tailwind.css";
 @import "./styles/shadcn-vue.css";
-@import "./styles/scroll-fade.css";
 
 @custom-variant dark (&:is(.dark *));
 

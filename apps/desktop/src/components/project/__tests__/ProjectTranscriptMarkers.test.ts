@@ -26,7 +26,6 @@ describe("project transcript markers", () => {
         },
       },
       global: {
-        directives: { "scroll-fade": {} },
         plugins: [createAppI18n("en-US")],
       },
     });
@@ -82,7 +81,6 @@ describe("project transcript markers", () => {
         },
       },
       global: {
-        directives: { "scroll-fade": {} },
         plugins: [createAppI18n("en-US")],
       },
     });
@@ -130,7 +128,6 @@ describe("project transcript markers", () => {
         },
       },
       global: {
-        directives: { "scroll-fade": {} },
         plugins: [createAppI18n("zh-CN")],
       },
     });

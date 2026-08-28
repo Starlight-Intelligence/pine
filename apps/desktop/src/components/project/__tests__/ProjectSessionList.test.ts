@@ -55,7 +55,6 @@ describe("ProjectSessionList", () => {
     tabsStore.bindSession("session-1", session);
     const wrapper = mount(ProjectSessionList, {
       global: {
-        directives: { "scroll-fade": {} },
         plugins: [pinia, router, createAppI18n("en-US")],
         stubs: {
           SidebarGroup: { template: "<div><slot /></div>" },
@@ -104,7 +103,6 @@ describe("ProjectSessionList", () => {
 
     mount(ProjectSessionList, {
       global: {
-        directives: { "scroll-fade": {} },
         plugins: [pinia, router, createAppI18n("en-US")],
         stubs: {
           SidebarGroup: { template: "<div><slot /></div>" },

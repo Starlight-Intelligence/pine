@@ -227,7 +227,6 @@ onMounted(() => {
 
           <ItemGroup
             v-if="filteredProjects.length > 0"
-            v-scroll-fade
             data-testid="project-list-scroll"
             class="scroll-fade min-h-0 overflow-y-auto pr-1"
           >

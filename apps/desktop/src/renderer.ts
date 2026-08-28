@@ -7,7 +7,6 @@ import {
   resolveAppLocale,
 } from "./app/i18n";
 import { createAppRouter } from "./router";
-import { scrollFadeDirective } from "./directives/scrollFade";
 import { useAppearanceStore } from "./stores/appearance";
 import "./index.css";
 import "vue-sonner/style.css";
@@ -32,5 +31,4 @@ useAppearanceStore(pinia).initialize();
 app.use(pinia);
 app.use(i18n);
 app.use(router);
-app.directive("scroll-fade", scrollFadeDirective);
 app.mount("#app");
