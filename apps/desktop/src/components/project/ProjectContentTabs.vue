@@ -124,7 +124,7 @@ watch(activeSession, (session) => {
       data-slot="project-content-tabs-titlebar"
       :class="
         cn(
-          'pointer-events-none relative z-30 flex h-[var(--window-titlebar-height)] shrink-0 items-center gap-2 pr-[calc(var(--window-titlebar-control-height)+1.25rem)] pl-2 transition-[padding] duration-500 ease-out-expo',
+          'pointer-events-none relative z-30 flex h-[var(--window-titlebar-height)] shrink-0 items-center gap-2 pr-[calc(var(--window-titlebar-control-height)+1.25rem)] pl-3 transition-[padding] duration-500 ease-out-expo',
           shouldReserveWindowControlsSpace &&
             'pl-[calc(var(--window-titlebar-leading-offset)+var(--window-titlebar-control-height)+0.75rem)]',
         )
