@@ -35,6 +35,7 @@ import {
   toErrorMessage,
   toPineJsonValue,
 } from "./protocol";
+import { PINE_SYSTEM_PROMPT } from "./system-prompt";
 import {
   AutoReviewGate,
   RULING_TOOL,
@@ -484,6 +485,7 @@ export class PineAgentRuntime {
       settingsManager,
       noExtensions: true,
       noThemes: true,
+      systemPromptOverride: () => PINE_SYSTEM_PROMPT,
     });
     await resourceLoader.reload();
     const live: LiveAgentSession = {
