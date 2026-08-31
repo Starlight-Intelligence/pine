@@ -14,6 +14,7 @@ import path from "node:path";
 import { z } from "zod";
 import { ProjectRuntimeRegistry } from "./main/projectRuntime";
 import { AgentProcessHost } from "./main/agentProcessHost";
+import { ModelRecommendationService } from "./main/modelRecommendations";
 import { ProjectRepository } from "./main/projects/projectRepository";
 import {
   ABORT_SESSION_CHANNEL,
@@ -85,6 +86,7 @@ if (started) {
 nativeTheme.themeSource = "system";
 
 let agentHost: AgentProcessHost | null = null;
+const modelRecommendations = new ModelRecommendationService();
 let projectRuntimes: ProjectRuntimeRegistry | null = null;
 let projectRepository: ProjectRepository | null = null;
 
@@ -287,8 +289,19 @@ ipcMain.handle(
   }),
 );
 
-ipcMain.handle(GET_MODEL_CATALOG_CHANNEL, (): Promise<PineModelCatalog> =>
-  getProjectRuntimes().getModelCatalog(),
+ipcMain.handle(
+  GET_MODEL_CATALOG_CHANNEL,
+  async (): Promise<PineModelCatalog> => {
+    const [catalog, recommendedIds] = await Promise.all([
+      getProjectRuntimes().getModelCatalog(),
+      modelRecommendations.get(),
+    ]);
+    const availableIds = new Set(catalog.models.map((model) => model.id));
+    return {
+      ...catalog,
+      recommendedModelIds: recommendedIds.filter((id) => availableIds.has(id)),
+    };
+  },
 );
 
 const providerLoginOwners = new Map<string, number>();

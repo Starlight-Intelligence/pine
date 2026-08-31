@@ -46,6 +46,7 @@
   --accent: oklch(0.966 0.005 106.5);
   --accent-foreground: oklch(0.228 0.013 107.4);
   --destructive: oklch(0.577 0.245 27.325);
+  --thinking-max: oklch(0.541 0.247 293.009);
   --warning: oklch(0.769 0.148 70.08);
   --info: oklch(0.546 0.245 262.881);
   --border: oklch(0.93 0.007 106.5);
@@ -101,6 +102,7 @@
   --accent: oklch(0.286 0.016 107.4);
   --accent-foreground: oklch(0.988 0.003 106.5);
   --destructive: oklch(0.704 0.191 22.216);
+  --thinking-max: oklch(0.702 0.183 293.541);
   --warning: oklch(0.828 0.129 72.06);
   --info: oklch(0.707 0.165 254.624);
   --border: oklch(1 0 0 / 10%);
@@ -153,6 +155,7 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
+  --color-thinking-max: var(--thinking-max);
   --color-warning: var(--warning);
   --color-info: var(--info);
   --color-border: var(--border);
@@ -278,6 +281,18 @@ html.sidebar-vibrancy body {
 
 html.sidebar-vibrancy [data-slot="sidebar-inner"] {
   background: transparent;
+}
+
+/*
+ * Chromium backdrop filters can composite a transparent Electron window
+ * against black instead of the native macOS vibrancy material. Keep modal
+ * dimming, but avoid a second blur pass while native sidebar vibrancy is on.
+ */
+html.sidebar-vibrancy [data-slot="dialog-overlay"],
+html.sidebar-vibrancy [data-slot="sheet-overlay"],
+html.sidebar-vibrancy [data-slot="alert-dialog-overlay"] {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
 
 @layer base {

@@ -13,8 +13,10 @@ import { storeToRefs } from "pinia";
 import { computed, onMounted, ref, useId } from "vue";
 import { useI18n } from "vue-i18n";
 import ModelPickerDialog from "@/components/models/ModelPickerDialog.vue";
+import ProviderIcon from "@/components/models/ProviderIcon.vue";
 import ProjectApprovalCard from "@/components/project/ProjectApprovalCard.vue";
 import ContextUsageIndicator from "@/components/project/ContextUsageIndicator.vue";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -41,6 +43,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { formatTokenCount } from "@/lib/format-token-count";
 import { cn } from "@/lib/utils";
 import type { PineApprovalAction } from "@/shared/agent";
 import type { PineThinkingLevel } from "@/shared/models";
@@ -121,6 +124,12 @@ const selectedApprovalMode = computed(
 const thinkingLevels = computed(
   () => selectedModel.value?.supportedThinkingLevels ?? [],
 );
+const thinkingLevelTooltips = computed<
+  Partial<Record<PineThinkingLevel, string>>
+>(() => ({
+  max: t("models.thinkingLevelWarnings.max"),
+  off: t("models.thinkingLevelWarnings.off"),
+}));
 
 onMounted(() => void modelsStore.load());
 
@@ -150,6 +159,16 @@ function updateThinkingLevel(value: unknown): void {
     return;
   }
   void modelsStore.setThinkingLevel(value as PineThinkingLevel);
+}
+
+function thinkingLevelTextClass(level: PineThinkingLevel): string | undefined {
+  if (level === "max") return "text-thinking-max!";
+  if (level === "off") return "text-destructive!";
+  return undefined;
+}
+
+function thinkingLevelTooltip(level: PineThinkingLevel): string | undefined {
+  return thinkingLevelTooltips.value[level];
 }
 
 function selectFeaturedModel(value: unknown): void {
@@ -298,7 +317,13 @@ function openModelPicker(): void {
             </span>
             <span
               v-if="selectedModel && selection"
-              class="shrink-0 text-muted-foreground"
+              data-slot="model-selector-thinking-level"
+              :class="
+                cn(
+                  'shrink-0 text-muted-foreground',
+                  thinkingLevelTextClass(selection.thinkingLevel),
+                )
+              "
             >
               · {{ t(`models.thinkingLevels.${selection.thinkingLevel}`) }}
             </span>
@@ -325,10 +350,39 @@ function openModelPicker(): void {
                 data-slot="model-option"
                 :value="pineModelKey(model)"
               >
-                <span class="flex min-w-0 flex-col gap-0.5">
+                <span class="flex min-w-0 flex-1 flex-col gap-0.5">
                   <span class="truncate">{{ model.name }}</span>
-                  <span class="truncate text-xs text-muted-foreground">
-                    {{ model.providerName }}
+                  <span
+                    class="flex min-w-0 items-center gap-1 text-xs text-muted-foreground"
+                  >
+                    <ProviderIcon
+                      :provider-id="model.providerId"
+                      :provider-name="model.providerName"
+                    />
+                    <span class="truncate">{{ model.providerName }}</span>
+                    <Badge
+                      v-if="modelsStore.isRecommended(model)"
+                      data-recommended-model
+                      class="text-primary-foreground!"
+                    >
+                      {{ t("models.picker.recommended") }}
+                    </Badge>
+                    <Badge
+                      v-if="model.input.includes('image')"
+                      variant="secondary"
+                    >
+                      {{ t("models.picker.vision") }}
+                    </Badge>
+                    <Badge
+                      variant="outline"
+                      :title="
+                        t('models.picker.contextWindow', {
+                          tokens: formatTokenCount(model.contextWindow),
+                        })
+                      "
+                    >
+                      {{ formatTokenCount(model.contextWindow) }}
+                    </Badge>
                   </span>
                 </span>
               </DropdownMenuRadioItem>
@@ -349,7 +403,15 @@ function openModelPicker(): void {
               <DropdownMenuSubTrigger data-slot="reasoning-effort-trigger">
                 <span class="flex min-w-0 flex-1 justify-between gap-3">
                   <span>{{ t("models.reasoning") }}</span>
-                  <span class="text-muted-foreground">
+                  <span
+                    :class="
+                      cn(
+                        'text-muted-foreground',
+                        selection &&
+                          thinkingLevelTextClass(selection.thinkingLevel),
+                      )
+                    "
+                  >
                     {{
                       selection
                         ? t(`models.thinkingLevels.${selection.thinkingLevel}`)
@@ -363,14 +425,32 @@ function openModelPicker(): void {
                   :model-value="selection?.thinkingLevel"
                   @update:model-value="updateThinkingLevel"
                 >
-                  <DropdownMenuRadioItem
+                  <Tooltip
                     v-for="level in thinkingLevels"
                     :key="level"
-                    data-slot="reasoning-effort-option"
-                    :value="level"
+                    :disabled="!thinkingLevelTooltip(level)"
                   >
-                    {{ t(`models.thinkingLevels.${level}`) }}
-                  </DropdownMenuRadioItem>
+                    <TooltipTrigger as-child>
+                      <DropdownMenuRadioItem
+                        data-slot="reasoning-effort-option"
+                        :value="level"
+                      >
+                        <span :class="thinkingLevelTextClass(level)">
+                          {{ t(`models.thinkingLevels.${level}`) }}
+                        </span>
+                      </DropdownMenuRadioItem>
+                    </TooltipTrigger>
+                    <TooltipContent
+                      v-if="thinkingLevelTooltip(level)"
+                      data-slot="reasoning-effort-tooltip"
+                      side="left"
+                      align="start"
+                      :side-offset="8"
+                      class="max-w-80 whitespace-normal"
+                    >
+                      {{ thinkingLevelTooltip(level) }}
+                    </TooltipContent>
+                  </Tooltip>
                 </DropdownMenuRadioGroup>
               </DropdownMenuSubContent>
             </DropdownMenuSub>

@@ -1,16 +1,25 @@
 <script setup lang="ts">
 import {
   ArrowLeftIcon,
-  CheckCircle2Icon,
   CheckIcon,
-  CpuIcon,
-  KeyRoundIcon,
-  PlusIcon,
   StarIcon,
+  UnplugIcon,
+  WrenchIcon,
 } from "@lucide/vue";
 import { storeToRefs } from "pinia";
 import { computed, nextTick, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
+import { handleError } from "@/app/errors/errorHandler";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,16 +30,17 @@ import {
   CommandItem,
   CommandList,
   CommandSeparator,
-  CommandShortcut,
 } from "@/components/ui/command";
 import { Spinner } from "@/components/ui/spinner";
+import { formatTokenCount } from "@/lib/format-token-count";
 import { cn } from "@/lib/utils";
 import type {
   PineModelDescriptor,
   PineProviderDescriptor,
 } from "@/shared/models";
-import { useModelsStore } from "@/stores/models";
+import { pineModelKey, useModelsStore } from "@/stores/models";
 import ProviderAuthDialog from "./ProviderAuthDialog.vue";
+import ProviderIcon from "./ProviderIcon.vue";
 
 type PickerView = "models" | "providers";
 
@@ -43,14 +53,41 @@ const { isLoading, models, providers, selection } = storeToRefs(modelsStore);
 const view = ref<PickerView>("models");
 const isAuthOpen = ref(false);
 const selectedProvider = ref<PineProviderDescriptor | null>(null);
-const modelGroups = computed(() =>
+const disconnectingProvider = ref<PineProviderDescriptor | null>(null);
+const isDisconnectDialogOpen = ref(false);
+const isDisconnecting = ref(false);
+const favoriteModelKeysAtOpen = ref<readonly string[]>([]);
+const providerModelGroups = computed(() =>
   providers.value
     .filter((provider) => provider.configured)
     .map((provider) => ({
-      provider,
+      heading: provider.name,
+      id: `provider:${provider.id}`,
       models: models.value.filter((model) => model.providerId === provider.id),
     }))
     .filter((group) => group.models.length > 0),
+);
+const availableModels = computed(() =>
+  providerModelGroups.value.flatMap((group) => group.models),
+);
+const modelGroups = computed(() =>
+  [
+    {
+      heading: t("models.favorites"),
+      id: "favorites",
+      models: availableModels.value.filter((model) =>
+        favoriteModelKeysAtOpen.value.includes(pineModelKey(model)),
+      ),
+    },
+    {
+      heading: t("models.recommended"),
+      id: "recommended",
+      models: availableModels.value.filter((model) =>
+        modelsStore.isRecommended(model),
+      ),
+    },
+    ...providerModelGroups.value,
+  ].filter((group) => group.models.length > 0),
 );
 const title = computed(() =>
   view.value === "models"
@@ -73,6 +110,7 @@ watch(
   (open) => {
     if (!open) return;
     view.value = "models";
+    favoriteModelKeysAtOpen.value = modelsStore.favoriteModelKeysSnapshot();
     void modelsStore.load();
   },
 );
@@ -105,6 +143,43 @@ function selectProvider(provider: PineProviderDescriptor): void {
   void openAuth(provider);
 }
 
+function requestDisconnect(provider: PineProviderDescriptor): void {
+  disconnectingProvider.value = provider;
+  isDisconnectDialogOpen.value = true;
+}
+
+function disconnectDialogOpenChanged(open: boolean): void {
+  isDisconnectDialogOpen.value = open;
+  if (open) return;
+
+  queueMicrotask(() => {
+    if (!isDisconnectDialogOpen.value && !isDisconnecting.value) {
+      disconnectingProvider.value = null;
+    }
+  });
+}
+
+async function disconnectProvider(): Promise<void> {
+  const provider = disconnectingProvider.value;
+  if (!provider || isDisconnecting.value) return;
+
+  isDisconnecting.value = true;
+  try {
+    await modelsStore.logout(provider.id);
+    isDisconnectDialogOpen.value = false;
+    disconnectingProvider.value = null;
+  } catch (error) {
+    handleError(error, {
+      id: `provider.disconnect.${provider.id}`,
+      title: t("errors.providerDisconnect.title"),
+      description: t("errors.providerDisconnect.description"),
+    });
+  } finally {
+    isDisconnecting.value = false;
+    if (!isDisconnectDialogOpen.value) disconnectingProvider.value = null;
+  }
+}
+
 async function handleConnected(): Promise<void> {
   isAuthOpen.value = false;
   selectedProvider.value = null;
@@ -118,11 +193,12 @@ async function handleConnected(): Promise<void> {
     :open="open"
     :title="title"
     :description="description"
+    class="top-1/2 -translate-y-1/2"
     @update:open="emit('update:open', $event)"
   >
     <CommandInput :placeholder="searchPlaceholder" />
     <CommandList
-      class="min-h-72 [&>[role=presentation]]:flex [&>[role=presentation]]:min-h-72 [&>[role=presentation]]:flex-col"
+      class="h-[50vh] min-h-72 max-h-[50vh] [&>[role=presentation]]:flex [&>[role=presentation]]:min-h-72 [&>[role=presentation]]:flex-col"
     >
       <CommandEmpty>
         <span v-if="isLoading" class="inline-flex items-center gap-2">
@@ -141,54 +217,81 @@ async function handleConnected(): Promise<void> {
       <template v-if="view === 'models'">
         <CommandGroup>
           <CommandItem
-            value="add configure provider service model"
+            value="manage configure provider service model"
             @select="view = 'providers'"
           >
-            <PlusIcon aria-hidden="true" />
-            {{ t("models.picker.addServiceOrModel") }}
+            <WrenchIcon aria-hidden="true" />
+            {{ t("models.picker.manageServiceOrModel") }}
           </CommandItem>
         </CommandGroup>
         <CommandSeparator />
 
         <CommandGroup
           v-for="group in modelGroups"
-          :key="group.provider.id"
-          :heading="group.provider.name"
+          :key="group.id"
+          :heading="group.heading"
         >
           <CommandItem
             v-for="model in group.models"
             :key="`${model.providerId}:${model.id}`"
             :value="`${model.providerName} ${model.name} ${model.id}`"
+            class="[&>svg:last-child]:hidden"
             @select="selectModel(model)"
           >
             <CheckIcon v-if="isSelected(model)" aria-hidden="true" />
-            <CpuIcon v-else aria-hidden="true" />
+            <ProviderIcon
+              v-else
+              :provider-id="model.providerId"
+              :provider-name="model.providerName"
+            />
             <span class="flex min-w-0 flex-1 flex-col gap-0.5">
               <span class="truncate">{{ model.name }}</span>
               <span class="truncate text-xs font-normal text-muted-foreground">
                 {{ model.id }}
               </span>
             </span>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-xs"
-              :aria-label="
-                modelsStore.isFavorite(model)
-                  ? t('models.picker.removeFavorite', { model: model.name })
-                  : t('models.picker.addFavorite', { model: model.name })
-              "
-              :aria-pressed="modelsStore.isFavorite(model)"
-              @pointerdown.stop
-              @click.stop="modelsStore.toggleFavorite(model)"
-            >
-              <StarIcon
-                :class="cn({ 'fill-current': modelsStore.isFavorite(model) })"
-              />
-            </Button>
-            <CommandShortcut v-if="model.reasoning" class="tracking-normal">
-              {{ t("models.reasoning") }}
-            </CommandShortcut>
+            <span class="ml-auto flex shrink-0 items-center gap-1">
+              <Badge
+                v-if="modelsStore.isRecommended(model)"
+                class="text-primary-foreground!"
+              >
+                {{ t("models.picker.recommended") }}
+              </Badge>
+              <Badge v-if="model.input.includes('image')" variant="secondary">
+                {{ t("models.picker.vision") }}
+              </Badge>
+              <Badge
+                variant="outline"
+                :title="
+                  t('models.picker.contextWindow', {
+                    tokens: formatTokenCount(model.contextWindow),
+                  })
+                "
+              >
+                {{ formatTokenCount(model.contextWindow) }}
+              </Badge>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                :aria-label="
+                  modelsStore.isFavorite(model)
+                    ? t('models.picker.removeFavorite', { model: model.name })
+                    : t('models.picker.addFavorite', { model: model.name })
+                "
+                :aria-pressed="modelsStore.isFavorite(model)"
+                @pointerdown.stop
+                @click.stop="modelsStore.toggleFavorite(model)"
+              >
+                <StarIcon
+                  :class="
+                    cn({
+                      'fill-current': modelsStore.isFavorite(model),
+                    })
+                  "
+                />
+              </Button>
+            </span>
           </CommandItem>
         </CommandGroup>
       </template>
@@ -207,11 +310,14 @@ async function handleConnected(): Promise<void> {
             v-for="provider in providers"
             :key="provider.id"
             :value="`${provider.name} ${provider.id}`"
-            :disabled="!canConfigure(provider)"
+            :disabled="!provider.configured && !canConfigure(provider)"
+            class="[&>svg:last-child]:hidden"
             @select="selectProvider(provider)"
           >
-            <CheckCircle2Icon v-if="provider.configured" aria-hidden="true" />
-            <KeyRoundIcon v-else aria-hidden="true" />
+            <ProviderIcon
+              :provider-id="provider.id"
+              :provider-name="provider.name"
+            />
             <span class="flex min-w-0 flex-1 flex-col gap-0.5">
               <span class="truncate">{{ provider.name }}</span>
               <span class="truncate text-xs font-normal text-muted-foreground">
@@ -219,9 +325,29 @@ async function handleConnected(): Promise<void> {
                 {{ t("providers.modelCount", { count: provider.modelCount }) }}
               </span>
             </span>
-            <Badge v-if="provider.configured" variant="secondary">
-              {{ t("providers.connected") }}
-            </Badge>
+            <span
+              data-slot="provider-actions"
+              class="ml-auto flex shrink-0 items-center gap-1"
+            >
+              <Badge v-if="provider.configured" variant="secondary">
+                {{ t("providers.connected") }}
+              </Badge>
+              <Button
+                v-if="provider.configured"
+                type="button"
+                data-testid="provider-disconnect"
+                variant="ghost"
+                size="icon-sm"
+                :aria-label="
+                  t('providers.disconnect', { provider: provider.name })
+                "
+                :title="t('providers.disconnect', { provider: provider.name })"
+                @pointerdown.stop
+                @click.stop="requestDisconnect(provider)"
+              >
+                <UnplugIcon aria-hidden="true" />
+              </Button>
+            </span>
           </CommandItem>
         </CommandGroup>
       </template>
@@ -233,4 +359,42 @@ async function handleConnected(): Promise<void> {
     :provider="selectedProvider"
     @connected="handleConnected"
   />
+
+  <AlertDialog
+    :open="isDisconnectDialogOpen"
+    @update:open="disconnectDialogOpenChanged"
+  >
+    <AlertDialogContent>
+      <AlertDialogHeader>
+        <AlertDialogTitle>
+          {{
+            t("providers.disconnectTitle", {
+              provider: disconnectingProvider?.name ?? "",
+            })
+          }}
+        </AlertDialogTitle>
+        <AlertDialogDescription>
+          {{
+            t("providers.disconnectDescription", {
+              provider: disconnectingProvider?.name ?? "",
+            })
+          }}
+        </AlertDialogDescription>
+      </AlertDialogHeader>
+      <AlertDialogFooter>
+        <AlertDialogCancel :disabled="isDisconnecting">
+          {{ t("common.cancel") }}
+        </AlertDialogCancel>
+        <AlertDialogAction
+          data-testid="confirm-provider-disconnect"
+          variant="destructive"
+          :disabled="isDisconnecting"
+          @click.prevent="disconnectProvider"
+        >
+          <Spinner v-if="isDisconnecting" data-icon="inline-start" />
+          {{ t("providers.disconnectConfirm") }}
+        </AlertDialogAction>
+      </AlertDialogFooter>
+    </AlertDialogContent>
+  </AlertDialog>
 </template>

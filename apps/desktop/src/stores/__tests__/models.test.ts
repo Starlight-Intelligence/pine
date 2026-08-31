@@ -39,6 +39,7 @@ const catalog: PineModelCatalog = {
       name: "Provider",
     },
   ],
+  recommendedModelIds: ["alpha", "ALPHA"],
 };
 
 beforeEach(() => {
@@ -47,12 +48,22 @@ beforeEach(() => {
   Object.defineProperty(window, "pine", {
     configurable: true,
     value: {
+      getModelCatalog: vi.fn().mockResolvedValue(catalog),
+      logoutProvider: vi.fn().mockResolvedValue({ disposed: true }),
       selectModel: vi.fn().mockResolvedValue(undefined),
     },
   });
 });
 
 describe("models store lists", () => {
+  it("matches recommended models by exact model ID", () => {
+    const store = useModelsStore();
+    store.catalog = catalog;
+
+    expect(store.isRecommended(alpha)).toBe(true);
+    expect(store.isRecommended(beta)).toBe(false);
+  });
+
   it("shows recent models until the user has favorites", async () => {
     const store = useModelsStore();
     store.catalog = catalog;
@@ -88,6 +99,31 @@ describe("models store lists", () => {
     store.toggleFavorite(beta);
 
     expect(store.favoriteModels).toEqual([]);
+  });
+
+  it("creates a stable snapshot of favorite model keys", () => {
+    const store = useModelsStore();
+    store.catalog = catalog;
+    store.toggleFavorite(alpha);
+    const snapshot = store.favoriteModelKeysSnapshot();
+
+    store.toggleFavorite(alpha);
+    store.toggleFavorite(beta);
+
+    expect(snapshot).toEqual([pineModelKey(alpha)]);
+    expect(store.favoriteModelKeysSnapshot()).toEqual([pineModelKey(beta)]);
+  });
+
+  it("deletes provider credentials through the preload API and reloads", async () => {
+    const store = useModelsStore();
+    store.catalog = catalog;
+
+    await store.logout("provider");
+
+    expect(window.pine.logoutProvider).toHaveBeenCalledWith({
+      providerId: "provider",
+    });
+    expect(window.pine.getModelCatalog).toHaveBeenCalledOnce();
   });
 });
 

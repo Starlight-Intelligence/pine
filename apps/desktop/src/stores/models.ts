@@ -82,6 +82,9 @@ export const useModelsStore = defineStore("models", () => {
   const models = computed(() => catalog.value.models);
   const providers = computed(() => catalog.value.providers);
   const selection = computed(() => catalog.value.selection);
+  const recommendedModelIds = computed(
+    () => new Set(catalog.value.recommendedModelIds ?? []),
+  );
   const selectedModel = computed(() => {
     const selected = selection.value;
     return selected
@@ -133,6 +136,14 @@ export const useModelsStore = defineStore("models", () => {
 
   function isFavorite(model: PineModelDescriptor): boolean {
     return favoriteModelKeys.value.includes(pineModelKey(model));
+  }
+
+  function favoriteModelKeysSnapshot(): readonly string[] {
+    return [...favoriteModelKeys.value];
+  }
+
+  function isRecommended(model: PineModelDescriptor): boolean {
+    return recommendedModelIds.value.has(model.id);
   }
 
   function toggleFavorite(model: PineModelDescriptor): void {
@@ -269,8 +280,10 @@ export const useModelsStore = defineStore("models", () => {
     configuredProviders,
     connectAuthEvents,
     favoriteModels,
+    favoriteModelKeysSnapshot,
     featuredModels,
     isFavorite,
+    isRecommended,
     isLoading,
     load,
     login,

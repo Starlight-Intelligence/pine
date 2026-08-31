@@ -8,6 +8,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { formatTokenCount } from "@/lib/format-token-count";
 import { useSessionStore } from "@/stores/session";
 
 const { t } = useI18n();
@@ -39,18 +40,6 @@ const usageToneClass = computed(() => {
     ? "text-destructive"
     : "text-muted-foreground";
 });
-
-function formatTokenCount(value: number): string {
-  if (value >= 1_000_000) {
-    const millions = value / 1_000_000;
-    return `${Number.isInteger(millions) ? millions : millions.toFixed(1)}M`;
-  }
-  if (value >= 1_000) {
-    const thousands = value / 1_000;
-    return `${Number.isInteger(thousands) ? thousands : thousands.toFixed(1)}K`;
-  }
-  return value.toLocaleString("en-US");
-}
 
 const usedTokensText = computed(() =>
   usage.value?.tokens == null

@@ -25,17 +25,21 @@ export default {
     favorites: "Favorites",
     loading: "Loading models",
     recent: "Recently used",
-    reasoning: "Reasoning",
+    recommended: "Recommended models",
+    reasoning: "Reasoning effort",
     picker: {
       title: "Choose a model",
       description: "Search configured models or add a provider",
       searchPlaceholder: "Search providers and models…",
       empty: "No matching models",
-      addServiceOrModel: "Add provider or model",
+      manageServiceOrModel: "Manage providers and models",
       addFavorite: "Favorite {model}",
       backToModels: "Back to models",
       browse: "Browse all models…",
+      contextWindow: "Context window: {tokens}",
+      recommended: "Recommended",
       removeFavorite: "Remove {model} from favorites",
+      vision: "Vision",
     },
     thinkingLevels: {
       off: "Off",
@@ -46,9 +50,18 @@ export default {
       xhigh: "Extra high",
       max: "Maximum",
     },
+    thinkingLevelWarnings: {
+      max: '"Maximum" reasoning may take longer and cost more, while often providing no meaningful improvement.',
+      off: "Modern models achieve their best performance in Pine with reasoning enabled. We do not recommend disabling reasoning for any model.",
+    },
   },
   providers: {
     connected: "Connected",
+    disconnect: "Disconnect {provider}",
+    disconnectConfirm: "Delete credentials and disconnect",
+    disconnectDescription:
+      "This deletes the {provider} credentials saved by Pine and makes its models temporarily unavailable. You can reconnect at any time.",
+    disconnectTitle: "Disconnect {provider}?",
     modelCount: "{count} models",
     picker: {
       title: "Choose a provider",
@@ -270,6 +283,10 @@ export default {
     },
   },
   errors: {
+    providerDisconnect: {
+      title: "Unable to disconnect provider",
+      description: "Credentials were not deleted. Try again in a moment",
+    },
     projectList: {
       title: "Unable to load Projects",
       description: "Try again in a moment",

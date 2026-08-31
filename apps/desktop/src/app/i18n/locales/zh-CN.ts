@@ -24,17 +24,21 @@ export default {
     favorites: "收藏的模型",
     loading: "正在加载模型",
     recent: "最近使用",
-    reasoning: "推理",
+    recommended: "推荐的模型",
+    reasoning: "推理强度",
     picker: {
       title: "选择模型",
       description: "搜索已配置的模型，或添加新的模型服务",
       searchPlaceholder: "搜索服务或模型…",
       empty: "没有匹配的模型",
-      addServiceOrModel: "添加服务或模型",
+      manageServiceOrModel: "管理服务或模型",
       addFavorite: "收藏 {model}",
       backToModels: "返回模型列表",
       browse: "浏览所有模型…",
+      contextWindow: "上下文窗口：{tokens}",
+      recommended: "推荐",
       removeFavorite: "取消收藏 {model}",
+      vision: "视觉",
     },
     thinkingLevels: {
       off: "关闭",
@@ -45,9 +49,18 @@ export default {
       xhigh: "超高",
       max: "最大",
     },
+    thinkingLevelWarnings: {
+      max: "“最大”推理强度可能会导致更长的耗时和更高的花费，且通常并不会产生足够可观的收益。",
+      off: "现代模型在开启推理的情况下才能在 Pine 中达到最佳工作性能。我们不推荐您在任何模型上关闭推理。",
+    },
   },
   providers: {
     connected: "已连接",
+    disconnect: "解绑 {provider}",
+    disconnectConfirm: "删除凭据并解绑",
+    disconnectDescription:
+      "这将删除 Pine 保存的 {provider} 凭据，并使其模型暂时不可用。之后可以随时重新连接。",
+    disconnectTitle: "解绑 {provider}？",
     modelCount: "{count} 个模型",
     picker: {
       title: "选择模型服务",
@@ -263,6 +276,10 @@ export default {
     },
   },
   errors: {
+    providerDisconnect: {
+      title: "无法解绑模型服务",
+      description: "凭据未被删除，请稍后重试",
+    },
     projectList: { title: "无法读取项目", description: "请稍后重试" },
     projectCreate: {
       title: "无法创建项目",

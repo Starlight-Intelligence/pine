@@ -1,7 +1,8 @@
-import { mount } from "@vue/test-utils";
+import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { describe, expect, it } from "vitest";
 import { createAppI18n } from "@/app/i18n";
+import type { PineThinkingLevel } from "@/shared/models";
 import { useModelsStore } from "@/stores/models";
 import ProjectSessionComposer from "../ProjectSessionComposer.vue";
 
@@ -10,7 +11,10 @@ interface ComposerProps {
   isRunning?: boolean;
 }
 
-function mountComposer(props: ComposerProps = {}) {
+function mountComposer(
+  props: ComposerProps = {},
+  thinkingLevel: PineThinkingLevel = "high",
+) {
   const pinia = createPinia();
   setActivePinia(pinia);
   const catalog = {
@@ -34,14 +38,19 @@ function mountComposer(props: ComposerProps = {}) {
         providerId: "anthropic",
         providerName: "Anthropic",
         reasoning: true,
-        supportedThinkingLevels: ["off" as const, "high" as const],
+        supportedThinkingLevels: [
+          "off" as const,
+          "high" as const,
+          "max" as const,
+        ],
       },
     ],
     selection: {
       modelId: "claude-sonnet",
       providerId: "anthropic",
-      thinkingLevel: "high" as const,
+      thinkingLevel,
     },
+    recommendedModelIds: ["claude-sonnet"],
   };
   Object.defineProperty(window, "pine", {
     configurable: true,
@@ -125,6 +134,36 @@ describe("ProjectSessionComposer", () => {
     expect(approvalTrigger.get("span").classes()).toContain("text-foreground");
     expect(modelTrigger.text()).toContain("Claude Sonnet");
     expect(modelTrigger.text()).toContain("高");
+  });
+
+  it("colors maximum and disabled reasoning levels", () => {
+    const maximumWrapper = mountComposer({}, "max");
+    expect(
+      maximumWrapper
+        .get('[data-slot="model-selector-thinking-level"]')
+        .classes(),
+    ).toContain("text-thinking-max!");
+    maximumWrapper.unmount();
+
+    const disabledWrapper = mountComposer({}, "off");
+    expect(
+      disabledWrapper
+        .get('[data-slot="model-selector-thinking-level"]')
+        .classes(),
+    ).toContain("text-destructive!");
+  });
+
+  it("keeps recommended badge text readable when the model option is focused", async () => {
+    const wrapper = mountComposer();
+
+    await wrapper.get('[data-slot="model-selector-trigger"]').trigger("click");
+    await flushPromises();
+
+    const badge = document.querySelector("[data-recommended-model]");
+    expect(badge).not.toBeNull();
+    expect(badge?.classList.contains("text-primary-foreground!")).toBe(true);
+
+    wrapper.unmount();
   });
 
   it("reflects an externally selected approval mode", () => {

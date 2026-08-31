@@ -48,6 +48,7 @@ export interface PineModelSelection {
 export interface PineModelCatalog {
   models: readonly PineModelDescriptor[];
   providers: readonly PineProviderDescriptor[];
+  recommendedModelIds?: readonly string[];
   selection?: PineModelSelection;
 }
 
