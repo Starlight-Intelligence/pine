@@ -133,6 +133,36 @@ describe("ProjectContentTabs", () => {
     expect(tabList.classes()).toContain("flex-1");
   });
 
+  it("keeps the tab list blank area draggable and tabs interactive", async () => {
+    const { wrapper } = await mountTabs();
+    const tabList = wrapper.get('[data-slot="project-content-tab-list"]');
+    const tab = wrapper.get('[data-slot="project-content-tab"]');
+    const addButton = wrapper.get('button[aria-label="Add session tab"]');
+
+    expect(tabList.classes()).toContain("window-drag");
+    expect(tabList.classes()).not.toContain("window-no-drag");
+    expect(tab.classes()).toContain("window-no-drag");
+    expect(addButton.classes()).toContain("window-no-drag");
+  });
+
+  it("optically aligns tab separators with the tab hover treatment", async () => {
+    const { wrapper } = await mountTabs();
+
+    await wrapper.get('button[aria-label="Add session tab"]').trigger("click");
+    await flushPromises();
+
+    expect(wrapper.get('[data-slot="separator"]').classes()).toEqual(
+      expect.arrayContaining([
+        "project-content-tab-separator",
+        "h-7",
+        "self-center",
+      ]),
+    );
+    expect(
+      wrapper.get('[data-slot="project-content-tab"]').classes(),
+    ).toContain("h-8");
+  });
+
   it("binds each session tab to its own session and remounts its view", async () => {
     const { router, wrapper } = await mountTabs();
     const tabsStore = useContentTabsStore();

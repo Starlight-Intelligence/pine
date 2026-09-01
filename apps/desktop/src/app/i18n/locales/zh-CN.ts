@@ -144,6 +144,7 @@ export default {
     composer: {
       label: "会话消息",
       placeholder: "描述任务、明确需求……",
+      addAttachment: "添加附件",
       send: "发送消息",
       stop: "停止回答",
       model: "模型",

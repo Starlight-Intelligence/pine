@@ -149,6 +149,7 @@ export default {
     composer: {
       label: "Session message",
       placeholder: "Describe a task or clarify what you need…",
+      addAttachment: "Add attachment",
       send: "Send message",
       stop: "Stop response",
       model: "Model",

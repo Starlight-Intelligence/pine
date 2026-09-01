@@ -134,7 +134,7 @@ watch(activeSession, (session) => {
         data-slot="project-content-tab-list"
         role="tablist"
         :aria-label="t('project.contentTabs.tabListLabel')"
-        class="window-no-drag pointer-events-auto flex min-w-0 flex-1 items-center justify-start gap-1 overflow-x-auto scrollbar-none"
+        class="window-drag pointer-events-auto flex min-w-0 flex-1 items-center justify-start gap-1 overflow-x-auto scrollbar-none"
       >
         <template v-for="(tab, index) in tabs" :key="tab.id">
           <Separator
@@ -142,14 +142,15 @@ watch(activeSession, (session) => {
             orientation="vertical"
             :class="
               cn(
-                'transition-opacity',
+                'project-content-tab-separator h-7 self-center transition-opacity',
                 shouldShowSeparator(index) ? 'opacity-100' : 'opacity-0',
               )
             "
           />
 
           <div
-            class="group relative flex h-8 w-40 min-w-40 items-center rounded-2xl"
+            data-slot="project-content-tab"
+            class="window-no-drag group relative flex h-8 w-40 min-w-40 items-center rounded-2xl"
           >
             <Button
               :id="`project-content-tab-${tab.id}`"
@@ -219,3 +220,22 @@ watch(activeSession, (session) => {
     </div>
   </div>
 </template>
+
+<style scoped>
+.project-content-tab-separator {
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent,
+    black 18%,
+    black 82%,
+    transparent
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    transparent,
+    black 18%,
+    black 82%,
+    transparent
+  );
+}
+</style>

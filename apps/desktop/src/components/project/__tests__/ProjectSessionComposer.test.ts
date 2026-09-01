@@ -78,6 +78,7 @@ describe("ProjectSessionComposer", () => {
   it("uses theme-native composer sizing and inline actions", () => {
     const wrapper = mountComposer();
     const form = wrapper.get("form");
+    const inputGroup = wrapper.get('[data-slot="input-group"]');
     const textarea = wrapper.get("textarea");
     const addons = wrapper.findAll('[data-slot="input-group-addon"]');
     const actionButtons = wrapper.findAll(
@@ -88,26 +89,57 @@ describe("ProjectSessionComposer", () => {
       "max-w-[var(--session-composer-max-width)]",
     );
     expect(form.classes()).toContain("px-[var(--session-composer-gutter)]");
+    expect(form.classes()).toContain("pb-3");
+    expect(form.classes()).not.toContain("pb-2");
+    expect(form.classes()).not.toContain("pb-4");
+    expect(inputGroup.classes()).toEqual(
+      expect.arrayContaining([
+        "session-composer-control",
+        "min-h-[var(--session-composer-control-height)]",
+        "rounded-[var(--session-composer-control-radius)]",
+        "has-[textarea]:rounded-[var(--session-composer-control-radius)]",
+      ]),
+    );
     expect(textarea.classes()).toContain("session-composer-input");
-    expect(textarea.classes()).toContain("min-h-12");
+    expect(textarea.classes()).toContain(
+      "min-h-[var(--session-composer-control-height)]",
+    );
     expect(textarea.classes()).toContain("py-3.5");
     expect(textarea.classes()).toContain("text-sm");
-    expect(textarea.classes()).not.toContain("text-base");
+    expect(textarea.classes()).toContain("leading-5");
+    expect(textarea.classes()).not.toContain("min-h-12");
+    expect(textarea.classes()).not.toContain("py-4");
     expect(textarea.classes()).toContain("field-sizing-content");
     expect(textarea.attributes("placeholder")).toBe("描述任务、明确需求……");
     expect(addons.map((addon) => addon.attributes("data-align"))).toEqual([
+      "inline-start",
       "inline-end",
     ]);
     expect(
       actionButtons.map((button) => button.attributes("data-variant")),
-    ).toEqual(["default"]);
+    ).toEqual(["secondary", "default"]);
     expect(
       actionButtons.map((button) => button.attributes("data-size")),
-    ).toEqual(["icon-sm"]);
-    expect(wrapper.findAll('[data-slot="tooltip-trigger"]')).toHaveLength(1);
+    ).toEqual(["icon-sm", "icon-sm"]);
+    expect(
+      actionButtons.every(
+        (button) =>
+          button
+            .classes()
+            .includes("size-[var(--session-composer-action-size)]") &&
+          button.classes().includes("rounded-full"),
+      ),
+    ).toBe(true);
+    expect(actionButtons[0].attributes("aria-label")).toBe("添加附件");
+    expect(wrapper.findAll('[data-slot="tooltip-trigger"]')).toHaveLength(2);
     expect(addons.every((addon) => addon.classes().includes("self-end"))).toBe(
       true,
     );
+    expect(addons.every((addon) => addon.classes().includes("py-1.5"))).toBe(
+      true,
+    );
+    expect(addons[0].classes()).toContain("pl-2.5");
+    expect(addons[1].classes()).toContain("pr-2.5");
     expect(
       wrapper
         .get('[data-slot="approval-mode-trigger"]')

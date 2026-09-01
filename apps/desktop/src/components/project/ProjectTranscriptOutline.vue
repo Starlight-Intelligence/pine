@@ -87,9 +87,15 @@ function scrollToTurn(messageId: string): void {
         </Button>
       </HoverCardTrigger>
 
-      <HoverCardContent side="left" align="center" :side-offset="8" class="p-2">
+      <HoverCardContent
+        side="left"
+        align="center"
+        :side-offset="8"
+        class="p-1.5"
+      >
         <nav
-          class="scroll-fade no-scrollbar flex max-h-80 flex-col gap-1 overflow-y-auto"
+          data-slot="project-transcript-outline-menu"
+          class="scroll-fade no-scrollbar flex max-h-80 flex-col gap-0.5 overflow-y-auto"
           :aria-label="t('project.transcript.outline')"
         >
           <Button

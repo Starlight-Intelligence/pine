@@ -3,6 +3,7 @@ import type { Component } from "vue";
 import {
   ArrowUpIcon,
   ChevronDownIcon,
+  PlusIcon,
   SearchIcon,
   ShieldCheckIcon,
   ShieldIcon,
@@ -188,7 +189,7 @@ function openModelPicker(): void {
 
 <template>
   <form
-    class="mx-auto w-full max-w-[var(--session-composer-max-width)] px-[var(--session-composer-gutter)] pb-4"
+    class="mx-auto w-full max-w-[var(--session-composer-max-width)] px-[var(--session-composer-gutter)] pb-3"
     @submit.prevent="submitMessage"
   >
     <label class="sr-only" :for="messageId">
@@ -200,19 +201,41 @@ function openModelPicker(): void {
       :approval="props.pendingApproval"
       @respond="(action, guidance) => emit('respond', action, guidance)"
     />
-    <InputGroup v-else>
+    <InputGroup
+      v-else
+      class="session-composer-control min-h-[var(--session-composer-control-height)] rounded-[var(--session-composer-control-radius)] has-[textarea]:rounded-[var(--session-composer-control-radius)]"
+    >
+      <InputGroupAddon class="self-end py-1.5 pl-2.5" align="inline-start">
+        <Tooltip>
+          <TooltipTrigger as-child>
+            <InputGroupButton
+              class="size-[var(--session-composer-action-size)] shrink-0 rounded-full"
+              size="icon-sm"
+              variant="secondary"
+              :aria-label="t('project.composer.addAttachment')"
+            >
+              <PlusIcon />
+            </InputGroupButton>
+          </TooltipTrigger>
+          <TooltipContent side="top">
+            {{ t("project.composer.addAttachment") }}
+          </TooltipContent>
+        </Tooltip>
+      </InputGroupAddon>
+
       <InputGroupTextarea
         :id="messageId"
         v-model="message"
-        class="session-composer-input max-h-48 min-h-12 py-3.5 text-sm"
+        class="session-composer-input max-h-48 min-h-[var(--session-composer-control-height)] py-3.5 text-sm leading-5"
         :placeholder="t('project.composer.placeholder')"
         @keydown="handleKeydown"
       />
 
-      <InputGroupAddon class="self-end" align="inline-end">
+      <InputGroupAddon class="self-end py-1.5 pr-2.5" align="inline-end">
         <Tooltip>
           <TooltipTrigger as-child>
             <InputGroupButton
+              class="size-[var(--session-composer-action-size)] shrink-0 rounded-full"
               size="icon-sm"
               variant="default"
               :disabled="!canSubmit"
@@ -464,7 +487,20 @@ function openModelPicker(): void {
 </template>
 
 <style scoped>
+.session-composer-control {
+  --session-composer-control-height: 3rem;
+  --session-composer-control-radius: calc(
+    var(--session-composer-control-height) / 2
+  );
+  --session-composer-control-inset: 0.375rem;
+  --session-composer-action-size: calc(
+    var(--session-composer-control-height) - 2 *
+      var(--session-composer-control-inset)
+  );
+}
+
 .session-composer-input {
-  padding-inline: var(--session-input-padding-inline, 0.75rem);
+  padding-inline-start: var(--session-composer-control-inset);
+  padding-inline-end: var(--session-input-padding-inline, 1rem);
 }
 </style>

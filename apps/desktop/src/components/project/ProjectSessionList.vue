@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { History, Plus, Search, Trash2 } from "@lucide/vue";
+import { Plus, Search, Trash2 } from "@lucide/vue";
 import { useVirtualizer } from "@tanstack/vue-virtual";
 import { storeToRefs } from "pinia";
 import { computed, ref, watch } from "vue";
@@ -208,7 +208,6 @@ watch(
                   "
                   @click="openSession(recentSessions[virtualRow.index])"
                 >
-                  <History aria-hidden="true" />
                   <span class="min-w-0 flex-1 truncate">
                     {{ sessionTitle(recentSessions[virtualRow.index]) }}
                   </span>

@@ -30,6 +30,7 @@ const props = withDefaults(defineProps<Props>(), {
 });
 
 const characterElement = ref<HTMLElement>();
+const faceElement = ref<HTMLElement>();
 const leftPupilElement = ref<HTMLElement>();
 const rightPupilElement = ref<HTMLElement>();
 const frameIndex = ref(0);
@@ -50,6 +51,12 @@ let boundsDirty = true;
 let gazeTargetDirty = true;
 let currentGaze = { x: 0, y: 0 };
 let targetGaze = { x: 0, y: 0 };
+let currentFaceOffset = { x: 0, y: 0 };
+let targetFaceOffset = { x: 0, y: 0 };
+
+const GAZE_DAMPING = 0.28;
+const FACE_DAMPING = 0.12;
+const MOTION_SETTLE_DISTANCE = 0.01;
 
 const effectiveExpression = computed<PineCharacterExpressionName>(() => {
   if (props.expression !== "idle") return props.expression;
@@ -182,6 +189,12 @@ function applyPupilOffset(offsetX: number, offsetY: number): void {
     rightPupilElement.value.style.transform = transform;
 }
 
+function applyFaceOffset(offsetX: number, offsetY: number): void {
+  if (!faceElement.value) return;
+
+  faceElement.value.style.transform = `translate3d(${offsetX.toFixed(2)}px, ${offsetY.toFixed(2)}px, 0)`;
+}
+
 function calculateGazeTarget(): void {
   gazeTargetDirty = false;
 
@@ -189,10 +202,10 @@ function calculateGazeTarget(): void {
     !props.trackPointer ||
     prefersReducedMotion.value ||
     !pointerPosition ||
-    currentFrame.value.eyes.mode !== "tracking" ||
     !characterElement.value
   ) {
     targetGaze = { x: 0, y: 0 };
+    targetFaceOffset = { x: 0, y: 0 };
     return;
   }
 
@@ -209,14 +222,30 @@ function calculateGazeTarget(): void {
 
   if (distance < 36) {
     targetGaze = { x: 0, y: 0 };
+    targetFaceOffset = { x: 0, y: 0 };
     return;
   }
 
   const strength = Math.min(1, (distance - 36) / 120);
-  targetGaze = {
-    x: (deltaX / distance) * characterBounds.height * 0.11 * strength,
-    y: (deltaY / distance) * characterBounds.height * 0.08 * strength,
-  };
+  const directionX = deltaX / distance;
+  const directionY = deltaY / distance;
+  const canTrackWithFace =
+    effectiveExpression.value !== "fallingAsleep" &&
+    effectiveExpression.value !== "sleeping";
+
+  targetFaceOffset = canTrackWithFace
+    ? {
+        x: directionX * characterBounds.height * 0.055 * strength,
+        y: directionY * characterBounds.height * 0.04 * strength,
+      }
+    : { x: 0, y: 0 };
+  targetGaze =
+    currentFrame.value.eyes.mode === "tracking"
+      ? {
+          x: directionX * characterBounds.height * 0.11 * strength,
+          y: directionY * characterBounds.height * 0.08 * strength,
+        }
+      : { x: 0, y: 0 };
 }
 
 function updateGaze(): void {
@@ -224,21 +253,43 @@ function updateGaze(): void {
 
   if (gazeTargetDirty || boundsDirty) calculateGazeTarget();
 
-  const easing = prefersReducedMotion.value ? 1 : 0.28;
+  const gazeDamping = prefersReducedMotion.value ? 1 : GAZE_DAMPING;
+  const faceDamping = prefersReducedMotion.value ? 1 : FACE_DAMPING;
   currentGaze = {
-    x: currentGaze.x + (targetGaze.x - currentGaze.x) * easing,
-    y: currentGaze.y + (targetGaze.y - currentGaze.y) * easing,
+    x: currentGaze.x + (targetGaze.x - currentGaze.x) * gazeDamping,
+    y: currentGaze.y + (targetGaze.y - currentGaze.y) * gazeDamping,
+  };
+  currentFaceOffset = {
+    x:
+      currentFaceOffset.x +
+      (targetFaceOffset.x - currentFaceOffset.x) * faceDamping,
+    y:
+      currentFaceOffset.y +
+      (targetFaceOffset.y - currentFaceOffset.y) * faceDamping,
   };
 
-  const remainingDistance = Math.hypot(
+  const remainingGazeDistance = Math.hypot(
     targetGaze.x - currentGaze.x,
     targetGaze.y - currentGaze.y,
   );
+  const remainingFaceDistance = Math.hypot(
+    targetFaceOffset.x - currentFaceOffset.x,
+    targetFaceOffset.y - currentFaceOffset.y,
+  );
 
-  if (remainingDistance < 0.01) currentGaze = { ...targetGaze };
+  if (remainingGazeDistance < MOTION_SETTLE_DISTANCE)
+    currentGaze = { ...targetGaze };
+  if (remainingFaceDistance < MOTION_SETTLE_DISTANCE)
+    currentFaceOffset = { ...targetFaceOffset };
   applyPupilOffset(currentGaze.x, currentGaze.y);
+  applyFaceOffset(currentFaceOffset.x, currentFaceOffset.y);
 
-  if (remainingDistance >= 0.01) scheduleGazeUpdate();
+  if (
+    remainingGazeDistance >= MOTION_SETTLE_DISTANCE ||
+    remainingFaceDistance >= MOTION_SETTLE_DISTANCE
+  ) {
+    scheduleGazeUpdate();
+  }
 }
 
 function scheduleGazeUpdate(): void {
@@ -360,17 +411,19 @@ onUnmounted(() => {
     :aria-hidden="props.decorative ? 'true' : undefined"
     :data-tracking="currentFrame.eyes.mode === 'tracking'"
   >
-    <span>(</span>
-    <span class="pine-character__eye">
-      <span ref="leftPupilElement" class="pine-character__pupil">•</span>
-      <span class="pine-character__fixed-eye">{{ fixedEyes?.left }}</span>
+    <span ref="faceElement" class="pine-character__face">
+      <span>(</span>
+      <span class="pine-character__eye">
+        <span ref="leftPupilElement" class="pine-character__pupil">•</span>
+        <span class="pine-character__fixed-eye">{{ fixedEyes?.left }}</span>
+      </span>
+      <span class="pine-character__mouth">{{ currentFrame.mouth }}</span>
+      <span class="pine-character__eye">
+        <span ref="rightPupilElement" class="pine-character__pupil">•</span>
+        <span class="pine-character__fixed-eye">{{ fixedEyes?.right }}</span>
+      </span>
+      <span>)</span>
     </span>
-    <span class="pine-character__mouth">{{ currentFrame.mouth }}</span>
-    <span class="pine-character__eye">
-      <span ref="rightPupilElement" class="pine-character__pupil">•</span>
-      <span class="pine-character__fixed-eye">{{ fixedEyes?.right }}</span>
-    </span>
-    <span>)</span>
     <span class="pine-character__suffix" aria-hidden="true">{{
       currentSuffix
     }}</span>
@@ -394,6 +447,13 @@ onUnmounted(() => {
   text-align: center;
   white-space: pre;
   user-select: none;
+}
+
+.pine-character__face {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  will-change: transform;
 }
 
 .pine-character__eye {
