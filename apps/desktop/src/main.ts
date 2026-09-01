@@ -251,6 +251,7 @@ const createWindow = () => {
       nodeIntegration: false,
       sandbox: true,
       webSecurity: true,
+      scrollBounce: true,
       preload: path.join(__dirname, "preload.js"),
     },
   });
@@ -483,9 +484,7 @@ ipcMain.handle(
   RESUME_SESSION_CHANNEL,
   async (event, request: unknown): Promise<ResumeSessionResult> => {
     const { sessionId } = SessionIdRequestSchema.parse(request);
-    return {
-      session: await getProjectRuntimes().resume(event.sender.id, sessionId),
-    };
+    return getProjectRuntimes().resume(event.sender.id, sessionId);
   },
 );
 
@@ -585,7 +584,14 @@ app.on("ready", () => {
     }
     const ownerId = projectRuntimes?.ownerOfSession(agentEvent.sessionId);
     if (ownerId === undefined) return;
-    if (agentEvent.type === "approval-request") {
+    if (agentEvent.type === "context-usage") {
+      projectRuntimes?.updateContextUsage(agentEvent.sessionId, {
+        tokens: agentEvent.tokens,
+        contextWindow: agentEvent.contextWindow,
+        percent: agentEvent.percent,
+        cost: agentEvent.cost,
+      });
+    } else if (agentEvent.type === "approval-request") {
       projectRuntimes?.trackApproval(agentEvent.requestId, ownerId);
       requestApprovalAttention(ownerId);
     } else if (agentEvent.type === "approval-decided") {

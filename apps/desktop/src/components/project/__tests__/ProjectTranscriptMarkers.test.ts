@@ -269,6 +269,30 @@ describe("project transcript markers", () => {
     expect(content.get("code").text()).toBe("bun run typecheck");
   });
 
+  it("renders privileged bash with the same command UI as ordinary bash", () => {
+    const wrapper = mount(ProjectToolCallMarker, {
+      props: {
+        toolCall: {
+          id: "tool-privileged",
+          input: {
+            command: "osascript -e 'tell application \"Music\" to play'",
+            description: "Play music with the Music app",
+          },
+          name: "privileged_bash",
+          status: "complete",
+        },
+      },
+      global: { plugins: [createAppI18n("zh-CN")] },
+    });
+
+    const content = wrapper.get('[data-slot="marker-content"]');
+    expect(content.text()).toBe(
+      "已执行 Play music with the Music app：osascript -e 'tell application \"Music\" to play'",
+    );
+    expect(content.get("code").text()).toContain("osascript");
+    expect(wrapper.get("svg").attributes("class")).toContain("terminal");
+  });
+
   it("renders read line ranges and edit line tallies semantically", () => {
     const wrapper = mount(ProjectToolCallMarker, {
       props: {

@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import {
   mkdir,
   mkdtemp,
@@ -229,6 +230,49 @@ describe("createPineToolDefinitions", () => {
     ).rejects.toThrow("Folder is read-only");
   });
 
+  it("allows file tools to use Pine's temporary directory without escalation", async () => {
+    const { location } = await createFixture();
+    const gate = createFakeGate();
+    const tools = await createPineToolDefinitions(location, gate);
+    const read = tools.find((tool) => tool.name === "read");
+    const edit = tools.find((tool) => tool.name === "edit");
+    const write = tools.find((tool) => tool.name === "write");
+    if (!read || !edit || !write) throw new Error("File tools are missing.");
+    const temporaryPath = path.join(
+      path.dirname(location.sessionsRoot),
+      "tmp",
+      "artifact.txt",
+    );
+
+    await write.execute(
+      "write-temporary",
+      { content: "before", path: temporaryPath },
+      undefined,
+      undefined,
+      undefined as never,
+    );
+    await edit.execute(
+      "edit-temporary",
+      {
+        edits: [{ newText: "after", oldText: "before" }],
+        path: temporaryPath,
+      },
+      undefined,
+      undefined,
+      undefined as never,
+    );
+    await read.execute(
+      "read-temporary",
+      { path: temporaryPath },
+      undefined,
+      undefined,
+      undefined as never,
+    );
+
+    await expect(readFile(temporaryPath, "utf8")).resolves.toBe("after");
+    expect(gate.reviewDenial).not.toHaveBeenCalled();
+  });
+
   it("only grants shell writes to writable folders and Pine's temporary directory", () => {
     const profile = createMacOsBashSandboxProfile(
       ["/project/source"],
@@ -261,6 +305,12 @@ describe("createPineToolDefinitions", () => {
           "32:44: execution error: Music got an error: Application isn’t running. (-600)",
         ),
       ).toBe(true);
+      expect(
+        matchSandboxDenial(
+          "40:83: execution error: File permission error. (-54)",
+        ),
+      ).toBe(true);
+      expect(matchSandboxDenial("Error: EACCES: access denied")).toBe(true);
     });
 
     it("ignores ordinary command failures", () => {
@@ -274,22 +324,16 @@ describe("createPineToolDefinitions", () => {
   });
 
   it.runIf(process.platform === "darwin" && !process.env.CODEX_SANDBOX)(
-    "escalates denials that hide inside pipelines",
+    "reports denials that hide inside pipelines without escalating",
     async () => {
       const { location } = await createFixture();
-      const gate = createFakeGate({
-        reviewDenial: () =>
-          Promise.resolve({
-            kind: "deny" as const,
-            reason: "pipeline denied",
-          }),
-      });
+      const gate = createFakeGate();
       const tools = await createPineToolDefinitions(location, gate);
       const bash = tools.find((tool) => tool.name === "bash");
       if (!bash) throw new Error("Bash tool was not registered.");
 
-      // pipefail makes the denied `ps` stage fail the whole pipeline, so the
-      // gate sees the denial even though `head` succeeds.
+      // pipefail makes the denied `ps` stage visible even though `head`
+      // succeeds, but ordinary bash never escalates itself.
       await expect(
         bash.execute(
           "p1",
@@ -298,34 +342,54 @@ describe("createPineToolDefinitions", () => {
           undefined,
           undefined as never,
         ),
-      ).rejects.toThrow("pipeline denied");
-      expect(gate.reviewDenial).toHaveBeenCalledWith(
-        "sandbox",
-        expect.objectContaining({
-          evidence: expect.stringMatching(/operation not permitted/i),
-        }),
-      );
+      ).rejects.toThrow("Use privileged_bash");
+      expect(gate.reviewDenial).not.toHaveBeenCalled();
     },
   );
 
   it.runIf(process.platform === "darwin" && !process.env.CODEX_SANDBOX)(
-    "classifies sandboxed AppleScript failures as denials, not tool errors",
+    "reports denied command segments even when a later command exits zero",
     async () => {
       const { location } = await createFixture();
-      const gate = createFakeGate({
-        reviewDenial: () =>
-          Promise.resolve({
-            kind: "deny" as const,
-            reason: "no Apple Events in tests",
-          }),
-      });
+      const gate = createFakeGate();
+      const tools = await createPineToolDefinitions(location, gate);
+      const bash = tools.find((tool) => tool.name === "bash");
+      if (!bash) throw new Error("Bash tool was not registered.");
+      const target = spawn("/bin/sleep", ["30"], { stdio: "ignore" });
+      if (!target.pid) throw new Error("Test process did not start.");
+
+      try {
+        await expect(
+          bash.execute(
+            "signal-process",
+            {
+              command: `/bin/kill ${target.pid} 2>&1; /usr/bin/true`,
+              description: "stop a process",
+            },
+            undefined,
+            undefined,
+            undefined as never,
+          ),
+        ).rejects.toThrow("Use privileged_bash");
+        expect(gate.reviewDenial).not.toHaveBeenCalled();
+      } finally {
+        target.kill("SIGKILL");
+      }
+    },
+  );
+
+  it.runIf(process.platform === "darwin" && !process.env.CODEX_SANDBOX)(
+    "directs sandboxed AppleScript failures to privileged bash",
+    async () => {
+      const { location } = await createFixture();
+      const gate = createFakeGate();
       const tools = await createPineToolDefinitions(location, gate);
       const bash = tools.find((tool) => tool.name === "bash");
       if (!bash) throw new Error("Bash tool was not registered.");
 
       // A tell block to a live system service fails with -600 inside the
-      // sandbox; the widened signature must route it to the gate instead of
-      // surfacing it as a plain command error.
+      // sandbox; the widened signature must produce the explicit fallback
+      // rather than depending on Finder's wording.
       await expect(
         bash.execute(
           "apple-events",
@@ -338,14 +402,9 @@ describe("createPineToolDefinitions", () => {
           undefined,
           undefined as never,
         ),
-      ).rejects.toThrow("no Apple Events in tests");
+      ).rejects.toThrow("Use privileged_bash");
 
-      expect(gate.reviewDenial).toHaveBeenCalledWith(
-        "sandbox",
-        expect.objectContaining({
-          evidence: expect.stringMatching(/\(-600\)/),
-        }),
-      );
+      expect(gate.reviewDenial).not.toHaveBeenCalled();
     },
   );
 
@@ -518,7 +577,11 @@ describe("createPineToolDefinitions", () => {
   });
 
   it("rejects bash commands denied before execution", async () => {
-    const { location } = await createFixture();
+    const { location: fixtureLocation } = await createFixture();
+    const location = {
+      ...fixtureLocation,
+      approvalMode: "ask-for-permission" as const,
+    };
     const gate = createFakeGate({
       reviewBashCommand: () =>
         Promise.resolve({ kind: "deny" as const, reason: "user said no" }),
@@ -541,8 +604,60 @@ describe("createPineToolDefinitions", () => {
     );
   });
 
+  it("provides a fixed-allow privileged bash fallback in automatic mode", async () => {
+    const { location } = await createFixture();
+    const gate = createFakeGate();
+    const tools = await createPineToolDefinitions(location, gate);
+    const privileged = tools.find((tool) => tool.name === "privileged_bash");
+    if (!privileged)
+      throw new Error("Privileged bash tool was not registered.");
+
+    await expect(
+      privileged.execute(
+        "privileged-1",
+        { command: "printf privileged", description: "test native shell" },
+        undefined,
+        undefined,
+        undefined as never,
+      ),
+    ).resolves.toBeDefined();
+    expect(gate.reviewDenial).not.toHaveBeenCalled();
+  });
+
+  it("reviews privileged bash once in ask-for-permission mode", async () => {
+    const { location: fixtureLocation } = await createFixture();
+    const location = {
+      ...fixtureLocation,
+      approvalMode: "ask-for-permission" as const,
+    };
+    const gate = createFakeGate();
+    const tools = await createPineToolDefinitions(location, gate);
+    const privileged = tools.find((tool) => tool.name === "privileged_bash");
+    if (!privileged)
+      throw new Error("Privileged bash tool was not registered.");
+
+    await privileged.execute(
+      "privileged-ask",
+      { command: "printf privileged", description: "test native shell" },
+      undefined,
+      undefined,
+      undefined as never,
+    );
+    expect(gate.reviewDenial).toHaveBeenCalledOnce();
+  });
+
+  it("does not expose redundant privileged bash in yolo mode", async () => {
+    const { location } = await createFixture();
+    const tools = await createPineToolDefinitions({
+      ...location,
+      approvalMode: "yolo",
+    });
+
+    expect(tools.some((tool) => tool.name === "privileged_bash")).toBe(false);
+  });
+
   it.runIf(process.platform === "darwin" && !process.env.CODEX_SANDBOX)(
-    "re-runs sandbox-denied commands outside the sandbox on approval",
+    "directs sandbox-denied commands to privileged bash without escalating",
     async () => {
       const { location, outside } = await createFixture();
       const gate = createFakeGate();
@@ -551,58 +666,21 @@ describe("createPineToolDefinitions", () => {
       if (!bash) throw new Error("Bash tool was not registered.");
       const outsideFile = path.join(outside, "elevated.txt");
 
-      await bash.execute(
-        "elevated",
-        {
-          command: `printf elevated > ${JSON.stringify(outsideFile)}`,
-          description: "write outside the project",
-        },
-        undefined,
-        undefined,
-        undefined as never,
-      );
-
-      expect(gate.reviewDenial).toHaveBeenCalledWith(
-        "sandbox",
-        expect.objectContaining({
-          subject: expect.stringContaining("printf"),
-          evidence: expect.stringMatching(/operation not permitted/i),
-        }),
-      );
-      await expect(readFile(outsideFile, "utf8")).resolves.toBe("elevated");
-    },
-  );
-
-  it.runIf(process.platform === "darwin" && !process.env.CODEX_SANDBOX)(
-    "surfaces the gate's denial when the sandboxed command may not re-run",
-    async () => {
-      const { location, outside } = await createFixture();
-      const gate = createFakeGate({
-        reviewDenial: () =>
-          Promise.resolve({
-            kind: "deny" as const,
-            reason: "reviewer refused",
-          }),
-      });
-      const tools = await createPineToolDefinitions(location, gate);
-      const bash = tools.find((tool) => tool.name === "bash");
-      if (!bash) throw new Error("Bash tool was not registered.");
-
       await expect(
         bash.execute(
-          "blocked",
+          "elevated",
           {
-            command: `printf x > ${JSON.stringify(path.join(outside, "no.txt"))}`,
+            command: `printf elevated > ${JSON.stringify(outsideFile)}`,
             description: "write outside the project",
           },
           undefined,
           undefined,
           undefined as never,
         ),
-      ).rejects.toThrow("reviewer refused");
-      await expect(
-        readFile(path.join(outside, "no.txt"), "utf8"),
-      ).rejects.toThrow();
+      ).rejects.toThrow("Use privileged_bash");
+
+      expect(gate.reviewDenial).not.toHaveBeenCalled();
+      await expect(readFile(outsideFile, "utf8")).rejects.toThrow();
     },
   );
 

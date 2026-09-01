@@ -35,7 +35,11 @@ export const TOOL_KIND_ORDER: readonly ToolKind[] = [
 
 export function toolKind(name: string): ToolKind {
   const normalized = name.toLowerCase().split(/[.:/]/).at(-1) ?? name;
-  if (["bash", "exec", "execute", "shell"].includes(normalized)) return "bash";
+  if (
+    ["bash", "privileged_bash", "exec", "execute", "shell"].includes(normalized)
+  ) {
+    return "bash";
+  }
   if (["edit", "apply_patch", "patch"].includes(normalized)) return "edit";
   if (["read", "read_file", "view"].includes(normalized)) return "read";
   if (["find", "grep", "search"].includes(normalized)) return "search";

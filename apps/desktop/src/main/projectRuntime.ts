@@ -14,7 +14,9 @@ import type {
 } from "../shared/models";
 import type {
   LoadSessionMessagesResult,
+  PineContextUsage,
   PineSessionSummary,
+  ResumeSessionResult,
   SessionSearchResult,
 } from "../shared/sessions";
 import { listProjectDirectory } from "./projectFiles";
@@ -45,6 +47,7 @@ type RuntimeSessionState =
   | {
       status: "active";
       summary: PineSessionSummary;
+      contextUsage?: PineContextUsage;
     };
 
 interface ProjectRuntime {
@@ -146,13 +149,18 @@ export class ProjectRuntimeRegistry {
   async resume(
     webContentsId: number,
     sessionId: string,
-  ): Promise<PineSessionSummary> {
+  ): Promise<ResumeSessionResult> {
     const runtime = this.get(webContentsId);
     if (
       runtime.session.status === "active" &&
       runtime.session.summary.id === sessionId
     ) {
-      return runtime.session.summary;
+      return {
+        session: runtime.session.summary,
+        ...(runtime.session.contextUsage
+          ? { contextUsage: runtime.session.contextUsage }
+          : {}),
+      };
     }
 
     const descriptor = await runtime.sessions.describeSession(sessionId);
@@ -161,8 +169,15 @@ export class ProjectRuntimeRegistry {
       this.location(runtime),
       descriptor.sessionFile,
     );
-    runtime.session = { status: "active", summary: opened.session };
-    return opened.session;
+    runtime.session = {
+      status: "active",
+      summary: opened.session,
+      ...(opened.contextUsage ? { contextUsage: opened.contextUsage } : {}),
+    };
+    return {
+      session: opened.session,
+      ...(opened.contextUsage ? { contextUsage: opened.contextUsage } : {}),
+    };
   }
 
   private async ensureActiveSession(
@@ -221,7 +236,7 @@ export class ProjectRuntimeRegistry {
     const activeSession =
       request.target.kind === "new"
         ? await this.createNewSession(webContentsId)
-        : await this.resume(webContentsId, request.target.sessionId);
+        : (await this.resume(webContentsId, request.target.sessionId)).session;
     const result = await this.agentHost.prompt(
       activeSession.id,
       request.message,
@@ -291,6 +306,18 @@ export class ProjectRuntimeRegistry {
       if (this.activeSessionId(runtime) === sessionId) return webContentsId;
     }
     return undefined;
+  }
+
+  updateContextUsage(sessionId: string, contextUsage: PineContextUsage): void {
+    for (const runtime of this.runtimes.values()) {
+      if (
+        runtime.session.status === "active" &&
+        runtime.session.summary.id === sessionId
+      ) {
+        runtime.session.contextUsage = contextUsage;
+        return;
+      }
+    }
   }
 
   /** Remember which window an approval request was routed to. */

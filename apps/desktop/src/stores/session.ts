@@ -9,6 +9,7 @@ import type {
 } from "@/shared/agent";
 import type {
   PineContentBlock,
+  PineContextUsage,
   PineSessionSummary,
   PineTextMessage,
   PineToolCall,
@@ -20,13 +21,6 @@ export interface PineTranscriptMessage extends PineTextMessage {
   status: "complete" | "streaming";
   thinkingStatus?: "complete" | "streaming";
   thinkingStartedAt?: number;
-}
-
-export interface PineContextUsage {
-  tokens: number | null;
-  contextWindow: number;
-  percent: number | null;
-  cost: number;
 }
 
 /** A tool call awaiting the user's approve/reject/guide decision. */
@@ -142,7 +136,7 @@ export const useSessionStore = defineStore("session", () => {
   interface CachedSession {
     summary: PineSessionSummary | null;
     messages: PineTranscriptMessage[];
-    isLoadingMessages: boolean;
+    contextUsage: PineContextUsage | null;
     hasEarlierMessages: boolean;
     nextBefore?: string;
   }
@@ -154,7 +148,7 @@ export const useSessionStore = defineStore("session", () => {
     sessionCache.set(sessionId, {
       summary: activeSession.value,
       messages: messages.value,
-      isLoadingMessages: isLoadingMessages.value,
+      contextUsage: contextUsage.value,
       hasEarlierMessages: hasEarlierMessages.value,
       nextBefore: nextBefore.value,
     });
@@ -248,7 +242,8 @@ export const useSessionStore = defineStore("session", () => {
     if (cached && cached.summary) {
       activeSession.value = cached.summary;
       messages.value = cached.messages;
-      isLoadingMessages.value = cached.isLoadingMessages;
+      contextUsage.value = cached.contextUsage;
+      isLoadingMessages.value = false;
       hasEarlierMessages.value = cached.hasEarlierMessages;
       nextBefore.value = cached.nextBefore;
       if (sequence === activationSequence) return cached.summary;
@@ -269,6 +264,7 @@ export const useSessionStore = defineStore("session", () => {
 
       activeSession.value = session;
       currentSessionId = session.id;
+      contextUsage.value = result.contextUsage ?? null;
       await loadInitialMessages(session.id);
       return session;
     } catch (error) {
@@ -489,12 +485,15 @@ export const useSessionStore = defineStore("session", () => {
     }
     if (event.type === "context-usage") {
       if (currentSessionId !== event.sessionId) return;
-      contextUsage.value = {
+      const usage: PineContextUsage = {
         tokens: event.tokens,
         contextWindow: event.contextWindow,
         percent: event.percent,
         cost: event.cost,
       };
+      contextUsage.value = usage;
+      const cached = sessionCache.get(event.sessionId);
+      if (cached) cached.contextUsage = usage;
       return;
     }
     if (

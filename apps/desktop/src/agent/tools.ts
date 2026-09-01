@@ -189,7 +189,9 @@ function escapeSandboxString(value: string): string {
  */
 export class SandboxDeniedError extends Error {
   constructor(readonly outputTail: string) {
-    super("The sandbox denied this command (operation not permitted).");
+    super(
+      "The project sandbox denied this command. Use privileged_bash for this operation if it genuinely requires capabilities outside the project sandbox.",
+    );
   }
 }
 
@@ -204,7 +206,7 @@ export class SandboxDeniedError extends Error {
  * Unicode right single quote.
  */
 export function matchSandboxDenial(output: string): boolean {
-  return /operation not permitted|sandbox_extension_issue_file|LSOpenURLsWithCompletionHandler|Application isn.t running\. \(-600\)/i.test(
+  return /operation not permitted|permission denied|permission error|access denied|not authou?rized|not permitted|\bE(?:PERM|ACCES)\b|sandbox(?:_extension| violation| denied)|LSOpenURLsWithCompletionHandler|Application isn.t running\. \(-600\)|\((?:-54|-1743|-10004|-5000)\)/i.test(
     output,
   );
 }
@@ -279,8 +281,20 @@ function createScopedBashOperations(
         "/usr/bin/sandbox-exec",
         // pipefail: a sandbox denial at the head of a pipeline (`ps aux | head`)
         // must surface in the exit code, or the gate never sees it — the last
-        // stage succeeds and the default exit code would be 0.
-        ["-p", profile, shellPath, "-o", "pipefail", "-c", command],
+        // stage succeeds and the default exit code would be 0. no_bg_nice
+        // prevents zsh from trying to renice background jobs, which the
+        // sandbox rejects even though the requested job itself starts.
+        [
+          "-p",
+          profile,
+          shellPath,
+          "-o",
+          "pipefail",
+          "-o",
+          "no_bg_nice",
+          "-c",
+          command,
+        ],
         {
           cwd: policy.cwd,
           detached: true,
@@ -330,11 +344,14 @@ function createScopedBashOperations(
         // With pipefail a writer killed by SIGPIPE (`… | head`) reports 141;
         // that truncation is the intended behavior, not a failure.
         const effectiveExit = exitCode === 141 ? 0 : exitCode;
-        if (effectiveExit !== 0) {
-          const outputTail = `${stdoutTail}\n${stderrTail}`;
-          if (matchSandboxDenial(outputTail)) {
-            throw new SandboxDeniedError(outputTail);
-          }
+        // Inspect denial evidence regardless of the final exit status. Shell
+        // lists such as `kill <pid>; pgrep ...` can fail a sandboxed segment
+        // and then exit 0 because the final diagnostic command succeeded.
+        // Treating only non-zero commands as denials made those operations
+        // impossible to escalate.
+        const outputTail = `${stdoutTail}\n${stderrTail}`;
+        if (matchSandboxDenial(outputTail)) {
+          throw new SandboxDeniedError(outputTail);
         }
         return { exitCode: effectiveExit };
       } finally {
@@ -451,13 +468,6 @@ export async function createPineToolDefinitions(
   // the agent full permissions and leaving only the pi harness's built-in
   // tool behavior (no path sandbox, native shell execution) as a guardrail.
   const isYolo = location.approvalMode === "yolo";
-  const policy = isYolo
-    ? PineToolAccessPolicy.permissive(location.cwd)
-    : await PineToolAccessPolicy.create(location.cwd, location.folders);
-  // Permissive twin used to re-run a call the gate approved beyond the grants.
-  const permissivePolicy = PineToolAccessPolicy.permissive(location.cwd);
-  const loginPath = await resolveLoginPath();
-
   const bashTemporaryDirectory = path.join(
     path.dirname(location.sessionsRoot),
     "tmp",
@@ -466,6 +476,18 @@ export async function createPineToolDefinitions(
   const canonicalBashTemporaryDirectory = await realpath(
     bashTemporaryDirectory,
   );
+  const policy = isYolo
+    ? PineToolAccessPolicy.permissive(location.cwd)
+    : await PineToolAccessPolicy.create(location.cwd, [
+        {
+          access: "read-write",
+          path: canonicalBashTemporaryDirectory,
+        },
+        ...location.folders,
+      ]);
+  // Permissive twin used to re-run a call the gate approved beyond the grants.
+  const permissivePolicy = PineToolAccessPolicy.permissive(location.cwd);
+  const loginPath = await resolveLoginPath();
 
   // Native (unsandboxed) execution with Pine's smart environment. Used for
   // YOLO mode, session-approved commands, and gate-approved re-runs. The
@@ -553,7 +575,10 @@ export async function createPineToolDefinitions(
     execute: async (toolCallId, params, signal, onUpdate, ctx) => {
       const command = params.command;
       const description = params.description;
-      if (gate) {
+      // Ask mode keeps its explicit "confirm every call" contract. Automatic
+      // mode never reviews ordinary bash: the project sandbox is its complete,
+      // non-escalating authority boundary.
+      if (gate && location.approvalMode === "ask-for-permission") {
         const pre = await gate.reviewBashCommand({
           toolCallId,
           command,
@@ -564,10 +589,6 @@ export async function createPineToolDefinitions(
           throw new Error(pre.reason ?? "This call was denied.");
         }
       }
-      const runNative = () =>
-        nativeBashTool.execute(toolCallId, params, signal, onUpdate, ctx);
-      // Session-scope approved commands skip the sandbox entirely.
-      if (gate?.isApprovedCommand(command)) return runNative();
 
       try {
         return await bashTool.execute(
@@ -578,35 +599,9 @@ export async function createPineToolDefinitions(
           ctx,
         );
       } catch (error) {
-        if (!gate) throw error;
         if (error instanceof SandboxDeniedError) {
-          const decision = await gate.reviewDenial("sandbox", {
-            toolCallId,
-            toolName: "bash",
-            subject: command,
-            description,
-            evidence: error.outputTail,
-            signal,
-          });
-          if (decision.kind === "allow") return runNative();
           throw new Error(
-            decision.reason ??
-              "The sandbox denied this command and the reviewer did not allow a re-run.",
-          );
-        }
-        if (isAuthorizeDenial(error)) {
-          const decision = await gate.reviewDenial("authorize", {
-            toolCallId,
-            toolName: "bash",
-            subject: command,
-            description,
-            evidence: error instanceof Error ? error.message : String(error),
-            signal,
-          });
-          if (decision.kind === "allow") return runNative();
-          throw new Error(
-            decision.reason ??
-              (error instanceof Error ? error.message : String(error)),
+            `${error.message}\n\nSandbox evidence:\n${error.outputTail.trim()}`,
           );
         }
         throw error;
@@ -616,10 +611,54 @@ export async function createPineToolDefinitions(
     promptSnippet: `${bashTool.promptSnippet}.${isYolo ? "" : " Use $TMPDIR for temporary files instead of /tmp;"} Always write the description argument before composing the command, in the user's language`,
   });
 
+  const privilegedBashTool = gate
+    ? defineTool({
+        ...nativeBashTool,
+        name: "privileged_bash",
+        parameters: pineBashParams,
+        prepareArguments: (args) => args as Static<typeof pineBashParams>,
+        execute: async (toolCallId, params, signal, onUpdate, ctx) => {
+          const command = params.command;
+          // Selecting this explicit tool is the privilege boundary in
+          // automatic mode. Ask mode still puts the native execution in front
+          // of the user once, as promised by that mode.
+          if (location.approvalMode === "ask-for-permission") {
+            const decision = await gate.reviewDenial("sandbox", {
+              toolCallId,
+              toolName: "privileged_bash",
+              subject: command,
+              description: params.description,
+              evidence:
+                "The agent explicitly requested execution outside Pine's project sandbox because the required capability cannot be completed inside it.",
+              signal,
+            });
+            if (decision.kind === "deny") {
+              throw new Error(
+                decision.reason ??
+                  "The reviewer did not allow this command to run outside the project sandbox.",
+              );
+            }
+          }
+          return nativeBashTool.execute(
+            toolCallId,
+            params,
+            signal,
+            onUpdate,
+            ctx,
+          );
+        },
+        description:
+          "Run a shell command with the user's native permissions, outside Pine's project sandbox. In automatic-approval mode this tool is always allowed; in ask-for-permission mode it prompts once. Use it for macOS application control (osascript, open, Shortcuts, Automator), launching GUI applications, controlling or signaling processes outside Pine (kill, pkill, killall), reading or writing paths outside the shared project folders, or another operation that ordinary bash explicitly reports was denied by the project sandbox. Do not use it for normal project commands or ordinary command errors.",
+        promptSnippet:
+          "Use privileged_bash directly for macOS app/GUI control, external process control, out-of-project filesystem access, or after ordinary bash explicitly says the project sandbox denied an operation. It runs outside the project sandbox and is fixed-allow in automatic-approval mode. State why native privileges are required in description before composing command.",
+      })
+    : null;
+
   return [
     gatedReadTool,
     pineBashTool,
     gatedEditTool,
     gatedWriteTool,
+    ...(privilegedBashTool ? [privilegedBashTool] : []),
   ] as ToolDefinition[];
 }

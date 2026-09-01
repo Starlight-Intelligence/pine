@@ -26,7 +26,7 @@ import type {
   PineThinkingLevel,
   ProviderLoginResult,
 } from "../shared/models";
-import type { PineSessionSummary } from "../shared/sessions";
+import type { PineContextUsage, PineSessionSummary } from "../shared/sessions";
 import {
   type AgentSessionLocation,
   type AgentWorkerPromptResult,
@@ -48,8 +48,6 @@ import {
   type UserApprovalRequest,
 } from "./gate";
 import { createPineToolDefinitions } from "./tools";
-
-const PINE_TOOL_NAMES = ["read", "bash", "edit", "write"];
 
 const JUDGE_TIMEOUT_MS = 60_000;
 
@@ -466,11 +464,13 @@ export class PineAgentRuntime {
   ): Promise<AgentWorkerSessionResult> {
     const existing = this.liveSessions.get(sessionManager.getSessionId());
     if (existing) {
+      const contextUsage = this.getContextUsage(existing.session);
       return {
         session: sessionSummary(existing.session),
         ...(existing.session.sessionFile
           ? { sessionFile: existing.session.sessionFile }
           : {}),
+        ...(contextUsage ? { contextUsage } : {}),
       };
     }
 
@@ -514,7 +514,10 @@ export class PineAgentRuntime {
       sessionManager,
       settingsManager,
       customTools,
-      tools: PINE_TOOL_NAMES,
+      // Keep the SDK's active-tool list derived from the actual definitions.
+      // A parallel static allowlist previously registered privileged_bash but
+      // silently hid it from the model.
+      tools: customTools.map((tool) => tool.name),
     });
     live.session = session;
     live.unsubscribe = session.subscribe((event) =>
@@ -523,11 +526,13 @@ export class PineAgentRuntime {
     this.liveSessions.set(session.sessionId, live);
     // A resumed session already carries usage history; surface it before the
     // next turn completes.
-    this.emitContextUsage(session);
+    const contextUsage = this.getContextUsage(session);
+    if (contextUsage) this.emitContextUsage(session, contextUsage);
 
     return {
       session: sessionSummary(session),
       ...(session.sessionFile ? { sessionFile: session.sessionFile } : {}),
+      ...(contextUsage ? { contextUsage } : {}),
     };
   }
 
@@ -855,16 +860,26 @@ export class PineAgentRuntime {
 
   /** Pushes the live context usage estimate so the renderer's composer
    * indicator stays current without polling. */
-  private emitContextUsage(session: AgentSession): void {
+  private getContextUsage(session: AgentSession): PineContextUsage | undefined {
     const usage = session.getContextUsage();
-    if (!usage) return;
-    this.options.emit({
-      type: "context-usage",
-      sessionId: session.sessionId,
+    if (!usage) return undefined;
+    return {
       tokens: usage.tokens,
       contextWindow: usage.contextWindow,
       percent: usage.percent,
       cost: session.getSessionStats().cost,
+    };
+  }
+
+  private emitContextUsage(
+    session: AgentSession,
+    contextUsage = this.getContextUsage(session),
+  ): void {
+    if (!contextUsage) return;
+    this.options.emit({
+      type: "context-usage",
+      sessionId: session.sessionId,
+      ...contextUsage,
     });
   }
 }

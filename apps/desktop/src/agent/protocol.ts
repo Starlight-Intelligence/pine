@@ -11,7 +11,7 @@ import type {
   PineThinkingLevel,
   ProviderLoginResult,
 } from "../shared/models";
-import type { PineSessionSummary } from "../shared/sessions";
+import type { PineContextUsage, PineSessionSummary } from "../shared/sessions";
 
 export interface AgentFolderGrant {
   access: "read-only" | "read-write";
@@ -119,6 +119,7 @@ export type AgentWorkerRequestInput = AgentWorkerRequest extends infer TRequest
 export interface AgentWorkerSessionResult {
   session: PineSessionSummary;
   sessionFile?: string;
+  contextUsage?: PineContextUsage;
 }
 
 export interface AgentWorkerPromptResult extends AgentWorkerSessionResult {

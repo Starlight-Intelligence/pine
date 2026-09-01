@@ -1,7 +1,7 @@
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PineAgentEvent, PineJsonValue } from "@/shared/agent";
-import type { PineSessionSummary } from "@/shared/sessions";
+import type { PineContextUsage, PineSessionSummary } from "@/shared/sessions";
 import { useSessionStore } from "../session";
 
 const session: PineSessionSummary = {
@@ -10,6 +10,13 @@ const session: PineSessionSummary = {
   updatedAt: "2026-07-14T00:00:00.000Z",
   messageCount: 1,
   name: "Session search",
+};
+
+const contextUsage: PineContextUsage = {
+  tokens: 86_400,
+  contextWindow: 200_000,
+  percent: 43.2,
+  cost: 0.1234,
 };
 
 describe("session store", () => {
@@ -49,13 +56,14 @@ describe("session store", () => {
           hasMore: false,
           messages: [],
         }),
-        resumeSession: vi.fn().mockResolvedValue({ session }),
+        resumeSession: vi.fn().mockResolvedValue({ session, contextUsage }),
       },
     });
     const store = useSessionStore();
 
     await expect(store.resume(session.id)).resolves.toEqual(session);
     expect(store.activeSession).toEqual(session);
+    expect(store.contextUsage).toEqual(contextUsage);
   });
 
   it("reuses the cached transcript array across resumes without re-fetching", async () => {
@@ -75,7 +83,7 @@ describe("session store", () => {
       configurable: true,
       value: {
         loadSessionMessages,
-        resumeSession: vi.fn().mockResolvedValue({ session }),
+        resumeSession: vi.fn().mockResolvedValue({ session, contextUsage }),
       },
     });
     const store = useSessionStore();
@@ -83,12 +91,18 @@ describe("session store", () => {
     await store.resume(session.id);
     const firstArray = store.messages;
     expect(loadSessionMessages).toHaveBeenCalledTimes(1);
+    expect(store.isLoadingMessages).toBe(false);
+    expect(store.contextUsage).toEqual(contextUsage);
 
     // Switching back to the same session restores the same array reference and
-    // must not re-fetch from disk.
+    // its persisted usage snapshot without re-fetching from disk.
+    store.startDraft();
+    expect(store.contextUsage).toBeNull();
     await store.resume(session.id);
     expect(store.messages).toBe(firstArray);
+    expect(store.contextUsage).toEqual(contextUsage);
     expect(loadSessionMessages).toHaveBeenCalledTimes(1);
+    expect(store.isLoadingMessages).toBe(false);
   });
 
   it("evicts a session from the cache when it is deleted", async () => {

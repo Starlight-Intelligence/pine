@@ -3,7 +3,10 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PineProject } from "../../shared/projects";
-import type { PineSessionSummary } from "../../shared/sessions";
+import type {
+  PineContextUsage,
+  PineSessionSummary,
+} from "../../shared/sessions";
 import type { AgentHost } from "../agentProcessHost";
 import { ProjectRuntimeRegistry } from "../projectRuntime";
 
@@ -88,6 +91,40 @@ afterEach(async () => {
 });
 
 describe("ProjectRuntimeRegistry", () => {
+  it("returns the latest usage when resuming the active session", async () => {
+    const registry = new ProjectRuntimeRegistry(
+      createAgentHost(),
+      "/pine/agent",
+    );
+    const { dataRoot, project } = await createRuntimeFixture();
+    const contextUsage: PineContextUsage = {
+      tokens: 86_400,
+      contextWindow: 200_000,
+      percent: 43.2,
+      cost: 0.1234,
+    };
+
+    try {
+      await registry.open(1, project, {
+        cacheRoot: path.join(dataRoot, "cache"),
+        projectRoot: dataRoot,
+        sessionsRoot: path.join(dataRoot, "sessions"),
+      });
+      const prompted = await registry.prompt(1, {
+        message: "Start",
+        target: { kind: "new" },
+      });
+      registry.updateContextUsage(prompted.session.id, contextUsage);
+
+      await expect(registry.resume(1, prompted.session.id)).resolves.toEqual({
+        session: prompted.session,
+        contextUsage,
+      });
+    } finally {
+      await registry.dispose(1);
+    }
+  });
+
   it("reuses an explicitly targeted active session", async () => {
     const agentHost = createAgentHost();
     const createSession = vi.spyOn(agentHost, "createSession");

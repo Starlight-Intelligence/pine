@@ -102,8 +102,16 @@ export interface ResumeSessionRequest {
   sessionId: string;
 }
 
+export interface PineContextUsage {
+  tokens: number | null;
+  contextWindow: number;
+  percent: number | null;
+  cost: number;
+}
+
 export interface ResumeSessionResult {
   session: PineSessionSummary;
+  contextUsage?: PineContextUsage;
 }
 
 export interface DeleteSessionRequest {
