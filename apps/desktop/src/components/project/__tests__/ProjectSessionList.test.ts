@@ -9,6 +9,18 @@ import { useContentTabsStore } from "@/stores/contentTabs";
 import { useProjectStore } from "@/stores/project";
 import ProjectSessionList from "../ProjectSessionList.vue";
 
+vi.mock("@tanstack/vue-virtual", async () => {
+  const { computed } = await import("vue");
+  return {
+    useVirtualizer: (options: { value: { count: number } }) =>
+      computed(() => ({
+        getTotalSize: () => options.value.count * 36,
+        getVirtualItems: () =>
+          options.value.count > 0 ? [{ index: 0, size: 36, start: 0 }] : [],
+      })),
+  };
+});
+
 const session: PineSessionSummary = {
   createdAt: "2026-08-25T00:00:00.000Z",
   id: "019cfe51-7166-79b9-a5b9-c652fcca9eab",
@@ -53,6 +65,7 @@ describe("ProjectSessionList", () => {
     });
     const tabsStore = useContentTabsStore();
     tabsStore.bindSession("session-1", session);
+    useProjectStore().activeProject = project;
     const wrapper = mount(ProjectSessionList, {
       global: {
         plugins: [pinia, router, createAppI18n("en-US")],
@@ -135,5 +148,86 @@ describe("ProjectSessionList", () => {
     await flushPromises();
 
     expect(searchSessions).toHaveBeenCalledTimes(2);
+  });
+
+  it("renames a session from the context menu dialog", async () => {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [{ path: "/", component: { template: "<div />" } }],
+    });
+    await router.push({ path: "/", query: { tab: "session-1" } });
+    await router.isReady();
+    const renamedSession = { ...session, name: "Renamed conversation" };
+    const renameSession = vi
+      .fn()
+      .mockResolvedValue({ session: renamedSession });
+    Object.defineProperty(window, "pine", {
+      configurable: true,
+      value: {
+        renameSession,
+        searchSessions: vi.fn().mockResolvedValue({ sessions: [session] }),
+      },
+    });
+    const tabsStore = useContentTabsStore();
+    tabsStore.bindSession("session-1", session);
+    useProjectStore().activeProject = project;
+    const wrapper = mount(ProjectSessionList, {
+      global: {
+        plugins: [pinia, router, createAppI18n("en-US")],
+        stubs: {
+          ContextMenu: { template: "<div><slot /></div>" },
+          ContextMenuContent: { template: "<div><slot /></div>" },
+          ContextMenuGroup: { template: "<div><slot /></div>" },
+          ContextMenuItem: {
+            emits: ["select"],
+            template:
+              '<button data-slot="context-menu-item" @click="$emit(\'select\')"><slot /></button>',
+          },
+          ContextMenuTrigger: { template: "<div><slot /></div>" },
+          Dialog: {
+            props: ["open"],
+            template: '<div v-if="open"><slot /></div>',
+          },
+          DialogContent: { template: "<div><slot /></div>" },
+          DialogDescription: { template: "<p><slot /></p>" },
+          DialogFooter: { template: "<footer><slot /></footer>" },
+          DialogHeader: { template: "<header><slot /></header>" },
+          DialogTitle: { template: "<h2><slot /></h2>" },
+          ScrollArea: { template: "<div><slot /></div>" },
+          SidebarGroup: { template: "<div><slot /></div>" },
+          SidebarGroupContent: { template: "<div><slot /></div>" },
+          SidebarMenu: { template: "<div><slot /></div>" },
+          SidebarMenuButton: { template: "<button><slot /></button>" },
+          SidebarMenuItem: { template: "<div><slot /></div>" },
+          SidebarMenuSkeleton: true,
+        },
+      },
+    });
+    await flushPromises();
+
+    const renameAction = wrapper
+      .findAll('[data-slot="context-menu-item"]')
+      .find((item) => item.text().includes("Rename conversation"));
+    expect(renameAction).toBeDefined();
+    await renameAction?.trigger("click");
+
+    const input = wrapper.get("#session-name");
+    expect((input.element as HTMLInputElement).value).toBe(
+      "Existing conversation",
+    );
+    await input.setValue("Renamed conversation");
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+
+    expect(renameSession).toHaveBeenCalledWith({
+      sessionId: session.id,
+      name: "Renamed conversation",
+    });
+    expect(tabsStore.tabs[0]).toEqual(
+      expect.objectContaining({ label: "Renamed conversation" }),
+    );
+    expect(wrapper.find("#session-name").exists()).toBe(false);
   });
 });

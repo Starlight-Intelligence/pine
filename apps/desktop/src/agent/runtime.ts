@@ -51,7 +51,7 @@ import { createPineToolDefinitions } from "./tools";
 
 const JUDGE_TIMEOUT_MS = 60_000;
 
-const JUDGE_SYSTEM_PROMPT = `You are the automated safety reviewer inside Pine, a desktop coding agent. The agent tried to make a tool call that Pine's deterministic sandbox or folder policy blocked, or that matched a destructive-command heuristic. You decide whether the agent may proceed.
+const JUDGE_SYSTEM_PROMPT = `You are the automated safety reviewer inside Pine, a desktop coding agent. The agent tried to make a tool call that Pine's deterministic sandbox or folder policy blocked, that matched a destructive-command heuristic, or that explicitly requested native execution outside the sandbox. You decide whether the agent may proceed.
 
 Be permissive about ordinary development work: builds, test runs, package installs, scaffolding, formatters, git operations on local branches, and file edits inside the project. Be strict about anything destructive, irreversible, or that leaves the machine.
 
@@ -74,6 +74,8 @@ const TRIGGER_DESCRIPTIONS: Record<JudgeRequest["trigger"], string> = {
     "Pine's folder policy rejected the path. An allowance performs the operation regardless of folder grants.",
   "destructive-pattern":
     "A destructive-command heuristic matched before execution. The sandbox has NOT run; an allowance runs the command (sandboxed as usual).",
+  "privileged-execution":
+    "The agent explicitly requested native shell execution outside Pine's project sandbox. This call has not executed yet and must receive a fresh per-call ruling before it can run.",
 };
 
 function truncateText(value: string, maxLength: number): string {
@@ -246,11 +248,18 @@ export class PineAgentRuntime {
           : {}),
       };
     } catch (error) {
+      const message = toErrorMessage(error);
+      this.options.emit({
+        type: "session-error",
+        sessionId,
+        errorId: randomUUID(),
+        message,
+      });
       this.options.emit({
         type: "run-state",
         sessionId,
         state: "failed",
-        error: toErrorMessage(error),
+        error: message,
       });
       throw error;
     } finally {
@@ -269,6 +278,12 @@ export class PineAgentRuntime {
       this.options.emit({ type: "run-state", sessionId, state: "idle" });
     }
     return { aborted };
+  }
+
+  renameSession(sessionId: string, name: string): AgentWorkerSessionResult {
+    const session = this.getSession(sessionId).session;
+    session.setSessionName(name);
+    return { session: sessionSummary(session) };
   }
 
   async disposeSession(sessionId: string): Promise<{ disposed: boolean }> {
@@ -627,7 +642,10 @@ export class PineAgentRuntime {
       ? AbortSignal.any([request.signal, timeout])
       : timeout;
     const context: Context = {
-      systemPrompt: JUDGE_SYSTEM_PROMPT,
+      systemPrompt:
+        request.allowSessionScope === false
+          ? `${JUDGE_SYSTEM_PROMPT}\n\nThis privileged call must be reviewed independently. Set scope to "once"; session scope is not available.`
+          : JUDGE_SYSTEM_PROMPT,
       messages: [
         {
           role: "user",
@@ -844,6 +862,26 @@ export class PineAgentRuntime {
           payload: toPineJsonValue(event.result),
           isError: event.isError,
         });
+        break;
+      case "compaction_end":
+        if (!event.aborted && !event.result && event.errorMessage) {
+          this.options.emit({
+            type: "session-error",
+            sessionId,
+            errorId: randomUUID(),
+            message: event.errorMessage,
+          });
+        }
+        break;
+      case "auto_retry_end":
+        if (!event.success) {
+          this.options.emit({
+            type: "session-error",
+            sessionId,
+            errorId: randomUUID(),
+            message: `Retry failed after ${event.attempt} attempts: ${event.finalError ?? "Unknown error"}`,
+          });
+        }
         break;
       case "entry_appended":
       case "session_info_changed":

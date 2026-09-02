@@ -5,6 +5,7 @@ import { Bubble, BubbleContent } from "@/components/ui/bubble";
 import { Message, MessageContent } from "@/components/ui/message";
 import type { PineContentBlock, PineToolCall } from "@/shared/sessions";
 import type { PineTranscriptMessage } from "@/stores/session";
+import ProjectErrorMarker from "./ProjectErrorMarker.vue";
 import ProjectThinkingMarker from "./ProjectThinkingMarker.vue";
 import ProjectToolCallGroup from "./ProjectToolCallGroup.vue";
 import ProjectToolCallMarker from "./ProjectToolCallMarker.vue";
@@ -90,6 +91,10 @@ const renderItems = computed<RenderItem[]>(() => {
           <ProjectThinkingMarker
             v-if="item.kind === 'block' && item.block.type === 'thinking'"
             :message="message"
+          />
+          <ProjectErrorMarker
+            v-else-if="item.kind === 'block' && item.block.type === 'error'"
+            :error="item.block.error"
           />
           <ProjectToolCallMarker
             v-else-if="item.kind === 'toolCall'"

@@ -15,7 +15,7 @@ import type {
   PineToolCall,
   SessionSearchResult,
 } from "@/shared/sessions";
-import { parseContentBlocks } from "@/shared/sessions";
+import { parseMessageBlocks } from "@/shared/sessions";
 
 export interface PineTranscriptMessage extends PineTextMessage {
   status: "complete" | "streaming";
@@ -90,13 +90,6 @@ function mergeBlockStatuses(
   });
 }
 
-function messageContent(value: PineJsonValue): PineJsonValue {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return value;
-  }
-  return value.content ?? null;
-}
-
 function messageCreatedAt(value: PineJsonValue): string {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return new Date().toISOString();
@@ -157,6 +150,25 @@ export const useSessionStore = defineStore("session", () => {
   /** Drop a session's cached transcript (e.g. when it is closed/deleted). */
   function dropSessionCache(sessionId: string): void {
     sessionCache.delete(sessionId);
+  }
+
+  /** Merge transient runtime or approval details into one visible tool call. */
+  function patchToolCall(
+    toolCallId: string,
+    patch: Partial<PineToolCall>,
+  ): void {
+    const messageIndex = messages.value.findIndex((message) =>
+      message.blocks.some(
+        (block) =>
+          block.type === "toolCall" && block.toolCall.id === toolCallId,
+      ),
+    );
+    if (messageIndex < 0) return;
+    const message = messages.value[messageIndex];
+    messages.value[messageIndex] = {
+      ...message,
+      blocks: mergeToolCallBlocks(message.blocks, toolCallId, patch),
+    };
   }
   let currentSessionId: string | null = null;
   let stopAgentEvents: (() => void) | null = null;
@@ -413,6 +425,40 @@ export const useSessionStore = defineStore("session", () => {
     return true;
   }
 
+  async function renameSession(
+    sessionId: string,
+    name: string,
+  ): Promise<PineSessionSummary> {
+    const result = await window.pine.renameSession({ sessionId, name });
+    const previous =
+      recentSessions.value.find((session) => session.id === sessionId) ??
+      searchResults.value.find((session) => session.id === sessionId) ??
+      (activeSession.value?.id === sessionId
+        ? activeSession.value
+        : undefined) ??
+      sessionCache.get(sessionId)?.summary ??
+      undefined;
+    const session = mergeSessionSummary(result.session, previous ?? undefined);
+
+    recentSequence += 1;
+    searchSequence += 1;
+    recentSessions.value = recentSessions.value
+      .map((candidate) => (candidate.id === sessionId ? session : candidate))
+      .sort(
+        (left, right) =>
+          new Date(right.updatedAt).getTime() -
+          new Date(left.updatedAt).getTime(),
+      );
+    searchResults.value = searchResults.value.map((candidate) =>
+      candidate.id === sessionId ? { ...candidate, ...session } : candidate,
+    );
+    if (activeSession.value?.id === sessionId) activeSession.value = session;
+
+    const cached = sessionCache.get(sessionId);
+    if (cached) sessionCache.set(sessionId, { ...cached, summary: session });
+    return session;
+  }
+
   function handleAgentEvent(event: PineAgentEvent): void {
     if (event.type === "run-state") {
       if (
@@ -431,12 +477,26 @@ export const useSessionStore = defineStore("session", () => {
       }
       return;
     }
+    if (event.type === "session-error") {
+      if (currentSessionId !== event.sessionId) return;
+      messages.value.push({
+        createdAt: new Date().toISOString(),
+        id: `error-${event.errorId}`,
+        role: "assistant",
+        status: "complete",
+        blocks: [{ type: "error", error: { message: event.message } }],
+      });
+      return;
+    }
     if (event.type === "tool-review") {
       if (currentSessionId !== event.sessionId) return;
       reviewingToolCallIds.value = new Set([
         ...reviewingToolCallIds.value,
         event.toolCallId,
       ]);
+      patchToolCall(event.toolCallId, {
+        approval: { state: "reviewing" },
+      });
       return;
     }
     if (event.type === "approval-request") {
@@ -459,15 +519,26 @@ export const useSessionStore = defineStore("session", () => {
           evidence: event.evidence,
         },
       ];
+      patchToolCall(event.toolCallId, {
+        approval: { state: "awaiting-user" },
+      });
       return;
     }
     if (event.type === "approval-decided") {
+      if (currentSessionId !== event.sessionId) return;
       pendingApprovals.value = pendingApprovals.value.filter(
         (approval) => approval.requestId !== event.requestId,
       );
       const remaining = new Set(reviewingToolCallIds.value);
       remaining.delete(event.toolCallId);
       reviewingToolCallIds.value = remaining;
+      patchToolCall(event.toolCallId, {
+        approval: {
+          state: event.verdict === "approved" ? "approved" : "denied",
+          decidedBy: event.decidedBy,
+          ...(event.reason ? { reason: event.reason } : {}),
+        },
+      });
       return;
     }
     if (event.type === "session-updated") {
@@ -577,13 +648,12 @@ export const useSessionStore = defineStore("session", () => {
 
     const role = messageRole(event.message);
     if (!role) return;
-    const content = messageContent(event.message);
     const previous = messages.value.find(
       (message) => message.id === event.messageId,
     );
     const now = Date.now();
     const blocks = mergeBlockStatuses(
-      parseContentBlocks(content),
+      parseMessageBlocks(event.message),
       previous?.blocks,
     );
     const hasThinking = blocksHasThinking(blocks);
@@ -682,6 +752,7 @@ export const useSessionStore = defineStore("session", () => {
     pendingApprovals,
     prompt,
     recentSessions,
+    renameSession,
     reset,
     respondApproval,
     resume,

@@ -68,4 +68,34 @@ describe("PineAgentRuntime", () => {
       await runtime.dispose();
     }
   });
+
+  it("renames a live session through its session manager", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "pine-agent-runtime-"));
+    temporaryDirectories.push(root);
+    const location = {
+      agentDir: path.join(root, "agent"),
+      cwd: path.join(root, "source"),
+      folders: [
+        {
+          access: "read-write" as const,
+          path: path.join(root, "source"),
+        },
+      ],
+      sessionsRoot: path.join(root, "sessions"),
+    };
+    await mkdir(location.cwd, { recursive: true });
+    const runtime = new PineAgentRuntime({ emit: () => undefined });
+
+    try {
+      const created = await runtime.createSession(location);
+      const renamed = runtime.renameSession(
+        created.session.id,
+        "Renamed session",
+      );
+
+      expect(renamed.session.name).toBe("Renamed session");
+    } finally {
+      await runtime.dispose();
+    }
+  });
 });

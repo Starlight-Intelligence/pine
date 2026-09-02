@@ -19,7 +19,8 @@ export type PineApprovalTrigger =
   | "pre-execution"
   | "sandbox-denied"
   | "authorize-denied"
-  | "destructive-pattern";
+  | "destructive-pattern"
+  | "privileged-execution";
 
 export type PineApprovalAction = "approve" | "reject" | "guide";
 
@@ -48,6 +49,12 @@ export type PineAgentEvent =
       sessionId: string;
       state: PineAgentRunState;
       error?: string;
+    }
+  | {
+      type: "session-error";
+      sessionId: string;
+      errorId: string;
+      message: string;
     }
   | {
       type: "message-start" | "message-end";

@@ -619,25 +619,23 @@ export async function createPineToolDefinitions(
         prepareArguments: (args) => args as Static<typeof pineBashParams>,
         execute: async (toolCallId, params, signal, onUpdate, ctx) => {
           const command = params.command;
-          // Selecting this explicit tool is the privilege boundary in
-          // automatic mode. Ask mode still puts the native execution in front
-          // of the user once, as promised by that mode.
-          if (location.approvalMode === "ask-for-permission") {
-            const decision = await gate.reviewDenial("sandbox", {
-              toolCallId,
-              toolName: "privileged_bash",
-              subject: command,
-              description: params.description,
-              evidence:
-                "The agent explicitly requested execution outside Pine's project sandbox because the required capability cannot be completed inside it.",
-              signal,
-            });
-            if (decision.kind === "deny") {
-              throw new Error(
-                decision.reason ??
-                  "The reviewer did not allow this command to run outside the project sandbox.",
-              );
-            }
+          // Every native-permission execution crosses the gate. Ask mode
+          // routes it to the user; automatic mode routes it to the model judge
+          // without reusing session-scoped approvals.
+          const decision = await gate.reviewPrivilegedCall({
+            toolCallId,
+            toolName: "privileged_bash",
+            subject: command,
+            description: params.description,
+            evidence:
+              "The agent explicitly requested execution outside Pine's project sandbox because the required capability cannot be completed inside it.",
+            signal,
+          });
+          if (decision.kind === "deny") {
+            throw new Error(
+              decision.reason ??
+                "The reviewer did not allow this command to run outside the project sandbox.",
+            );
           }
           return nativeBashTool.execute(
             toolCallId,
@@ -648,9 +646,9 @@ export async function createPineToolDefinitions(
           );
         },
         description:
-          "Run a shell command with the user's native permissions, outside Pine's project sandbox. In automatic-approval mode this tool is always allowed; in ask-for-permission mode it prompts once. Use it for macOS application control (osascript, open, Shortcuts, Automator), launching GUI applications, controlling or signaling processes outside Pine (kill, pkill, killall), reading or writing paths outside the shared project folders, or another operation that ordinary bash explicitly reports was denied by the project sandbox. Do not use it for normal project commands or ordinary command errors.",
+          "Run a shell command with the user's native permissions, outside Pine's project sandbox. Every call requires a fresh approval: automatic-approval mode invokes the model reviewer, and ask-for-permission mode prompts the user. Use it for macOS application control (osascript, open, Shortcuts, Automator), launching GUI applications, controlling or signaling processes outside Pine (kill, pkill, killall), reading or writing paths outside the shared project folders, or another operation that ordinary bash explicitly reports was denied by the project sandbox. Do not use it for normal project commands or ordinary command errors.",
         promptSnippet:
-          "Use privileged_bash directly for macOS app/GUI control, external process control, out-of-project filesystem access, or after ordinary bash explicitly says the project sandbox denied an operation. It runs outside the project sandbox and is fixed-allow in automatic-approval mode. State why native privileges are required in description before composing command.",
+          "Use privileged_bash directly for macOS app/GUI control, external process control, out-of-project filesystem access, or after ordinary bash explicitly says the project sandbox denied an operation. Every call receives a fresh review before native execution. State why native privileges are required in description before composing command.",
       })
     : null;
 

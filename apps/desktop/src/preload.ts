@@ -52,12 +52,15 @@ import {
 import {
   DELETE_SESSION_CHANNEL,
   LOAD_SESSION_MESSAGES_CHANNEL,
+  RENAME_SESSION_CHANNEL,
   RESUME_SESSION_CHANNEL,
   SEARCH_SESSIONS_CHANNEL,
   type DeleteSessionRequest,
   type DeleteSessionResult,
   type LoadSessionMessagesRequest,
   type LoadSessionMessagesResult,
+  type RenameSessionRequest,
+  type RenameSessionResult,
   type ResumeSessionRequest,
   type ResumeSessionResult,
   type SearchSessionsRequest,
@@ -146,6 +149,10 @@ const pineApi: PineDesktopApi = {
     request: ResumeSessionRequest,
   ): Promise<ResumeSessionResult> =>
     ipcRenderer.invoke(RESUME_SESSION_CHANNEL, request),
+  renameSession: (
+    request: RenameSessionRequest,
+  ): Promise<RenameSessionResult> =>
+    ipcRenderer.invoke(RENAME_SESSION_CHANNEL, request),
   searchSessions: (
     request: SearchSessionsRequest,
   ): Promise<SearchSessionsResult> =>

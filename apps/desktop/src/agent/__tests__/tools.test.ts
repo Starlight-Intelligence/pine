@@ -26,11 +26,13 @@ function createFakeGate(
     reviewBashCommand?: ToolGate["reviewBashCommand"];
     reviewFileCall?: ToolGate["reviewFileCall"];
     reviewDenial?: ToolGate["reviewDenial"];
+    reviewPrivilegedCall?: ToolGate["reviewPrivilegedCall"];
   } = {},
 ): ToolGate & {
   reviewBashCommand: ReturnType<typeof vi.fn>;
   reviewFileCall: ReturnType<typeof vi.fn>;
   reviewDenial: ReturnType<typeof vi.fn>;
+  reviewPrivilegedCall: ReturnType<typeof vi.fn>;
 } {
   return {
     reviewBashCommand: vi.fn(
@@ -43,6 +45,10 @@ function createFakeGate(
     ),
     reviewDenial: vi.fn(
       overrides.reviewDenial ??
+        (() => Promise.resolve({ kind: "allow" as const })),
+    ),
+    reviewPrivilegedCall: vi.fn(
+      overrides.reviewPrivilegedCall ??
         (() => Promise.resolve({ kind: "allow" as const })),
     ),
     isApprovedCommand: () => false,
@@ -604,7 +610,7 @@ describe("createPineToolDefinitions", () => {
     );
   });
 
-  it("provides a fixed-allow privileged bash fallback in automatic mode", async () => {
+  it("reviews every privileged bash call in automatic mode", async () => {
     const { location } = await createFixture();
     const gate = createFakeGate();
     const tools = await createPineToolDefinitions(location, gate);
@@ -621,7 +627,26 @@ describe("createPineToolDefinitions", () => {
         undefined as never,
       ),
     ).resolves.toBeDefined();
-    expect(gate.reviewDenial).not.toHaveBeenCalled();
+    await expect(
+      privileged.execute(
+        "privileged-2",
+        { command: "printf privileged", description: "test native shell" },
+        undefined,
+        undefined,
+        undefined as never,
+      ),
+    ).resolves.toBeDefined();
+    expect(gate.reviewPrivilegedCall).toHaveBeenCalledTimes(2);
+    expect(gate.reviewPrivilegedCall).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        toolCallId: "privileged-1",
+        toolName: "privileged_bash",
+        subject: "printf privileged",
+      }),
+    );
+    expect(privileged.description).not.toContain("always allowed");
+    expect(privileged.promptSnippet).not.toContain("fixed-allow");
   });
 
   it("reviews privileged bash once in ask-for-permission mode", async () => {
@@ -643,7 +668,29 @@ describe("createPineToolDefinitions", () => {
       undefined,
       undefined as never,
     );
-    expect(gate.reviewDenial).toHaveBeenCalledOnce();
+    expect(gate.reviewPrivilegedCall).toHaveBeenCalledOnce();
+  });
+
+  it("does not execute privileged bash when its fresh review is denied", async () => {
+    const { location } = await createFixture();
+    const gate = createFakeGate({
+      reviewPrivilegedCall: () =>
+        Promise.resolve({ kind: "deny" as const, reason: "unsafe" }),
+    });
+    const tools = await createPineToolDefinitions(location, gate);
+    const privileged = tools.find((tool) => tool.name === "privileged_bash");
+    if (!privileged)
+      throw new Error("Privileged bash tool was not registered.");
+
+    await expect(
+      privileged.execute(
+        "privileged-denied",
+        { command: "printf privileged", description: "test native shell" },
+        undefined,
+        undefined,
+        undefined as never,
+      ),
+    ).rejects.toThrow("unsafe");
   });
 
   it("does not expose redundant privileged bash in yolo mode", async () => {

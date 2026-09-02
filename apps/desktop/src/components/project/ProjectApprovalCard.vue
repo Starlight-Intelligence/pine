@@ -42,6 +42,8 @@ const triggerKey = computed(() => {
       return "triggerAuthorizeDenied";
     case "destructive-pattern":
       return "triggerDestructivePattern";
+    case "privileged-execution":
+      return "triggerPrivilegedExecution";
   }
 });
 

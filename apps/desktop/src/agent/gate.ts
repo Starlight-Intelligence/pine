@@ -13,13 +13,19 @@ export interface GateTurnContext {
 
 export interface JudgeRequest {
   toolName: string;
-  trigger: "sandbox-denied" | "authorize-denied" | "destructive-pattern";
+  trigger:
+    | "sandbox-denied"
+    | "authorize-denied"
+    | "destructive-pattern"
+    | "privileged-execution";
   /** Primary subject of the review (bash command or file path). */
   subject: string;
   /** Evidence for the escalation (sandbox stderr excerpt, policy error, …). */
   evidence?: string;
   signal?: AbortSignal;
   turn: GateTurnContext;
+  /** Privileged execution is always reviewed per-call and cannot be cached. */
+  allowSessionScope?: boolean;
 }
 
 export interface JudgeRuling {
@@ -29,7 +35,11 @@ export interface JudgeRuling {
 }
 
 export interface UserApprovalRequest {
-  trigger: "pre-execution" | "sandbox-denied" | "authorize-denied";
+  trigger:
+    | "pre-execution"
+    | "sandbox-denied"
+    | "authorize-denied"
+    | "privileged-execution";
   toolCallId: string;
   toolName: string;
   subject?: string;
@@ -73,7 +83,7 @@ export interface FileReviewInput {
 export interface DenialReviewInput {
   toolCallId: string;
   toolName: string;
-  /** Bash command (sandbox denials) or file path (authorize denials). */
+  /** Bash command (sandbox/privileged reviews) or file path (authorize). */
   subject: string;
   /** The caller's imperative summary, shown on the approval card. */
   description?: string;
@@ -105,6 +115,8 @@ export interface ToolGate {
     kind: "sandbox" | "authorize",
     input: DenialReviewInput,
   ): Promise<GateDecision>;
+  /** Review an explicit native-permission shell call before it executes. */
+  reviewPrivilegedCall(input: DenialReviewInput): Promise<GateDecision>;
   /** Session-scope approved bash commands skip the sandbox entirely. */
   isApprovedCommand(command: string): boolean;
   /** Reset per-turn state (escalation streaks). Called on every prompt. */
@@ -162,6 +174,18 @@ export class UserApprovalGate implements ToolGate {
     });
   }
 
+  async reviewPrivilegedCall(input: DenialReviewInput): Promise<GateDecision> {
+    return this.host.requestUserApproval({
+      trigger: "privileged-execution",
+      toolCallId: input.toolCallId,
+      toolName: input.toolName,
+      subject: input.subject,
+      description: input.description,
+      evidence: input.evidence,
+      signal: input.signal,
+    });
+  }
+
   isApprovedCommand(): boolean {
     // User approvals are scoped to a single execution; nothing is remembered.
     return false;
@@ -172,9 +196,8 @@ export class UserApprovalGate implements ToolGate {
 
 /**
  * Agent-decides mode: deterministic checks stay in the sandbox; the model judge
- * only sees escalations (sandbox/authorize denials) and destructive-pattern
- * matches — exactly the "only sandbox-intercepted calls are reviewed" contract.
- * Judgments are fail-closed.
+ * sees sandbox/authorize escalations, destructive-pattern matches, and every
+ * explicit privileged shell call. Judgments are fail-closed.
  */
 export class AutoReviewGate implements ToolGate {
   private readonly approvedCommands = new Set<string>();
@@ -222,6 +245,10 @@ export class AutoReviewGate implements ToolGate {
     );
   }
 
+  reviewPrivilegedCall(input: DenialReviewInput): Promise<GateDecision> {
+    return this.judge("privileged-execution", input, false);
+  }
+
   isApprovedCommand(command: string): boolean {
     return this.approvedCommands.has(normalizeCommand(command));
   }
@@ -231,7 +258,11 @@ export class AutoReviewGate implements ToolGate {
   }
 
   private async judge(
-    trigger: "sandbox-denied" | "authorize-denied" | "destructive-pattern",
+    trigger:
+      | "sandbox-denied"
+      | "authorize-denied"
+      | "destructive-pattern"
+      | "privileged-execution",
     input: {
       toolCallId: string;
       toolName: string;
@@ -239,6 +270,7 @@ export class AutoReviewGate implements ToolGate {
       evidence: string;
       signal?: AbortSignal;
     },
+    allowSessionScope = true,
   ): Promise<GateDecision> {
     if (this.consecutiveEscalations >= MAX_CONSECUTIVE_ESCALATIONS) {
       const reason =
@@ -265,6 +297,7 @@ export class AutoReviewGate implements ToolGate {
         evidence: input.evidence,
         signal: input.signal,
         turn: this.host.turnContext(),
+        allowSessionScope,
       });
     } catch (error) {
       // Fail closed: an unavailable reviewer must not widen permissions.
@@ -277,7 +310,7 @@ export class AutoReviewGate implements ToolGate {
 
     if (ruling.verdict === "allow") {
       this.consecutiveEscalations = 0;
-      if (ruling.scope === "session") {
+      if (allowSessionScope && ruling.scope === "session") {
         this.approvedCommands.add(normalizeCommand(input.subject));
       }
       this.emitDecided(
@@ -286,7 +319,10 @@ export class AutoReviewGate implements ToolGate {
         "approved",
         ruling.reason,
       );
-      return { kind: "allow", scope: ruling.scope };
+      return {
+        kind: "allow",
+        scope: allowSessionScope ? ruling.scope : "once",
+      };
     }
     const denyReason = ruling.reason ?? "The auto-reviewer denied this call.";
     this.emitDecided(this.sequence, input.toolCallId, "denied", denyReason);

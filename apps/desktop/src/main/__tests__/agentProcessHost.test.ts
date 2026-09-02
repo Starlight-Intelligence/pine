@@ -92,6 +92,40 @@ describe("AgentProcessHost", () => {
     await pending;
   });
 
+  it("sends typed session rename requests", async () => {
+    const { host, process } = createHost();
+    const pending = host.renameSession("session-1", "Renamed session");
+    await vi.waitFor(() => expect(process.requests).toHaveLength(1));
+
+    expect(process.requests[0]).toEqual(
+      expect.objectContaining({
+        type: "session:rename",
+        sessionId: "session-1",
+        name: "Renamed session",
+      }),
+    );
+    process.emit("message", {
+      type: "response",
+      id: process.requests[0].id,
+      ok: true,
+      result: {
+        session: {
+          id: "session-1",
+          createdAt: "2026-08-24T12:00:00.000Z",
+          updatedAt: "2026-08-24T12:01:00.000Z",
+          messageCount: 0,
+          name: "Renamed session",
+        },
+      },
+    });
+
+    await expect(pending).resolves.toEqual(
+      expect.objectContaining({
+        session: expect.objectContaining({ name: "Renamed session" }),
+      }),
+    );
+  });
+
   it("rejects pending work when the utility process exits", async () => {
     const { host, process } = createHost();
     const pending = host.abort("session-1");

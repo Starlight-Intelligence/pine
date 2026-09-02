@@ -4,6 +4,7 @@ import { computed, type Component } from "vue";
 import { useI18n } from "vue-i18n";
 import { Marker, MarkerContent, MarkerIcon } from "@/components/ui/marker";
 import type { PineToolCall } from "@/shared/sessions";
+import ProjectToolCallDialog from "./ProjectToolCallDialog.vue";
 import { isRunningTool, TOOL_KIND_ICON, toolKind } from "./toolKinds";
 
 const props = defineProps<{
@@ -187,44 +188,57 @@ const fullText = computed(() => {
 </script>
 
 <template>
-  <Marker :role="isActive ? 'status' : undefined">
-    <!-- While running (or held by a gate) the label shimmers instead of
+  <ProjectToolCallDialog
+    v-slot="{ open }"
+    :tool-call="toolCall"
+    :reviewing="reviewing"
+    :awaiting-approval="awaitingApproval"
+  >
+    <Marker
+      as="button"
+      type="button"
+      class="-mx-1.5 w-[calc(100%+0.75rem)] cursor-pointer rounded-md px-1.5 py-1 transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+      :aria-live="isActive ? 'polite' : undefined"
+      @click="open"
+    >
+      <!-- While running (or held by a gate) the label shimmers instead of
          showing a spinner; on success the kind icon matches the folded group
          header, and failures stay recognizable through the destructive alert
          tint. -->
-    <MarkerIcon>
-      <AlertCircleIcon
-        v-if="toolCall.status === 'error'"
-        class="text-destructive"
-      />
-      <CheckIcon v-else-if="props.nested" />
-      <component :is="kindIcon" v-else />
-    </MarkerIcon>
-    <MarkerContent
-      class="truncate"
-      :class="
-        isActive
-          ? shimmerClass
-          : toolCall.status === 'error' && 'text-destructive'
-      "
-      :title="fullText"
-    >
-      <span v-if="presentation.before">{{ presentation.before }}</span>
-      <span v-if="presentation.operation" class="font-medium"
-        >{{ presentation.operation }}{{ presentation.separator }}</span
+      <MarkerIcon>
+        <AlertCircleIcon
+          v-if="toolCall.status === 'error'"
+          class="text-destructive"
+        />
+        <CheckIcon v-else-if="props.nested" />
+        <component :is="kindIcon" v-else />
+      </MarkerIcon>
+      <MarkerContent
+        class="truncate"
+        :class="
+          isActive
+            ? shimmerClass
+            : toolCall.status === 'error' && 'text-destructive'
+        "
+        :title="fullText"
       >
-      <code class="font-mono text-sm font-normal">{{
-        presentation.target
-      }}</code
-      ><template v-if="editDiffCount"
-        ><span
-          class="mr-1 font-mono text-xs font-normal text-emerald-600 dark:text-emerald-400"
-          >+{{ editDiffCount.added }}</span
+        <span v-if="presentation.before">{{ presentation.before }}</span>
+        <span v-if="presentation.operation" class="font-medium"
+          >{{ presentation.operation }}{{ presentation.separator }}</span
         >
-        <span class="font-mono text-xs font-normal text-destructive"
-          >-{{ editDiffCount.removed }}</span
-        ></template
-      ><span v-if="presentation.after">{{ presentation.after }}</span>
-    </MarkerContent>
-  </Marker>
+        <code class="font-mono text-sm font-normal">{{
+          presentation.target
+        }}</code
+        ><template v-if="editDiffCount"
+          ><span
+            class="mr-1 font-mono text-xs font-normal text-emerald-600 dark:text-emerald-400"
+            >+{{ editDiffCount.added }}</span
+          >
+          <span class="font-mono text-xs font-normal text-destructive"
+            >-{{ editDiffCount.removed }}</span
+          ></template
+        ><span v-if="presentation.after">{{ presentation.after }}</span>
+      </MarkerContent>
+    </Marker>
+  </ProjectToolCallDialog>
 </template>

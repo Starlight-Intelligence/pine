@@ -55,10 +55,12 @@ import {
 import {
   DELETE_SESSION_CHANNEL,
   LOAD_SESSION_MESSAGES_CHANNEL,
+  RENAME_SESSION_CHANNEL,
   RESUME_SESSION_CHANNEL,
   SEARCH_SESSIONS_CHANNEL,
   type DeleteSessionResult,
   type LoadSessionMessagesResult,
+  type RenameSessionResult,
   type ResumeSessionResult,
   type SearchSessionsResult,
 } from "./shared/sessions";
@@ -126,6 +128,9 @@ const SearchSessionsRequestSchema = z.object({
 });
 const SessionIdRequestSchema = z.object({
   sessionId: z.uuid(),
+});
+const RenameSessionRequestSchema = SessionIdRequestSchema.extend({
+  name: z.string().trim().min(1).max(200),
 });
 const LoadSessionMessagesRequestSchema = z.object({
   before: z.uuid().optional(),
@@ -496,6 +501,20 @@ ipcMain.handle(
       deleted: await getProjectRuntimes().deleteSession(
         event.sender.id,
         sessionId,
+      ),
+    };
+  },
+);
+
+ipcMain.handle(
+  RENAME_SESSION_CHANNEL,
+  async (event, request: unknown): Promise<RenameSessionResult> => {
+    const { name, sessionId } = RenameSessionRequestSchema.parse(request);
+    return {
+      session: await getProjectRuntimes().renameSession(
+        event.sender.id,
+        sessionId,
+        name,
       ),
     };
   },

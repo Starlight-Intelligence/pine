@@ -65,6 +65,12 @@ export type AgentWorkerRequest =
     }
   | {
       id: string;
+      type: "session:rename";
+      sessionId: string;
+      name: string;
+    }
+  | {
+      id: string;
       type: "session:dispose";
       sessionId: string;
     }

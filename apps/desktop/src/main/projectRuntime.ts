@@ -134,6 +134,23 @@ export class ProjectRuntimeRegistry {
     return runtime.sessions.deleteSession(sessionId);
   }
 
+  async renameSession(
+    webContentsId: number,
+    sessionId: string,
+    name: string,
+  ): Promise<PineSessionSummary> {
+    const runtime = this.get(webContentsId);
+    if (
+      runtime.session.status === "active" &&
+      runtime.session.summary.id === sessionId
+    ) {
+      const result = await this.agentHost.renameSession(sessionId, name);
+      runtime.session.summary = result.session;
+      return result.session;
+    }
+    return runtime.sessions.renameSession(sessionId, name);
+  }
+
   async listDirectory(
     webContentsId: number,
     folderId: string,

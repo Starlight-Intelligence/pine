@@ -34,6 +34,11 @@ function createAgentHost(): AgentHost {
       accepted: true,
       session: { ...sessionSummary, messageCount: 2 },
     }),
+    renameSession: vi.fn().mockImplementation((sessionId, name) =>
+      Promise.resolve({
+        session: { ...sessionSummary, id: sessionId, name },
+      }),
+    ),
     respondApproval: vi.fn(),
     subscribe: vi.fn().mockReturnValue(() => undefined),
   };
@@ -159,6 +164,40 @@ describe("ProjectRuntimeRegistry", () => {
       );
     } finally {
       await registry.dispose(1);
+    }
+  });
+
+  it("renames an active session through the agent worker", async () => {
+    const agentHost = createAgentHost();
+    const renameSession = vi.spyOn(agentHost, "renameSession");
+    const registry = new ProjectRuntimeRegistry(agentHost, "/pine/agent");
+    const { dataRoot, project } = await createRuntimeFixture();
+
+    try {
+      await registry.open(7, project, {
+        cacheRoot: path.join(dataRoot, "cache"),
+        projectRoot: dataRoot,
+        sessionsRoot: path.join(dataRoot, "sessions"),
+      });
+      await registry.prompt(7, {
+        message: "Start",
+        target: { kind: "new" },
+      });
+
+      await expect(
+        registry.renameSession(7, sessionSummary.id, "Renamed session"),
+      ).resolves.toEqual(
+        expect.objectContaining({
+          id: sessionSummary.id,
+          name: "Renamed session",
+        }),
+      );
+      expect(renameSession).toHaveBeenCalledWith(
+        sessionSummary.id,
+        "Renamed session",
+      );
+    } finally {
+      await registry.dispose(7);
     }
   });
 

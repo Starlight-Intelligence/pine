@@ -2,23 +2,36 @@ export const SEARCH_SESSIONS_CHANNEL = "sessions:search" as const;
 export const RESUME_SESSION_CHANNEL = "sessions:resume" as const;
 export const LOAD_SESSION_MESSAGES_CHANNEL = "sessions:messages" as const;
 export const DELETE_SESSION_CHANNEL = "sessions:delete" as const;
+export const RENAME_SESSION_CHANNEL = "sessions:rename" as const;
 
 export type PineToolCallStatus = "pending" | "running" | "complete" | "error";
+
+export interface PineToolCallApproval {
+  state: "reviewing" | "awaiting-user" | "approved" | "denied";
+  decidedBy?: "user" | "judge";
+  reason?: string;
+}
 
 export interface PineToolCall {
   id: string;
   name: string;
   status: PineToolCallStatus;
+  approval?: PineToolCallApproval;
   input?: unknown;
   output?: unknown;
   startedAt?: string;
   durationMs?: number;
 }
 
+export interface PineSessionError {
+  message: string;
+}
+
 export type PineContentBlock =
   | { type: "text"; text: string }
   | { type: "thinking"; thinking: string }
-  | { type: "toolCall"; toolCall: PineToolCall };
+  | { type: "toolCall"; toolCall: PineToolCall }
+  | { type: "error"; error: PineSessionError };
 
 export interface PineTextMessage {
   createdAt: string;
@@ -66,6 +79,46 @@ export function parseContentBlocks(content: unknown): PineContentBlock[] {
     }
     return [];
   });
+}
+
+/**
+ * Parse a complete pi message, preserving its visible content and surfacing
+ * assistant request failures that pi stores outside the `content` array.
+ */
+export function parseMessageBlocks(message: unknown): PineContentBlock[] {
+  if (
+    typeof message !== "object" ||
+    message === null ||
+    Array.isArray(message)
+  ) {
+    return [];
+  }
+
+  const record = message as Record<string, unknown>;
+  const blocks = parseContentBlocks(record.content);
+  if (record.role !== "assistant") return blocks;
+
+  if (record.stopReason === "error") {
+    blocks.push({
+      type: "error",
+      error: {
+        message:
+          typeof record.errorMessage === "string" && record.errorMessage.trim()
+            ? record.errorMessage
+            : "Unknown error",
+      },
+    });
+  } else if (record.stopReason === "length") {
+    blocks.push({
+      type: "error",
+      error: {
+        message:
+          "Model stopped because it reached the maximum output token limit. The response may be incomplete.",
+      },
+    });
+  }
+
+  return blocks;
 }
 
 export function contentBlocksToText(
@@ -120,6 +173,15 @@ export interface DeleteSessionRequest {
 
 export interface DeleteSessionResult {
   deleted: boolean;
+}
+
+export interface RenameSessionRequest {
+  name: string;
+  sessionId: string;
+}
+
+export interface RenameSessionResult {
+  session: PineSessionSummary;
 }
 
 export interface LoadSessionMessagesRequest {

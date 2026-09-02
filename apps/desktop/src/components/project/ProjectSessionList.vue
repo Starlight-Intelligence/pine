@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Plus, Search, Trash2 } from "@lucide/vue";
+import { Pencil, Plus, Search, Trash2 } from "@lucide/vue";
 import { useVirtualizer } from "@tanstack/vue-virtual";
 import { storeToRefs } from "pinia";
 import { computed, ref, watch } from "vue";
@@ -15,6 +15,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -22,6 +23,16 @@ import {
   ContextMenuItem,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -34,6 +45,7 @@ import {
 } from "@/components/ui/sidebar";
 import { useContentTabNavigation } from "@/composables/useContentTabNavigation";
 import type { PineSessionSummary } from "@/shared/sessions";
+import { useContentTabsStore } from "@/stores/contentTabs";
 import { useProjectStore } from "@/stores/project";
 import { useSessionStore } from "@/stores/session";
 
@@ -44,6 +56,7 @@ const emit = defineEmits<{
 const tabNavigation = useContentTabNavigation();
 const projectStore = useProjectStore();
 const sessionStore = useSessionStore();
+const contentTabsStore = useContentTabsStore();
 const { activeSessionTab } = tabNavigation;
 const { activeProject } = storeToRefs(projectStore);
 const { isLoadingRecent, recentSessions } = storeToRefs(sessionStore);
@@ -51,6 +64,13 @@ const scrollHost = ref<HTMLElement | null>(null);
 const sessionPendingDelete = ref<PineSessionSummary | null>(null);
 const isDeleteDialogOpen = ref(false);
 const isDeleting = ref(false);
+const sessionPendingRename = ref<PineSessionSummary | null>(null);
+const isRenameDialogOpen = ref(false);
+const renameName = ref("");
+const isRenaming = ref(false);
+const canRename = computed(
+  () => renameName.value.trim().length > 0 && !isRenaming.value,
+);
 
 const dateFormatter = computed(
   () =>
@@ -97,6 +117,40 @@ function openSession(session: PineSessionSummary): void {
 function requestSessionDeletion(session: PineSessionSummary): void {
   sessionPendingDelete.value = session;
   isDeleteDialogOpen.value = true;
+}
+
+function requestSessionRename(session: PineSessionSummary): void {
+  sessionPendingRename.value = session;
+  renameName.value = sessionTitle(session);
+  isRenameDialogOpen.value = true;
+}
+
+function setRenameDialogOpen(open: boolean): void {
+  isRenameDialogOpen.value = open;
+  if (open) return;
+  sessionPendingRename.value = null;
+  renameName.value = "";
+}
+
+async function renameRequestedSession(): Promise<void> {
+  const session = sessionPendingRename.value;
+  const name = renameName.value.trim();
+  if (!session || !name || isRenaming.value) return;
+
+  isRenaming.value = true;
+  try {
+    const renamed = await sessionStore.renameSession(session.id, name);
+    contentTabsStore.updateSession(renamed);
+    setRenameDialogOpen(false);
+  } catch (error) {
+    handleError(error, {
+      id: "sessions.sidebar.rename",
+      title: t("errors.sessionRename.title"),
+      description: t("errors.sessionRename.description"),
+    });
+  } finally {
+    isRenaming.value = false;
+  }
 }
 
 async function deleteRequestedSession(): Promise<void> {
@@ -223,6 +277,14 @@ watch(
               <ContextMenuContent>
                 <ContextMenuGroup>
                   <ContextMenuItem
+                    @select="
+                      requestSessionRename(recentSessions[virtualRow.index])
+                    "
+                  >
+                    <Pencil aria-hidden="true" />
+                    {{ t("sessions.renameAction") }}
+                  </ContextMenuItem>
+                  <ContextMenuItem
                     variant="destructive"
                     @select="
                       requestSessionDeletion(recentSessions[virtualRow.index])
@@ -267,5 +329,48 @@ watch(
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
+
+    <Dialog :open="isRenameDialogOpen" @update:open="setRenameDialogOpen">
+      <DialogContent>
+        <form
+          class="flex flex-col gap-6"
+          @submit.prevent="renameRequestedSession"
+        >
+          <DialogHeader>
+            <DialogTitle>{{ t("sessions.renameTitle") }}</DialogTitle>
+            <DialogDescription>
+              {{ t("sessions.renameDescription") }}
+            </DialogDescription>
+          </DialogHeader>
+          <FieldGroup>
+            <Field>
+              <FieldLabel for="session-name">
+                {{ t("sessions.nameLabel") }}
+              </FieldLabel>
+              <Input
+                id="session-name"
+                v-model="renameName"
+                maxlength="200"
+                autocomplete="off"
+                required
+              />
+            </Field>
+          </FieldGroup>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              :disabled="isRenaming"
+              @click="setRenameDialogOpen(false)"
+            >
+              {{ t("common.cancel") }}
+            </Button>
+            <Button type="submit" :disabled="!canRename">
+              {{ t("common.save") }}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   </div>
 </template>

@@ -159,8 +159,8 @@ describe("project transcript markers", () => {
     expect(content.text()).toMatch(/^正在执行 bun run/);
     expect(content.text()).toContain("…");
     expect(content.text().length).toBeLessThan(command.length);
-    expect(wrapper.get('[data-slot="marker"]').attributes("role")).toBe(
-      "status",
+    expect(wrapper.get('[data-slot="marker"]').attributes("aria-live")).toBe(
+      "polite",
     );
   });
 

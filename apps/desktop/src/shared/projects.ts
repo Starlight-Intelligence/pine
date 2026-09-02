@@ -23,6 +23,8 @@ import type {
   DeleteSessionResult,
   LoadSessionMessagesRequest,
   LoadSessionMessagesResult,
+  RenameSessionRequest,
+  RenameSessionResult,
   ResumeSessionRequest,
   ResumeSessionResult,
   SearchSessionsRequest,
@@ -144,6 +146,9 @@ export interface PineDesktopApi extends PineWindowApi {
   resumeSession: (
     request: ResumeSessionRequest,
   ) => Promise<ResumeSessionResult>;
+  renameSession: (
+    request: RenameSessionRequest,
+  ) => Promise<RenameSessionResult>;
   searchSessions: (
     request: SearchSessionsRequest,
   ) => Promise<SearchSessionsResult>;

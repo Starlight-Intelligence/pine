@@ -42,6 +42,10 @@ export interface AgentHost {
     message: string,
     streamingBehavior?: "followUp" | "steer",
   ): Promise<AgentWorkerPromptResult>;
+  renameSession(
+    sessionId: string,
+    name: string,
+  ): Promise<AgentWorkerSessionResult>;
   getModelCatalog(agentDir: string): Promise<PineModelCatalog>;
   loginProvider(
     agentDir: string,
@@ -123,6 +127,13 @@ export class AgentProcessHost implements AgentHost {
 
   abort(sessionId: string): Promise<{ aborted: boolean }> {
     return this.request({ type: "session:abort", sessionId });
+  }
+
+  renameSession(
+    sessionId: string,
+    name: string,
+  ): Promise<AgentWorkerSessionResult> {
+    return this.request({ type: "session:rename", sessionId, name });
   }
 
   getModelCatalog(agentDir: string): Promise<PineModelCatalog> {

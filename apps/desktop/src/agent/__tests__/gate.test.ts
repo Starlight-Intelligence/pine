@@ -100,6 +100,28 @@ describe("UserApprovalGate", () => {
     );
   });
 
+  it("routes privileged calls to a distinct per-call user approval", async () => {
+    const { host, mocks } = createHost();
+    const gate = new UserApprovalGate(host);
+
+    await gate.reviewPrivilegedCall({
+      toolCallId: "privileged-1",
+      toolName: "privileged_bash",
+      subject: "open -a Finder",
+      description: "Open Finder",
+      evidence: "Native application control requires elevated execution.",
+    });
+
+    expect(mocks.requestUserApproval).toHaveBeenCalledWith(
+      expect.objectContaining({
+        trigger: "privileged-execution",
+        toolCallId: "privileged-1",
+        toolName: "privileged_bash",
+        subject: "open -a Finder",
+      }),
+    );
+  });
+
   it("never remembers approved commands", () => {
     const { host } = createHost();
     const gate: ToolGate = new UserApprovalGate(host);
@@ -165,6 +187,35 @@ describe("AutoReviewGate", () => {
       gate.reviewBashCommand({ toolCallId: "t2", command: "rm -rf build" }),
     ).resolves.toEqual({ kind: "allow" });
     expect(mocks.judge).not.toHaveBeenCalled();
+  });
+
+  it("reviews identical privileged calls every time without caching session scope", async () => {
+    const { host, mocks } = createHost();
+    mocks.judge.mockResolvedValue({ verdict: "allow", scope: "session" });
+    const gate = new AutoReviewGate(host);
+    const review = {
+      toolName: "privileged_bash",
+      subject: "open -a Finder",
+      description: "Open Finder",
+      evidence: "Native application control requires elevated execution.",
+    };
+
+    await expect(
+      gate.reviewPrivilegedCall({ toolCallId: "p1", ...review }),
+    ).resolves.toEqual({ kind: "allow", scope: "once" });
+    await expect(
+      gate.reviewPrivilegedCall({ toolCallId: "p2", ...review }),
+    ).resolves.toEqual({ kind: "allow", scope: "once" });
+
+    expect(mocks.judge).toHaveBeenCalledTimes(2);
+    expect(mocks.judge).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        trigger: "privileged-execution",
+        allowSessionScope: false,
+      }),
+    );
+    expect(gate.isApprovedCommand("open -a Finder")).toBe(false);
   });
 
   it("fails closed when the judge errors", async () => {

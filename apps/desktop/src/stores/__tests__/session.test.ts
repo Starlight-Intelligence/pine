@@ -163,6 +163,51 @@ describe("session store", () => {
     expect(store.isLoadingRecent).toBe(false);
   });
 
+  it("renames a session across recent, search, active, and cached state", async () => {
+    const renamed = {
+      ...session,
+      name: "Renamed conversation",
+      updatedAt: "2026-07-14T00:01:00.000Z",
+    };
+    const renameSession = vi.fn().mockResolvedValue({ session: renamed });
+    Object.defineProperty(window, "pine", {
+      configurable: true,
+      value: {
+        loadSessionMessages: vi.fn().mockResolvedValue({
+          hasMore: false,
+          messages: [],
+        }),
+        renameSession,
+        resumeSession: vi.fn().mockResolvedValue({ session }),
+      },
+    });
+    const store = useSessionStore();
+    store.recentSessions = [session];
+    store.searchResults = [{ ...session, snippet: "matching text" }];
+    await store.resume(session.id);
+
+    await expect(
+      store.renameSession(session.id, "Renamed conversation"),
+    ).resolves.toEqual(renamed);
+
+    expect(renameSession).toHaveBeenCalledWith({
+      sessionId: session.id,
+      name: "Renamed conversation",
+    });
+    expect(store.recentSessions[0]?.name).toBe("Renamed conversation");
+    expect(store.searchResults[0]).toEqual(
+      expect.objectContaining({
+        name: "Renamed conversation",
+        snippet: "matching text",
+      }),
+    );
+    expect(store.activeSession?.name).toBe("Renamed conversation");
+
+    store.startDraft();
+    await store.resume(session.id);
+    expect(store.activeSession?.name).toBe("Renamed conversation");
+  });
+
   it("starts a new session without persisting it", async () => {
     Object.defineProperty(window, "pine", {
       configurable: true,
@@ -320,6 +365,53 @@ describe("session store", () => {
       }),
     ]);
     expect(store.isRunning).toBe(true);
+  });
+
+  it("surfaces model and runtime errors in the transcript", async () => {
+    let listener: ((event: PineAgentEvent) => void) | undefined;
+    Object.defineProperty(window, "pine", {
+      configurable: true,
+      value: {
+        onSessionEvent: vi.fn((nextListener) => {
+          listener = nextListener;
+          return () => undefined;
+        }),
+        promptSession: vi.fn().mockResolvedValue({ session }),
+      },
+    });
+    const store = useSessionStore();
+    store.connectAgentEvents();
+    await store.prompt("Try the provider");
+
+    listener?.({
+      type: "message-end",
+      sessionId: session.id,
+      messageId: "model-error",
+      message: {
+        role: "assistant",
+        timestamp: 1_784_000_000_000,
+        content: [],
+        stopReason: "error",
+        errorMessage: "Rate limit exceeded",
+      },
+    });
+    listener?.({
+      type: "session-error",
+      sessionId: session.id,
+      errorId: "compaction-error",
+      message: "Compaction failed",
+    });
+
+    expect(store.messages).toEqual([
+      expect.objectContaining({
+        id: "model-error",
+        blocks: [{ type: "error", error: { message: "Rate limit exceeded" } }],
+      }),
+      expect.objectContaining({
+        id: "error-compaction-error",
+        blocks: [{ type: "error", error: { message: "Compaction failed" } }],
+      }),
+    ]);
   });
 
   it("tracks thinking completion and tool execution by call id", async () => {
@@ -628,6 +720,70 @@ describe("session store", () => {
       contextWindow: 200_000,
       percent: 43.2,
       cost: 0.1234,
+    });
+  });
+
+  it("keeps automatic approval decisions with their tool calls", async () => {
+    let listener: ((event: PineAgentEvent) => void) | undefined;
+    Object.defineProperty(window, "pine", {
+      configurable: true,
+      value: {
+        onSessionEvent: vi.fn((nextListener) => {
+          listener = nextListener;
+          return () => undefined;
+        }),
+        promptSession: vi.fn().mockResolvedValue({ session }),
+      },
+    });
+    const store = useSessionStore();
+    store.connectAgentEvents();
+    await store.prompt("Run it", session.id);
+
+    listener?.({
+      type: "message-end",
+      sessionId: session.id,
+      messageId: "assistant-tool-review",
+      message: {
+        role: "assistant",
+        timestamp: 1_784_000_000_000,
+        content: [
+          {
+            type: "toolCall",
+            id: "call-reviewed",
+            name: "bash",
+            arguments: { command: "dangerous-command" },
+          },
+        ],
+      },
+    });
+    listener?.({
+      type: "tool-review",
+      sessionId: session.id,
+      toolCallId: "call-reviewed",
+      toolName: "bash",
+      state: "reviewing",
+    });
+
+    let block = store.messages[0]?.blocks[0];
+    expect(block?.type === "toolCall" && block.toolCall.approval).toEqual({
+      state: "reviewing",
+    });
+
+    listener?.({
+      type: "approval-decided",
+      sessionId: session.id,
+      requestId: "judge-1",
+      toolCallId: "call-reviewed",
+      verdict: "denied",
+      decidedBy: "judge",
+      reason: "Use a safer command.",
+    });
+
+    block = store.messages[0]?.blocks[0];
+    expect(block?.type === "toolCall" && block.toolCall.approval).toEqual({
+      state: "denied",
+      decidedBy: "judge",
+      reason: "Use a safer command.",
     });
   });
 });

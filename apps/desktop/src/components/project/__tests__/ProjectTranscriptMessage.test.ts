@@ -2,6 +2,7 @@ import { mount } from "@vue/test-utils";
 import { describe, expect, it } from "vitest";
 import { createAppI18n } from "@/app/i18n";
 import type { PineTranscriptMessage } from "@/stores/session";
+import ProjectErrorMarker from "../ProjectErrorMarker.vue";
 import ProjectTranscriptMessage from "../ProjectTranscriptMessage.vue";
 import ProjectToolCallGroup from "../ProjectToolCallGroup.vue";
 import ProjectToolCallMarker from "../ProjectToolCallMarker.vue";
@@ -89,6 +90,32 @@ describe("ProjectTranscriptMessage", () => {
 
     expect(wrapper.findComponent(ProjectToolCallGroup).exists()).toBe(false);
     expect(wrapper.findComponent(ProjectToolCallMarker).exists()).toBe(true);
+  });
+
+  it("renders session errors as destructive markers", () => {
+    const wrapper = mountMessage({
+      createdAt: "2026-08-26T00:00:00.000Z",
+      id: "assistant-error",
+      role: "assistant",
+      status: "complete",
+      blocks: [
+        {
+          type: "error",
+          error: { message: "Provider request failed" },
+        },
+      ],
+    });
+
+    const marker = wrapper.getComponent(ProjectErrorMarker);
+    expect(marker.get('[data-slot="marker-content"]').classes()).toContain(
+      "text-destructive",
+    );
+    expect(marker.get('[data-slot="marker-content"]').text()).toBe(
+      "错误: Provider request failed",
+    );
+    expect(marker.get('[data-slot="marker-icon"] svg').classes()).toContain(
+      "text-destructive",
+    );
   });
 
   it("folds consecutive tool calls into a step group", () => {

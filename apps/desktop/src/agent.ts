@@ -34,6 +34,9 @@ async function handleRequest(request: AgentWorkerRequest): Promise<void> {
     case "session:abort":
       result = await runtime.abort(request.sessionId);
       break;
+    case "session:rename":
+      result = runtime.renameSession(request.sessionId, request.name);
+      break;
     case "session:dispose":
       result = await runtime.disposeSession(request.sessionId);
       break;

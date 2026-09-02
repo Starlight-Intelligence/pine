@@ -14,7 +14,7 @@ import type {
   PineTextMessage,
   SessionSearchResult,
 } from "../shared/sessions";
-import { parseContentBlocks } from "../shared/sessions";
+import { parseMessageBlocks } from "../shared/sessions";
 
 const SEARCH_RESULT_LIMIT = 50;
 const SEARCH_INDEX_FILE = "session-search.sqlite";
@@ -140,8 +140,7 @@ function textMessages(entries: SessionTreeEntry[]): PineTextMessage[] {
       continue;
     }
 
-    const content = "content" in entry.message ? entry.message.content : null;
-    const blocks = parseContentBlocks(content);
+    const blocks = parseMessageBlocks(entry.message);
     const hasThinking = blocks.some((block) => block.type === "thinking");
     if (blocks.length === 0) continue;
     const messageTimestamp = entry.message.timestamp;
@@ -403,6 +402,26 @@ export class ProjectSessionService {
       .prepare("DELETE FROM session_search WHERE session_id = ?")
       .run(sessionId);
     return true;
+  }
+
+  async renameSession(
+    sessionId: string,
+    name: string,
+  ): Promise<PineSessionSummary> {
+    const metadata = (await this.repository.list()).find(
+      (session) => session.id === sessionId,
+    );
+    if (!metadata) throw new Error("Session not found in the active project.");
+
+    const session = await this.repository.open(metadata);
+    await session.appendSessionName(name);
+    const summary = await this.readSessionDocument(
+      metadata,
+      undefined,
+      session,
+    );
+    await this.refreshIndex();
+    return summary;
   }
 
   async search(query: string): Promise<SessionSearchResult[]> {

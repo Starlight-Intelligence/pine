@@ -9,6 +9,7 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import type { PineTextMessage } from "../../shared/sessions";
 import { ProjectSessionService } from "../sessions";
 
 const temporaryDirectories: string[] = [];
@@ -35,9 +36,7 @@ function serviceOptions(rootPath: string) {
   };
 }
 
-function textOf(message: {
-  blocks: { type: "text" | "thinking" | "toolCall"; text?: string }[];
-}): string {
+function textOf(message: Pick<PineTextMessage, "blocks">): string {
   return message.blocks
     .map((block) => (block.type === "text" ? (block.text ?? "") : ""))
     .join("");
@@ -263,6 +262,45 @@ describe("ProjectSessionService", () => {
     }
   });
 
+  it("restores assistant request errors from session history", async () => {
+    const rootPath = await createTemporaryProjectData();
+    const options = serviceOptions(rootPath);
+    await mkdir(options.cwd, { recursive: true });
+    const environment = new NodeExecutionEnv({ cwd: options.cwd });
+    const repository = new JsonlSessionRepo({
+      fs: environment,
+      sessionsRoot: options.sessionsRoot,
+    });
+    const session = await repository.create({ cwd: options.cwd });
+    await session.appendMessage(
+      fauxAssistantMessage([], {
+        stopReason: "error",
+        errorMessage: "Provider request failed",
+      }),
+    );
+    const metadata = await session.getMetadata();
+    const service = await ProjectSessionService.create(options);
+
+    try {
+      await expect(service.loadMessages(metadata.id)).resolves.toEqual({
+        hasMore: false,
+        messages: [
+          expect.objectContaining({
+            blocks: [
+              {
+                type: "error",
+                error: { message: "Provider request failed" },
+              },
+            ],
+          }),
+        ],
+      });
+    } finally {
+      await service.dispose();
+      await environment.cleanup();
+    }
+  });
+
   it("deletes a session and removes it from search", async () => {
     const rootPath = await createTemporaryProjectData();
     const options = serviceOptions(rootPath);
@@ -286,6 +324,44 @@ describe("ProjectSessionService", () => {
       await expect(service.deleteSession(metadata.id)).resolves.toBe(true);
       await expect(service.search("")).resolves.toEqual([]);
       await expect(service.deleteSession(metadata.id)).resolves.toBe(false);
+    } finally {
+      await service.dispose();
+      await environment.cleanup();
+    }
+  });
+
+  it("persists a renamed session and refreshes its search title", async () => {
+    const rootPath = await createTemporaryProjectData();
+    const options = serviceOptions(rootPath);
+    await mkdir(options.cwd, { recursive: true });
+    const environment = new NodeExecutionEnv({ cwd: options.cwd });
+    const repository = new JsonlSessionRepo({
+      fs: environment,
+      sessionsRoot: options.sessionsRoot,
+    });
+    const session = await repository.create({ cwd: options.cwd });
+    await session.appendMessage({
+      role: "user",
+      content: "Original first message",
+      timestamp: Date.now(),
+    });
+    const metadata = await session.getMetadata();
+    const service = await ProjectSessionService.create(options);
+
+    try {
+      const renamed = await service.renameSession(
+        metadata.id,
+        "Renamed conversation",
+      );
+
+      expect(renamed.name).toBe("Renamed conversation");
+      await expect(service.search("Renamed conversation")).resolves.toEqual([
+        expect.objectContaining({
+          id: metadata.id,
+          name: "Renamed conversation",
+          preview: "Original first message",
+        }),
+      ]);
     } finally {
       await service.dispose();
       await environment.cleanup();
