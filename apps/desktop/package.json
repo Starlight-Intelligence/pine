@@ -30,7 +30,7 @@
     "@earendil-works/pi-ai": "0.80.10",
     "@earendil-works/pi-coding-agent": "0.80.10",
     "@lobehub/icons-static-svg": "^1.94.0",
-    "@lucide/vue": "^1.35.0",
+    "@lucide/vue": "^1.39.0",
     "@tanstack/vue-virtual": "^3.13.32",
     "@vue/reactivity": "latest",
     "@vue/runtime-core": "latest",
