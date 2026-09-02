@@ -4,11 +4,14 @@ import path from "node:path";
 import type { Api, Model } from "@earendil-works/pi-ai";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  attachedPathsFromSessionEntries,
   judgeStreamOptions,
   parseJudgeRulings,
   PineAgentRuntime,
   projectSessionDirectory,
+  toolNamesForApprovalMode,
 } from "../runtime";
+import { serializeAttachmentMessage } from "../../shared/attachments";
 
 const temporaryDirectories: string[] = [];
 
@@ -18,6 +21,31 @@ afterEach(async () => {
       .splice(0)
       .map((directory) => rm(directory, { recursive: true, force: true })),
   );
+});
+
+describe("attachedPathsFromSessionEntries", () => {
+  it("restores only attachment blocks from user messages", () => {
+    const attachment = {
+      extension: "txt",
+      kind: "file" as const,
+      modifiedAt: "2026-09-02T12:00:00.000Z",
+      name: "context.txt",
+      path: "/tmp/context.txt",
+      size: 12,
+    };
+    const block = serializeAttachmentMessage([attachment], "Read it.");
+
+    expect(
+      attachedPathsFromSessionEntries([
+        { type: "message", message: { role: "user", content: block } },
+        { type: "message", message: { role: "assistant", content: block } },
+        {
+          type: "message",
+          message: { role: "user", content: [{ type: "text", text: block }] },
+        },
+      ]),
+    ).toEqual(["/tmp/context.txt"]);
+  });
 });
 
 describe("judgeStreamOptions", () => {
@@ -36,6 +64,28 @@ describe("judgeStreamOptions", () => {
     expect(
       judgeStreamOptions(modelWithApi("openai-completions"), signal),
     ).toEqual({ signal });
+  });
+});
+
+describe("toolNamesForApprovalMode", () => {
+  const tools = ["read", "bash", "edit", "write", "privileged_bash"];
+
+  it("removes ordinary bash in yolo mode", () => {
+    expect(toolNamesForApprovalMode(tools, "YOLO")).toEqual([
+      "read",
+      "edit",
+      "write",
+      "privileged_bash",
+    ]);
+  });
+
+  it("restores ordinary bash before privileged bash", () => {
+    expect(
+      toolNamesForApprovalMode(
+        ["read", "edit", "write", "privileged_bash"],
+        "auto-approve",
+      ),
+    ).toEqual(tools);
   });
 });
 

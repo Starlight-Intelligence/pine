@@ -53,7 +53,7 @@ export interface UserApprovalRequest {
 
 /**
  * Services a gate needs from the runtime: event emission, the model judge
- * (agent-decides), and the cross-process user approval round trip (ask mode).
+ * (Auto Approve), and the cross-process user approval round trip (Let Me Review).
  */
 export interface GateHost {
   sessionId: string;
@@ -94,18 +94,18 @@ export interface DenialReviewInput {
 }
 
 /**
- * The seam between Pine's deterministic sandbox and a decision maker. Ask mode
- * routes every review to the user; agent-decides routes escalations to the
- * model judge; YOLO has no gate at all.
+ * The seam between Pine's deterministic sandbox and a decision maker. Let Me Review mode
+ * routes every review to the user; Auto Approve routes escalations to the
+ * model judge. YOLO bypasses this gate entirely at each tool wrapper.
  */
 export interface ToolGate {
   /**
-   * Decide whether a bash command may run. Ask mode prompts the user for every
-   * command; agent-decides only escalates destructive-pattern matches.
+   * Decide whether a bash command may run. Let Me Review mode prompts the user for every
+   * command; Auto Approve only escalates destructive-pattern matches.
    */
   reviewBashCommand(input: BashReviewInput): Promise<GateDecision>;
   /**
-   * Ask-mode pre-execution confirmation for file-mutating tools. Agent-decides
+   * Let Me Review pre-execution confirmation for file-mutating tools. Auto Approve
    * allows file calls through and relies on denial escalation instead.
    */
   reviewFileCall(input: FileReviewInput): Promise<GateDecision>;
@@ -128,7 +128,7 @@ export interface ToolGate {
 const MAX_CONSECUTIVE_ESCALATIONS = 5;
 
 /**
- * Ask mode: every review becomes an approval request in the renderer. The
+ * Let Me Review mode: every review becomes an approval request in the renderer. The
  * runtime owns the cross-process round trip, including both events.
  */
 export class UserApprovalGate implements ToolGate {
@@ -146,7 +146,7 @@ export class UserApprovalGate implements ToolGate {
   }
 
   async reviewFileCall(input: FileReviewInput): Promise<GateDecision> {
-    // Reads stay silent in ask mode: prompting on every read makes the
+    // Reads stay silent in Let Me Review mode: prompting on every read makes the
     // transcript unusable. Out-of-scope reads still surface through the
     // authorize-denial review, so the folder boundary is not lost.
     if (input.toolName === "read") {
@@ -197,7 +197,7 @@ export class UserApprovalGate implements ToolGate {
 }
 
 /**
- * Agent-decides mode: deterministic checks stay in the sandbox; the model judge
+ * Auto Approve mode: deterministic checks stay in the sandbox; the model judge
  * sees sandbox/authorize escalations, destructive-pattern matches, and every
  * explicit privileged shell call. Judgments are fail-closed.
  */

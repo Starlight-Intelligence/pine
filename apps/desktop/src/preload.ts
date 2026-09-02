@@ -1,18 +1,31 @@
 // See the Electron documentation for details on how to use preload scripts:
 // https://www.electronjs.org/docs/latest/tutorial/process-model#preload-scripts
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webUtils } from "electron";
 import {
   ABORT_SESSION_CHANNEL,
   APPROVAL_RESPONSE_CHANNEL,
   PROMPT_SESSION_CHANNEL,
+  SET_APPROVAL_MODE_CHANNEL,
   SESSION_EVENT_CHANNEL,
   type AbortSessionResult,
   type PineAgentEvent,
   type PromptSessionRequest,
   type PromptSessionResult,
   type RespondApprovalRequest,
+  type SetApprovalModeRequest,
+  type SetApprovalModeResult,
   type SessionEventListener,
 } from "./shared/agent";
+import {
+  INSPECT_ATTACHMENTS_CHANNEL,
+  OPEN_ATTACHMENT_CHANNEL,
+  PICK_ATTACHMENT_FOLDERS_CHANNEL,
+  PICK_ATTACHMENTS_CHANNEL,
+  type InspectAttachmentsRequest,
+  type OpenAttachmentRequest,
+  type OpenAttachmentResult,
+  type PickAttachmentsResult,
+} from "./shared/attachments";
 import {
   CANCEL_PROVIDER_AUTH_CHANNEL,
   GET_MODEL_CATALOG_CHANNEL,
@@ -102,6 +115,15 @@ const pineApi: PineDesktopApi = {
     ipcRenderer.invoke(LIST_PROJECTS_CHANNEL),
   getModelCatalog: (): Promise<PineModelCatalog> =>
     ipcRenderer.invoke(GET_MODEL_CATALOG_CHANNEL),
+  getPathForFile: (file: File): string => webUtils.getPathForFile(file),
+  inspectAttachments: (
+    request: InspectAttachmentsRequest,
+  ): Promise<PickAttachmentsResult> =>
+    ipcRenderer.invoke(INSPECT_ATTACHMENTS_CHANNEL, request),
+  openAttachment: (
+    request: OpenAttachmentRequest,
+  ): Promise<OpenAttachmentResult> =>
+    ipcRenderer.invoke(OPEN_ATTACHMENT_CHANNEL, request),
   loginProvider: (
     request: LoginProviderRequest,
   ): Promise<ProviderLoginResult> =>
@@ -137,6 +159,10 @@ const pineApi: PineDesktopApi = {
     ipcRenderer.invoke(LOAD_SESSION_MESSAGES_CHANNEL, request),
   openProject: (request: ProjectIdRequest): Promise<ProjectResult> =>
     ipcRenderer.invoke(OPEN_PROJECT_CHANNEL, request),
+  pickAttachments: (): Promise<PickAttachmentsResult> =>
+    ipcRenderer.invoke(PICK_ATTACHMENTS_CHANNEL),
+  pickAttachmentFolders: (): Promise<PickAttachmentsResult> =>
+    ipcRenderer.invoke(PICK_ATTACHMENT_FOLDERS_CHANNEL),
   pickProjectFolders: (
     request: PickProjectFoldersRequest,
   ): Promise<PickProjectFoldersResult> =>
@@ -169,6 +195,10 @@ const pineApi: PineDesktopApi = {
     request: RespondApprovalRequest,
   ): Promise<{ accepted: boolean }> =>
     ipcRenderer.invoke(APPROVAL_RESPONSE_CHANNEL, request),
+  setApprovalMode: (
+    request: SetApprovalModeRequest,
+  ): Promise<SetApprovalModeResult> =>
+    ipcRenderer.invoke(SET_APPROVAL_MODE_CHANNEL, request),
   updateProject: (request: UpdateProjectRequest): Promise<ProjectResult> =>
     ipcRenderer.invoke(UPDATE_PROJECT_CHANNEL, request),
 };

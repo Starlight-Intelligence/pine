@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PineProject } from "../../shared/projects";
+import { serializeAttachmentMessage } from "../../shared/attachments";
 import type {
   PineContextUsage,
   PineSessionSummary,
@@ -40,6 +41,7 @@ function createAgentHost(): AgentHost {
       }),
     ),
     respondApproval: vi.fn(),
+    setApprovalMode: vi.fn().mockResolvedValue({ updated: true }),
     subscribe: vi.fn().mockReturnValue(() => undefined),
   };
 }
@@ -256,9 +258,53 @@ describe("ProjectRuntimeRegistry", () => {
         sessionSummary.id,
         "Imagine what is possible",
         undefined,
+        undefined,
+        "auto-approve",
       );
     } finally {
       await registry.dispose(3);
+    }
+  });
+
+  it("forwards direct attachment paths as read-only agent grants", async () => {
+    const agentHost = createAgentHost();
+    const prompt = vi.spyOn(agentHost, "prompt");
+    const registry = new ProjectRuntimeRegistry(agentHost, "/pine/agent");
+    const { dataRoot, project } = await createRuntimeFixture();
+    const message = serializeAttachmentMessage(
+      [
+        {
+          extension: "",
+          kind: "directory",
+          modifiedAt: "2026-09-02T12:00:00.000Z",
+          name: "references",
+          path: "/Users/example/references",
+          size: 96,
+        },
+      ],
+      "Review these references.",
+    );
+
+    try {
+      await registry.open(8, project, {
+        cacheRoot: path.join(dataRoot, "cache"),
+        projectRoot: dataRoot,
+        sessionsRoot: path.join(dataRoot, "sessions"),
+      });
+      await registry.prompt(8, {
+        message,
+        target: { kind: "new" },
+      });
+
+      expect(prompt).toHaveBeenCalledWith(
+        sessionSummary.id,
+        message,
+        undefined,
+        ["/Users/example/references"],
+        "auto-approve",
+      );
+    } finally {
+      await registry.dispose(8);
     }
   });
 
@@ -302,6 +348,8 @@ describe("ProjectRuntimeRegistry", () => {
         nextSession.id,
         "Start over",
         undefined,
+        undefined,
+        "auto-approve",
       );
     } finally {
       await registry.dispose(5);
@@ -329,6 +377,7 @@ describe("ProjectRuntimeRegistry", () => {
       await registry.prompt(6, {
         message: "Continue here",
         target: { kind: "session", sessionId: sessionSummary.id },
+        approvalMode: "let-me-review",
       });
 
       expect(createSession).toHaveBeenCalledOnce();
@@ -336,9 +385,40 @@ describe("ProjectRuntimeRegistry", () => {
         sessionSummary.id,
         "Continue here",
         undefined,
+        undefined,
+        "let-me-review",
       );
     } finally {
       await registry.dispose(6);
+    }
+  });
+
+  it("updates the active worker session when approval mode changes", async () => {
+    const agentHost = createAgentHost();
+    const setApprovalMode = vi.spyOn(agentHost, "setApprovalMode");
+    const registry = new ProjectRuntimeRegistry(agentHost, "/pine/agent");
+    const { dataRoot, project } = await createRuntimeFixture();
+
+    try {
+      await registry.open(9, project, {
+        cacheRoot: path.join(dataRoot, "cache"),
+        projectRoot: dataRoot,
+        sessionsRoot: path.join(dataRoot, "sessions"),
+      });
+      await registry.prompt(9, {
+        message: "Start here",
+        target: { kind: "new" },
+      });
+
+      await expect(
+        registry.setApprovalMode(9, "let-me-review"),
+      ).resolves.toEqual({ updated: true });
+      expect(setApprovalMode).toHaveBeenCalledWith(
+        sessionSummary.id,
+        "let-me-review",
+      );
+    } finally {
+      await registry.dispose(9);
     }
   });
 

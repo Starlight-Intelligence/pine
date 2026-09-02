@@ -3,8 +3,16 @@ import type {
   PromptSessionRequest,
   PromptSessionResult,
   RespondApprovalRequest,
+  SetApprovalModeRequest,
+  SetApprovalModeResult,
   SessionEventListener,
 } from "./agent";
+import type {
+  InspectAttachmentsRequest,
+  OpenAttachmentRequest,
+  OpenAttachmentResult,
+  PickAttachmentsResult,
+} from "./attachments";
 import type {
   LoginProviderRequest,
   LogoutProviderRequest,
@@ -118,6 +126,13 @@ export interface PineDesktopApi extends PineWindowApi {
   ) => Promise<ListProjectDirectoryResult>;
   listProjects: () => Promise<ListProjectsResult>;
   getModelCatalog: () => Promise<PineModelCatalog>;
+  getPathForFile: (file: File) => string;
+  inspectAttachments: (
+    request: InspectAttachmentsRequest,
+  ) => Promise<PickAttachmentsResult>;
+  openAttachment: (
+    request: OpenAttachmentRequest,
+  ) => Promise<OpenAttachmentResult>;
   loginProvider: (
     request: LoginProviderRequest,
   ) => Promise<ProviderLoginResult>;
@@ -137,6 +152,8 @@ export interface PineDesktopApi extends PineWindowApi {
     request: LoadSessionMessagesRequest,
   ) => Promise<LoadSessionMessagesResult>;
   openProject: (request: ProjectIdRequest) => Promise<ProjectResult>;
+  pickAttachments: () => Promise<PickAttachmentsResult>;
+  pickAttachmentFolders: () => Promise<PickAttachmentsResult>;
   pickProjectFolders: (
     request: PickProjectFoldersRequest,
   ) => Promise<PickProjectFoldersResult>;
@@ -156,5 +173,8 @@ export interface PineDesktopApi extends PineWindowApi {
   respondApproval: (
     request: RespondApprovalRequest,
   ) => Promise<{ accepted: boolean }>;
+  setApprovalMode: (
+    request: SetApprovalModeRequest,
+  ) => Promise<SetApprovalModeResult>;
   updateProject: (request: UpdateProjectRequest) => Promise<ProjectResult>;
 }

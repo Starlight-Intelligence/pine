@@ -14,7 +14,7 @@ interface DestructivePattern {
 /**
  * Heuristics for commands that are destructive or irreversible *within* the
  * sandbox's allowed scope. The sandbox cannot catch these (they only touch
- * writable paths), so agent-decides mode escalates matching commands to the
+ * writable paths), so auto-approve mode escalates matching commands to the
  * model judge before execution.
  */
 const PATTERNS: DestructivePattern[] = [

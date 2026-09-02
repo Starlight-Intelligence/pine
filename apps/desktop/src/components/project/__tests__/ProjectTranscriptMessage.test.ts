@@ -1,5 +1,5 @@
-import { mount } from "@vue/test-utils";
-import { describe, expect, it } from "vitest";
+import { flushPromises, mount } from "@vue/test-utils";
+import { describe, expect, it, vi } from "vitest";
 import { createAppI18n } from "@/app/i18n";
 import type { PineTranscriptMessage } from "@/stores/session";
 import ProjectErrorMarker from "../ProjectErrorMarker.vue";
@@ -18,16 +18,12 @@ function mountMessage(message: PineTranscriptMessage) {
 
 describe("ProjectTranscriptMessage", () => {
   it("renders completed assistant output as Markdown", () => {
-    const wrapper = mount(ProjectTranscriptMessage, {
-      props: {
-        message: {
-          createdAt: "2026-08-26T00:00:00.000Z",
-          id: "assistant-complete",
-          role: "assistant",
-          status: "complete",
-          blocks: [{ type: "text", text: "**Complete** output" }],
-        },
-      },
+    const wrapper = mountMessage({
+      createdAt: "2026-08-26T00:00:00.000Z",
+      id: "assistant-complete",
+      role: "assistant",
+      status: "complete",
+      blocks: [{ type: "text", text: "**Complete** output" }],
     });
 
     expect(wrapper.get('[data-slot="markdown-content"] strong').text()).toBe(
@@ -36,16 +32,12 @@ describe("ProjectTranscriptMessage", () => {
   });
 
   it("keeps streaming assistant output as plain text", () => {
-    const wrapper = mount(ProjectTranscriptMessage, {
-      props: {
-        message: {
-          createdAt: "2026-08-26T00:00:00.000Z",
-          id: "assistant-streaming",
-          role: "assistant",
-          status: "streaming",
-          blocks: [{ type: "text", text: "**Still streaming**" }],
-        },
-      },
+    const wrapper = mountMessage({
+      createdAt: "2026-08-26T00:00:00.000Z",
+      id: "assistant-streaming",
+      role: "assistant",
+      status: "streaming",
+      blocks: [{ type: "text", text: "**Still streaming**" }],
     });
 
     expect(wrapper.find('[data-slot="markdown-content"]').exists()).toBe(false);
@@ -53,20 +45,80 @@ describe("ProjectTranscriptMessage", () => {
   });
 
   it("keeps user messages as plain text", () => {
-    const wrapper = mount(ProjectTranscriptMessage, {
-      props: {
-        message: {
-          createdAt: "2026-08-26T00:00:00.000Z",
-          id: "user-complete",
-          role: "user",
-          status: "complete",
-          blocks: [{ type: "text", text: "**Literal prompt**" }],
-        },
-      },
+    const wrapper = mountMessage({
+      createdAt: "2026-08-26T00:00:00.000Z",
+      id: "user-complete",
+      role: "user",
+      status: "complete",
+      blocks: [{ type: "text", text: "**Literal prompt**" }],
     });
 
     expect(wrapper.find('[data-slot="markdown-content"]').exists()).toBe(false);
     expect(wrapper.text()).toContain("**Literal prompt**");
+  });
+
+  it("renders parsed attachments above the user bubble and opens them", async () => {
+    const openAttachment = vi.fn().mockResolvedValue({ opened: true });
+    Object.defineProperty(window, "pine", {
+      configurable: true,
+      value: { openAttachment },
+    });
+    const wrapper = mountMessage({
+      createdAt: "2026-09-02T12:00:00.000Z",
+      id: "user-attachment",
+      role: "user",
+      status: "complete",
+      blocks: [
+        {
+          type: "attachments",
+          attachments: [
+            {
+              extension: "md",
+              modifiedAt: "2026-09-02T11:59:00.000Z",
+              name: "notes.md",
+              path: "/Users/example/notes.md",
+              size: 1_024,
+            },
+          ],
+        },
+        { type: "text", text: "Review this." },
+      ],
+    });
+
+    const content = wrapper.get('[data-slot="message-content"]');
+    expect(content.element.children[0]?.getAttribute("data-slot")).toBe(
+      "attachment-group",
+    );
+    expect(content.element.children[1]?.getAttribute("data-slot")).toBe(
+      "bubble",
+    );
+    expect(content.element.children).toHaveLength(2);
+    expect(content.classes()).toContain("gap-1.5");
+    const attachmentGroup = wrapper.get('[data-slot="attachment-group"]');
+    expect(attachmentGroup.classes()).toEqual(
+      expect.arrayContaining(["self-end", "py-0", "gap-1.5"]),
+    );
+    expect(attachmentGroup.classes()).not.toContain("gap-3");
+    const attachment = wrapper.get('[data-slot="attachment"]');
+    expect(attachment.classes()).toContain("rounded-3xl");
+    expect(attachment.classes()).toContain(
+      "has-[>a,>button]:hover:bg-muted/50",
+    );
+    expect(attachment.classes()).toContain("hover:bg-muted/50");
+    const trigger = wrapper.get('[data-slot="attachment-trigger"]');
+    expect(trigger.attributes("aria-label")).toBe("打开附件 notes.md");
+    expect(trigger.classes()).toContain("cursor-pointer");
+    await trigger.trigger("click");
+    await flushPromises();
+    expect(openAttachment).toHaveBeenCalledWith({
+      path: "/Users/example/notes.md",
+    });
+    expect(wrapper.text()).toContain("notes.md");
+    expect(wrapper.text()).toContain("Review this.");
+    expect(wrapper.text()).not.toContain("pine_attachments");
+    expect(wrapper.get('[data-slot="bubble-content"]').text()).toBe(
+      "Review this.",
+    );
   });
 
   it("renders a single tool call in full instead of folding it", () => {

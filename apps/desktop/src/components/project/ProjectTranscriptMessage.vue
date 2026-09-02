@@ -1,10 +1,18 @@
 <script setup lang="ts">
 import { computed } from "vue";
+import { useI18n } from "vue-i18n";
+import { toast } from "vue-sonner";
 import MarkdownContent from "@/components/markdown/MarkdownContent.vue";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
 import { Message, MessageContent } from "@/components/ui/message";
-import type { PineContentBlock, PineToolCall } from "@/shared/sessions";
+import { cn } from "@/lib/utils";
+import {
+  contentBlocksToText,
+  type PineContentBlock,
+  type PineToolCall,
+} from "@/shared/sessions";
 import type { PineTranscriptMessage } from "@/stores/session";
+import ProjectAttachmentList from "./ProjectAttachmentList.vue";
 import ProjectErrorMarker from "./ProjectErrorMarker.vue";
 import ProjectThinkingMarker from "./ProjectThinkingMarker.vue";
 import ProjectToolCallGroup from "./ProjectToolCallGroup.vue";
@@ -15,13 +23,23 @@ const props = defineProps<{
   /** Keys of the tool runs currently held open by the transcript-level
    * expansion policy; absent for static history reads. */
   expandedToolRuns?: ReadonlySet<string>;
-  /** Tool calls held by the auto-reviewer (agent-decides mode). */
+  /** Tool calls held by the auto-reviewer (auto-approve mode). */
   reviewingToolCallIds?: ReadonlySet<string>;
-  /** Tool calls waiting for the user's decision (ask mode). */
+  /** Tool calls waiting for the user's decision (Let Me Review mode). */
   awaitingApprovalToolCallIds?: ReadonlySet<string>;
 }>();
 
 const isUser = computed(() => props.message.role === "user");
+const { t } = useI18n();
+
+async function openAttachment(path: string): Promise<void> {
+  try {
+    const result = await window.pine.openAttachment({ path });
+    if (!result.opened) throw new Error(result.error);
+  } catch {
+    toast.error(t("project.composer.attachmentOpenFailed"));
+  }
+}
 
 /** Stable key shared with useToolActivityExpansion's transcript-level scan. */
 function runKey(toolCalls: PineToolCall[]): string {
@@ -33,10 +51,11 @@ function runKey(toolCalls: PineToolCall[]): string {
  * messages and markdown rendering keep working regardless of where thinking /
  * tool-call markers sit in the block order.
  */
-const text = computed(() =>
-  props.message.blocks
-    .map((block) => (block.type === "text" ? block.text : ""))
-    .join("\n"),
+const text = computed(() => contentBlocksToText(props.message.blocks));
+const attachments = computed(() =>
+  props.message.blocks.flatMap((block) =>
+    block.type === "attachments" ? block.attachments : [],
+  ),
 );
 
 /**
@@ -83,7 +102,7 @@ const renderItems = computed<RenderItem[]>(() => {
 </script>
 <template>
   <Message :align="isUser ? 'end' : 'start'">
-    <MessageContent>
+    <MessageContent :class="cn(isUser && attachments.length > 0 && 'gap-1.5')">
       <!-- Non-user messages render blocks in their original order so a tool
            call that happens after body text appears after that text. -->
       <template v-if="!isUser">
@@ -133,12 +152,21 @@ const renderItems = computed<RenderItem[]>(() => {
         </template>
       </template>
 
-      <!-- User messages are plain text in a secondary bubble. -->
-      <Bubble v-else variant="secondary">
-        <BubbleContent class="whitespace-pre-wrap">
-          {{ text }}
-        </BubbleContent>
-      </Bubble>
+      <!-- User attachments sit above and align with the secondary bubble. -->
+      <template v-else>
+        <ProjectAttachmentList
+          v-if="attachments.length > 0"
+          class="max-w-[80%] self-end py-0"
+          :attachments="attachments"
+          surface="message"
+          @open="openAttachment"
+        />
+        <Bubble v-if="text" variant="secondary">
+          <BubbleContent class="whitespace-pre-wrap">
+            {{ text }}
+          </BubbleContent>
+        </Bubble>
+      </template>
     </MessageContent>
   </Message>
 </template>

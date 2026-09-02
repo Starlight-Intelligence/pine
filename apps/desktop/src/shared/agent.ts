@@ -2,17 +2,18 @@ import type { PineSessionSummary } from "./sessions";
 
 export const PROMPT_SESSION_CHANNEL = "sessions:prompt" as const;
 export const ABORT_SESSION_CHANNEL = "sessions:abort" as const;
+export const SET_APPROVAL_MODE_CHANNEL = "sessions:set-approval-mode" as const;
 export const SESSION_EVENT_CHANNEL = "sessions:event" as const;
 
 /**
  * How strictly Pine gates the agent's tool calls.
  *
- * - `ask-for-permission`: confirm every tool call before it runs.
- * - `agent-decides`: let the agent decide which actions need confirmation.
- * - `yolo`: close all sandboxes and grant the agent full permissions, keeping
- *   only whatever guardrails the pi harness itself provides.
+ * - `let-me-review`: ask the user to review operations that need approval.
+ * - `auto-approve`: let AI assess and approve operations automatically.
+ * - `yolo`: disable every Pine sandbox, folder restriction, and approval
+ *   gate; expose privileged bash instead of ordinary bash.
  */
-export type PineApprovalMode = "ask-for-permission" | "agent-decides" | "yolo";
+export type PineApprovalMode = "let-me-review" | "auto-approve" | "YOLO";
 
 /** Why a tool call needed an approval decision before it could proceed. */
 export type PineApprovalTrigger =
@@ -29,6 +30,14 @@ export interface RespondApprovalRequest {
   action: PineApprovalAction;
   /** Required when action is "guide": steering text fed back to the agent. */
   guidance?: string;
+}
+
+export interface SetApprovalModeRequest {
+  approvalMode: PineApprovalMode;
+}
+
+export interface SetApprovalModeResult {
+  updated: boolean;
 }
 
 export const APPROVAL_RESPONSE_CHANNEL = "sessions:approval-response" as const;
@@ -112,7 +121,7 @@ export type PineAgentEvent =
       requestId: string;
       toolCallId: string;
       verdict: "approved" | "denied";
-      /** Who decided: the user (ask mode) or the model judge (agent-decides). */
+      /** Who decided: the user (Let Me Review) or the model judge (Auto Approve). */
       decidedBy: "user" | "judge";
       reason?: string;
     }
@@ -135,7 +144,7 @@ export interface PromptSessionRequest {
       };
   streamingBehavior?: "follow-up" | "steer";
   /** Sandbox/permission mode for the targeted session. Defaults to
-   * `agent-decides` when omitted. */
+   * `auto-approve` when omitted. */
   approvalMode?: PineApprovalMode;
 }
 

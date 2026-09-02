@@ -18,7 +18,7 @@ import {
 } from "@earendil-works/pi-ai";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
-import type { PineAgentEvent } from "../shared/agent";
+import type { PineAgentEvent, PineApprovalMode } from "../shared/agent";
 import type {
   PineAuthType,
   PineModelCatalog,
@@ -27,6 +27,7 @@ import type {
   ProviderLoginResult,
 } from "../shared/models";
 import type { PineContextUsage, PineSessionSummary } from "../shared/sessions";
+import { parseAttachmentMessage } from "../shared/attachments";
 import {
   type AgentSessionLocation,
   type AgentWorkerPromptResult,
@@ -35,7 +36,10 @@ import {
   toErrorMessage,
   toPineJsonValue,
 } from "./protocol";
-import { PINE_SYSTEM_PROMPT } from "./system-prompt";
+import {
+  PINE_SYSTEM_PROMPT,
+  systemPromptForApprovalMode,
+} from "./system-prompt";
 import {
   AutoReviewGate,
   RULING_TOOL,
@@ -47,7 +51,7 @@ import {
   type ToolGate,
   type UserApprovalRequest,
 } from "./gate";
-import { createPineToolDefinitions } from "./tools";
+import { createPineToolDefinitions, PineAttachedPathAccess } from "./tools";
 
 const JUDGE_TIMEOUT_MS = 60_000;
 
@@ -167,10 +171,12 @@ interface LiveAgentSession {
   session: AgentSession;
   unsubscribe: () => void;
   agentDir: string;
-  /** Null in YOLO mode (no gate at all). */
-  gate: ToolGate | null;
+  approvalMode: PineApprovalMode;
+  gate: ToolGate;
   /** Latest user/assistant context fed to gate reviews. */
   turn: GateTurnContext;
+  /** Paths directly attached by the user; read-only for file tools. */
+  attachedPaths: PineAttachedPathAccess;
 }
 
 export interface PineAgentRuntimeOptions {
@@ -214,6 +220,74 @@ function sessionSummary(session: AgentSession): PineSessionSummary {
     messageCount: messages.length,
     ...(session.sessionName ? { name: session.sessionName } : {}),
   };
+}
+
+export function toolNamesForApprovalMode(
+  activeToolNames: readonly string[],
+  approvalMode: PineApprovalMode,
+): string[] {
+  const withoutBash = activeToolNames.filter((name) => name !== "bash");
+  if (approvalMode === "YOLO") return withoutBash;
+  if (withoutBash.length !== activeToolNames.length) {
+    return [...activeToolNames];
+  }
+  const readIndex = withoutBash.indexOf("read");
+  const privilegedIndex = withoutBash.indexOf("privileged_bash");
+  const insertionIndex =
+    readIndex !== -1
+      ? readIndex + 1
+      : privilegedIndex === -1
+        ? withoutBash.length
+        : privilegedIndex;
+  return [
+    ...withoutBash.slice(0, insertionIndex),
+    "bash",
+    ...withoutBash.slice(insertionIndex),
+  ];
+}
+
+function textFromMessageContent(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content
+    .flatMap((part) => {
+      if (typeof part !== "object" || part === null || Array.isArray(part)) {
+        return [];
+      }
+      const text = (part as Record<string, unknown>).text;
+      return typeof text === "string" ? [text] : [];
+    })
+    .join("\n");
+}
+
+/** Recover direct user attachment grants when reopening a persisted session. */
+export function attachedPathsFromSessionEntries(
+  entries: readonly unknown[],
+): string[] {
+  const paths = new Set<string>();
+  for (const value of entries) {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+      continue;
+    }
+    const entry = value as Record<string, unknown>;
+    if (entry.type !== "message") continue;
+    const message = entry.message;
+    if (
+      typeof message !== "object" ||
+      message === null ||
+      Array.isArray(message) ||
+      (message as Record<string, unknown>).role !== "user"
+    ) {
+      continue;
+    }
+    const content = textFromMessageContent(
+      (message as Record<string, unknown>).content,
+    );
+    for (const attachment of parseAttachmentMessage(content).attachments) {
+      if (attachment.path.length <= 4_096) paths.add(attachment.path);
+    }
+  }
+  return [...paths];
 }
 
 /**
@@ -276,8 +350,12 @@ export class PineAgentRuntime {
     sessionId: string,
     message: string,
     streamingBehavior?: "followUp" | "steer",
+    attachedPaths: readonly string[] = [],
+    approvalMode: PineApprovalMode = "auto-approve",
   ): Promise<AgentWorkerPromptResult> {
     const live = this.getSession(sessionId);
+    this.setApprovalMode(live, approvalMode);
+    await live.attachedPaths.grant(attachedPaths);
     live.turn.lastUserPrompt = message;
     live.gate?.resetTurn();
     let accepted = false;
@@ -329,6 +407,14 @@ export class PineAgentRuntime {
       this.options.emit({ type: "run-state", sessionId, state: "idle" });
     }
     return { aborted };
+  }
+
+  setSessionApprovalMode(
+    sessionId: string,
+    approvalMode: PineApprovalMode,
+  ): { updated: boolean } {
+    this.setApprovalMode(this.getSession(sessionId), approvalMode);
+    return { updated: true };
   }
 
   renameSession(sessionId: string, name: string): AgentWorkerSessionResult {
@@ -545,32 +631,55 @@ export class PineAgentRuntime {
       location.agentDir,
       { projectTrusted: false },
     );
+    const attachedPaths = new PineAttachedPathAccess();
+    await attachedPaths.grant(
+      attachedPathsFromSessionEntries(sessionManager.getEntries()),
+    );
+    const live: LiveAgentSession = {
+      session: undefined as never,
+      unsubscribe: () => undefined,
+      agentDir: location.agentDir,
+      approvalMode: location.approvalMode ?? "auto-approve",
+      gate: undefined as never,
+      turn: {},
+      attachedPaths,
+    };
     const resourceLoader = new DefaultResourceLoader({
       cwd: location.cwd,
       agentDir: location.agentDir,
       settingsManager,
       noExtensions: true,
+      extensionFactories: [
+        {
+          name: "pine-approval-mode",
+          factory: (pi) => {
+            pi.on("before_agent_start", (event) => {
+              const systemPrompt = systemPromptForApprovalMode(
+                event.systemPrompt,
+                live.approvalMode,
+              );
+              return systemPrompt ? { systemPrompt } : undefined;
+            });
+          },
+        },
+      ],
       noThemes: true,
       systemPromptOverride: () => PINE_SYSTEM_PROMPT,
     });
     await resourceLoader.reload();
-    const live: LiveAgentSession = {
-      session: undefined as never,
-      unsubscribe: () => undefined,
-      agentDir: location.agentDir,
-      gate: null,
-      turn: {},
-    };
-    if (
-      location.approvalMode === "ask-for-permission" ||
-      location.approvalMode === "agent-decides"
-    ) {
-      live.gate = this.createGate(
-        live,
-        location.approvalMode === "ask-for-permission" ? "user" : "auto",
-      );
-    }
-    const customTools = await createPineToolDefinitions(location, live.gate);
+    live.gate = this.createGate(
+      live,
+      live.approvalMode === "let-me-review" ? "user" : "auto",
+    );
+    const customTools = await createPineToolDefinitions(
+      location,
+      live.gate,
+      attachedPaths,
+      {
+        getApprovalMode: () => live.approvalMode,
+        getGate: () => live.gate,
+      },
+    );
 
     const { session } = await createAgentSession({
       cwd: location.cwd,
@@ -586,6 +695,7 @@ export class PineAgentRuntime {
       tools: customTools.map((tool) => tool.name),
     });
     live.session = session;
+    this.syncApprovalModeTools(live);
     live.unsubscribe = session.subscribe((event) =>
       this.forwardEvent(session, event),
     );
@@ -615,6 +725,35 @@ export class PineAgentRuntime {
     return mode === "user"
       ? new UserApprovalGate(host)
       : new AutoReviewGate(host);
+  }
+
+  private setApprovalMode(
+    live: LiveAgentSession,
+    approvalMode: PineApprovalMode,
+  ): void {
+    if (live.approvalMode !== approvalMode) {
+      live.approvalMode = approvalMode;
+      live.gate = this.createGate(
+        live,
+        approvalMode === "let-me-review" ? "user" : "auto",
+      );
+    }
+    this.syncApprovalModeTools(live);
+  }
+
+  private syncApprovalModeTools(live: LiveAgentSession): void {
+    const activeToolNames = live.session.getActiveToolNames();
+    const nextToolNames = toolNamesForApprovalMode(
+      activeToolNames,
+      live.approvalMode,
+    );
+    if (
+      nextToolNames.length === activeToolNames.length &&
+      nextToolNames.every((name, index) => name === activeToolNames[index])
+    ) {
+      return;
+    }
+    live.session.setActiveToolsByName(nextToolNames);
   }
 
   /** Cross-process round trip: renderer answers, worker resumes. */

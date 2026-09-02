@@ -1,3 +1,5 @@
+import { parseAttachmentMessage, type PineAttachment } from "./attachments";
+
 export const SEARCH_SESSIONS_CHANNEL = "sessions:search" as const;
 export const RESUME_SESSION_CHANNEL = "sessions:resume" as const;
 export const LOAD_SESSION_MESSAGES_CHANNEL = "sessions:messages" as const;
@@ -29,6 +31,7 @@ export interface PineSessionError {
 
 export type PineContentBlock =
   | { type: "text"; text: string }
+  | { type: "attachments"; attachments: PineAttachment[] }
   | { type: "thinking"; thinking: string }
   | { type: "toolCall"; toolCall: PineToolCall }
   | { type: "error"; error: PineSessionError };
@@ -95,7 +98,22 @@ export function parseMessageBlocks(message: unknown): PineContentBlock[] {
   }
 
   const record = message as Record<string, unknown>;
-  const blocks = parseContentBlocks(record.content);
+  let blocks = parseContentBlocks(record.content);
+  if (record.role === "user") {
+    blocks = blocks.flatMap((block): PineContentBlock[] => {
+      if (block.type !== "text") return [block];
+      const parsed = parseAttachmentMessage(block.text);
+      return [
+        ...(parsed.attachments.length > 0
+          ? [{ type: "attachments" as const, attachments: parsed.attachments }]
+          : []),
+        ...(parsed.prompt
+          ? [{ type: "text" as const, text: parsed.prompt }]
+          : []),
+      ];
+    });
+    return blocks;
+  }
   if (record.role !== "assistant") return blocks;
 
   if (record.stopReason === "error") {

@@ -17,6 +17,7 @@ import {
   createMacOsBashSandboxProfile,
   createPineToolDefinitions,
   matchSandboxDenial,
+  PineAttachedPathAccess,
   PineToolAccessPolicy,
   SandboxDeniedError,
 } from "../tools";
@@ -137,6 +138,35 @@ describe("PineToolAccessPolicy", () => {
     );
 
     await expect(policy.authorize(linkPath, "read")).rejects.toThrow(
+      "outside the folders shared with Pine",
+    );
+  });
+
+  it("grants attached files and folder descendants read-only access", async () => {
+    const { location, outside } = await createFixture();
+    const attachedFile = path.join(outside, "attached.txt");
+    const attachedFolder = path.join(outside, "references");
+    const nestedFile = path.join(attachedFolder, "nested.txt");
+    await mkdir(attachedFolder);
+    await Promise.all([
+      writeFile(attachedFile, "attached"),
+      writeFile(nestedFile, "nested"),
+    ]);
+    const attachedPaths = new PineAttachedPathAccess();
+    await attachedPaths.grant([attachedFile, attachedFolder]);
+    const policy = await PineToolAccessPolicy.create(
+      location.cwd,
+      location.folders,
+      attachedPaths,
+    );
+
+    await expect(policy.authorize(attachedFile, "read")).resolves.toBe(
+      await realpath(attachedFile),
+    );
+    await expect(policy.authorize(nestedFile, "read")).resolves.toBe(
+      await realpath(nestedFile),
+    );
+    await expect(policy.authorize(attachedFile, "write")).rejects.toThrow(
       "outside the folders shared with Pine",
     );
   });
@@ -561,6 +591,54 @@ describe("createPineToolDefinitions", () => {
     );
   });
 
+  it("reads attached paths without review but still reviews edits", async () => {
+    const { location, outside } = await createFixture();
+    const attachedFile = path.join(outside, "attached.txt");
+    await writeFile(attachedFile, "before");
+    const attachedPaths = new PineAttachedPathAccess();
+    await attachedPaths.grant([attachedFile]);
+    const gate = createFakeGate({
+      reviewDenial: () =>
+        Promise.resolve({ kind: "deny" as const, reason: "write denied" }),
+    });
+    const tools = await createPineToolDefinitions(
+      location,
+      gate,
+      attachedPaths,
+    );
+    const read = tools.find((tool) => tool.name === "read");
+    const edit = tools.find((tool) => tool.name === "edit");
+    if (!read || !edit) throw new Error("File tools are missing.");
+
+    await expect(
+      read.execute(
+        "read-attachment",
+        { path: attachedFile },
+        undefined,
+        undefined,
+        undefined as never,
+      ),
+    ).resolves.toBeDefined();
+    expect(gate.reviewDenial).not.toHaveBeenCalled();
+
+    await expect(
+      edit.execute(
+        "edit-attachment",
+        {
+          edits: [{ newText: "after", oldText: "before" }],
+          path: attachedFile,
+        },
+        undefined,
+        undefined,
+        undefined as never,
+      ),
+    ).rejects.toThrow("write denied");
+    expect(gate.reviewDenial).toHaveBeenCalledWith(
+      "authorize",
+      expect.objectContaining({ toolName: "edit", subject: attachedFile }),
+    );
+  });
+
   it("propagates the gate's pre-execution denial for file tools", async () => {
     const { location } = await createFixture();
     const gate = createFakeGate({
@@ -586,7 +664,7 @@ describe("createPineToolDefinitions", () => {
     const { location: fixtureLocation } = await createFixture();
     const location = {
       ...fixtureLocation,
-      approvalMode: "ask-for-permission" as const,
+      approvalMode: "let-me-review" as const,
     };
     const gate = createFakeGate({
       reviewBashCommand: () =>
@@ -649,11 +727,11 @@ describe("createPineToolDefinitions", () => {
     expect(privileged.promptSnippet).not.toContain("fixed-allow");
   });
 
-  it("reviews privileged bash once in ask-for-permission mode", async () => {
+  it("reviews privileged bash once in let-me-review mode", async () => {
     const { location: fixtureLocation } = await createFixture();
     const location = {
       ...fixtureLocation,
-      approvalMode: "ask-for-permission" as const,
+      approvalMode: "let-me-review" as const,
     };
     const gate = createFakeGate();
     const tools = await createPineToolDefinitions(location, gate);
@@ -693,14 +771,64 @@ describe("createPineToolDefinitions", () => {
     ).rejects.toThrow("unsafe");
   });
 
-  it("does not expose redundant privileged bash in yolo mode", async () => {
+  it("exposes privileged bash without review in yolo mode", async () => {
     const { location } = await createFixture();
-    const tools = await createPineToolDefinitions({
-      ...location,
-      approvalMode: "yolo",
+    const gate = createFakeGate({
+      reviewPrivilegedCall: () =>
+        Promise.resolve({ kind: "deny" as const, reason: "should be skipped" }),
     });
+    const tools = await createPineToolDefinitions(
+      { ...location, approvalMode: "YOLO" },
+      gate,
+    );
+    const privileged = tools.find((tool) => tool.name === "privileged_bash");
+    if (!privileged)
+      throw new Error("Privileged bash tool was not registered.");
 
-    expect(tools.some((tool) => tool.name === "privileged_bash")).toBe(false);
+    await expect(
+      privileged.execute(
+        "privileged-yolo",
+        { command: "printf yolo", description: "test native shell" },
+        undefined,
+        undefined,
+        undefined as never,
+      ),
+    ).resolves.toBeDefined();
+    expect(gate.reviewPrivilegedCall).not.toHaveBeenCalled();
+  });
+
+  it("uses the latest approval mode without rebuilding the session tools", async () => {
+    const { location } = await createFixture();
+    let approvalMode: "auto-approve" | "YOLO" = "auto-approve";
+    const gate = createFakeGate();
+    const tools = await createPineToolDefinitions(location, gate, undefined, {
+      getApprovalMode: () => approvalMode,
+      getGate: () => gate,
+    });
+    const privileged = tools.find((tool) => tool.name === "privileged_bash");
+    if (!privileged)
+      throw new Error("Privileged bash tool was not registered.");
+
+    await privileged.execute(
+      "privileged-reviewed",
+      { command: "printf reviewed", description: "test reviewed shell" },
+      undefined,
+      undefined,
+      undefined as never,
+    );
+    approvalMode = "YOLO";
+    await privileged.execute(
+      "privileged-yolo",
+      { command: "printf yolo", description: "test yolo shell" },
+      undefined,
+      undefined,
+      undefined as never,
+    );
+
+    expect(gate.reviewPrivilegedCall).toHaveBeenCalledOnce();
+    expect(gate.reviewPrivilegedCall).toHaveBeenCalledWith(
+      expect.objectContaining({ toolCallId: "privileged-reviewed" }),
+    );
   });
 
   it.runIf(process.platform === "darwin" && !process.env.CODEX_SANDBOX)(
@@ -736,58 +864,85 @@ describe("createPineToolDefinitions", () => {
     expect(error.outputTail).toContain("operation not permitted");
   });
 
-  it("yolo mode grants file tools access beyond the shared folders", async () => {
+  it("YOLO mode lets file tools bypass shared-folder restrictions", async () => {
     const { location, outside } = await createFixture();
-    const tools = await createPineToolDefinitions({
-      ...location,
-      approvalMode: "yolo",
-    });
-    const read = tools.find((tool) => tool.name === "read");
+    const gate = createFakeGate();
+    const tools = await createPineToolDefinitions(
+      { ...location, approvalMode: "YOLO" },
+      gate,
+    );
     const write = tools.find((tool) => tool.name === "write");
-    if (!read || !write) throw new Error("File tools are missing.");
+    if (!write) throw new Error("Write tool is missing.");
     const outsideFile = path.join(outside, "yolo.txt");
     await write.execute(
       "write-yolo",
-      { content: "yolo", path: outsideFile },
+      { content: "YOLO", path: outsideFile },
+      undefined,
+      undefined,
+      undefined as never,
+    );
+    await expect(readFile(outsideFile, "utf8")).resolves.toBe("YOLO");
+    expect(gate.reviewFileCall).not.toHaveBeenCalled();
+    expect(gate.reviewDenial).not.toHaveBeenCalled();
+  });
+
+  it("applies unrestricted file access after switching to YOLO", async () => {
+    const { location, outside } = await createFixture();
+    let approvalMode: "auto-approve" | "YOLO" = "auto-approve";
+    const gate = createFakeGate();
+    const tools = await createPineToolDefinitions(location, gate, undefined, {
+      getApprovalMode: () => approvalMode,
+      getGate: () => gate,
+    });
+    const write = tools.find((tool) => tool.name === "write");
+    if (!write) throw new Error("Write tool is missing.");
+    const outsideFile = path.join(outside, "dynamic-yolo.txt");
+
+    approvalMode = "YOLO";
+    await write.execute(
+      "dynamic-write-yolo",
+      { content: "unrestricted", path: outsideFile },
+      undefined,
+      undefined,
+      undefined as never,
+    );
+
+    await expect(readFile(outsideFile, "utf8")).resolves.toBe("unrestricted");
+    expect(gate.reviewFileCall).not.toHaveBeenCalled();
+  });
+
+  it("YOLO mode disables ordinary bash and only runs privileged bash", async () => {
+    const { location, outside } = await createFixture();
+    const tools = await createPineToolDefinitions({
+      ...location,
+      approvalMode: "YOLO",
+    });
+    const bash = tools.find((tool) => tool.name === "bash");
+    const privileged = tools.find((tool) => tool.name === "privileged_bash");
+    if (!bash || !privileged) throw new Error("Bash tools are missing.");
+    const outsideFile = path.join(outside, "yolo-shell.txt");
+    await expect(
+      bash.execute(
+        "yolo-shell",
+        {
+          command: `printf yolo > ${JSON.stringify(outsideFile)}`,
+          description: "test disabled shell",
+        },
+        undefined,
+        undefined,
+        undefined as never,
+      ),
+    ).rejects.toThrow("Ordinary bash is disabled in YOLO mode");
+    await privileged.execute(
+      "privileged-yolo-shell",
+      {
+        command: `printf yolo > ${JSON.stringify(outsideFile)}`,
+        description: "test native shell",
+      },
       undefined,
       undefined,
       undefined as never,
     );
     await expect(readFile(outsideFile, "utf8")).resolves.toBe("yolo");
-    await expect(
-      read.execute(
-        "read-yolo",
-        { path: outsideFile },
-        undefined,
-        undefined,
-        undefined as never,
-      ),
-    ).resolves.toEqual(
-      expect.objectContaining({
-        content: [expect.objectContaining({ text: "yolo" })],
-      }),
-    );
   });
-
-  it.runIf(process.platform === "darwin" && !process.env.CODEX_SANDBOX)(
-    "yolo mode runs shell commands without the sandbox",
-    async () => {
-      const { location, outside } = await createFixture();
-      const tools = await createPineToolDefinitions({
-        ...location,
-        approvalMode: "yolo",
-      });
-      const bash = tools.find((tool) => tool.name === "bash");
-      if (!bash) throw new Error("Bash tool was not registered.");
-      const outsideFile = path.join(outside, "yolo-shell.txt");
-      await bash.execute(
-        "yolo-shell",
-        { command: `printf yolo > ${JSON.stringify(outsideFile)}` },
-        undefined,
-        undefined,
-        undefined as never,
-      );
-      await expect(readFile(outsideFile, "utf8")).resolves.toBe("yolo");
-    },
-  );
 });

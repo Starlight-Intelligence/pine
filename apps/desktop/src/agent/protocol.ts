@@ -23,8 +23,8 @@ export interface AgentSessionLocation {
   cwd: string;
   folders: AgentFolderGrant[];
   sessionsRoot: string;
-  /** Sandbox/permission mode for the session. `yolo` disables Pine's folder
-   * grants and shell sandbox; omitted defaults to `agent-decides`. */
+  /** Initial permission mode for the session. YOLO bypasses all Pine sandbox,
+   * folder, and approval controls; omitted defaults to `auto-approve`. */
   approvalMode?: PineApprovalMode;
 }
 
@@ -56,12 +56,21 @@ export type AgentWorkerRequest =
       type: "session:prompt";
       sessionId: string;
       message: string;
+      /** User-selected attachment paths granted read-only access. */
+      attachedPaths?: string[];
+      approvalMode?: PineApprovalMode;
       streamingBehavior?: "followUp" | "steer";
     }
   | {
       id: string;
       type: "session:abort";
       sessionId: string;
+    }
+  | {
+      id: string;
+      type: "session:set-approval-mode";
+      sessionId: string;
+      approvalMode: PineApprovalMode;
     }
   | {
       id: string;
@@ -140,7 +149,8 @@ export type AgentWorkerResult =
   | { accepted: boolean }
   | { aborted: boolean }
   | { cancelled: boolean }
-  | { disposed: boolean };
+  | { disposed: boolean }
+  | { updated: boolean };
 
 export type AgentWorkerMessage =
   | { type: "ready" }

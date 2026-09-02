@@ -22,9 +22,9 @@ const props = defineProps<{
    * response stay open until it ends. Absent for static history — the reader
    * can still toggle any run manually. */
   expanded?: boolean;
-  /** Tool calls held by the auto-reviewer (agent-decides mode). */
+  /** Tool calls held by the auto-reviewer (auto-approve mode). */
   reviewingToolCallIds?: ReadonlySet<string>;
-  /** Tool calls waiting for the user's decision (ask mode). */
+  /** Tool calls waiting for the user's decision (Let Me Review mode). */
   awaitingApprovalToolCallIds?: ReadonlySet<string>;
 }>();
 const { locale, t } = useI18n();

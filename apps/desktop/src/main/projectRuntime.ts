@@ -24,6 +24,7 @@ import type { ProjectDataPaths } from "./projects/projectRepository";
 import { ProjectSessionService } from "./sessions";
 import type { AgentHost } from "./agentProcessHost";
 import type { GateDecision } from "../agent/protocol";
+import { parseAttachmentMessage } from "../shared/attachments";
 
 /** Maps the renderer's approval action to the worker-side gate decision. */
 function toGateDecision(request: RespondApprovalRequest): GateDecision {
@@ -88,7 +89,7 @@ export class ProjectRuntimeRegistry {
       sessionsRoot: dataPaths.sessionsRoot,
     });
     this.runtimes.set(webContentsId, {
-      approvalMode: "agent-decides",
+      approvalMode: "auto-approve",
       dataPaths,
       project,
       session: { status: "idle" },
@@ -249,17 +250,25 @@ export class ProjectRuntimeRegistry {
     request: PromptSessionRequest,
   ): Promise<PromptSessionResult> {
     const runtime = this.get(webContentsId);
-    runtime.approvalMode = request.approvalMode ?? "agent-decides";
+    runtime.approvalMode = request.approvalMode ?? "auto-approve";
     const activeSession =
       request.target.kind === "new"
         ? await this.createNewSession(webContentsId)
         : (await this.resume(webContentsId, request.target.sessionId)).session;
+    const attachedPaths = parseAttachmentMessage(request.message)
+      .attachments.map((attachment) => attachment.path)
+      .filter((attachmentPath) => attachmentPath.length <= 4_096)
+      .slice(0, 100);
+    const streamingBehavior =
+      request.streamingBehavior === "follow-up"
+        ? "followUp"
+        : request.streamingBehavior;
     const result = await this.agentHost.prompt(
       activeSession.id,
       request.message,
-      request.streamingBehavior === "follow-up"
-        ? "followUp"
-        : request.streamingBehavior,
+      streamingBehavior,
+      attachedPaths.length > 0 ? attachedPaths : undefined,
+      runtime.approvalMode,
     );
     if (
       runtime.session.status === "active" &&
@@ -279,6 +288,19 @@ export class ProjectRuntimeRegistry {
     const sessionId = runtime.session.summary.id;
     const result = await this.agentHost.abort(sessionId);
     return { ...result, sessionId };
+  }
+
+  async setApprovalMode(
+    webContentsId: number,
+    approvalMode: PineApprovalMode,
+  ): Promise<{ updated: boolean }> {
+    const runtime = this.get(webContentsId);
+    runtime.approvalMode = approvalMode;
+    if (runtime.session.status !== "active") return { updated: false };
+    return this.agentHost.setApprovalMode(
+      runtime.session.summary.id,
+      approvalMode,
+    );
   }
 
   getModelCatalog(): Promise<PineModelCatalog> {

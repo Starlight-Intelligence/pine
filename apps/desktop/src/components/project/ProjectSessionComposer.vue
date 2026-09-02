@@ -3,6 +3,8 @@ import type { Component } from "vue";
 import {
   ArrowUpIcon,
   ChevronDownIcon,
+  FileIcon,
+  FolderIcon,
   PlusIcon,
   SearchIcon,
   ShieldCheckIcon,
@@ -13,10 +15,22 @@ import {
 import { storeToRefs } from "pinia";
 import { computed, onMounted, ref, useId } from "vue";
 import { useI18n } from "vue-i18n";
+import { toast } from "vue-sonner";
 import ModelPickerDialog from "@/components/models/ModelPickerDialog.vue";
 import ProviderIcon from "@/components/models/ProviderIcon.vue";
 import ProjectApprovalCard from "@/components/project/ProjectApprovalCard.vue";
+import ProjectAttachmentList from "@/components/project/ProjectAttachmentList.vue";
 import ContextUsageIndicator from "@/components/project/ContextUsageIndicator.vue";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -46,19 +60,23 @@ import {
 } from "@/components/ui/tooltip";
 import { formatTokenCount } from "@/lib/format-token-count";
 import { cn } from "@/lib/utils";
-import type { PineApprovalAction } from "@/shared/agent";
+import type { PineApprovalAction, PineApprovalMode } from "@/shared/agent";
+import {
+  serializeAttachmentMessage,
+  type PineAttachment,
+} from "@/shared/attachments";
 import type { PineThinkingLevel } from "@/shared/models";
 import type { PinePendingApproval } from "@/stores/session";
 import { pineModelKey, useModelsStore } from "@/stores/models";
 
-type ApprovalMode = "ask-for-permission" | "agent-decides" | "yolo";
+type ApprovalMode = PineApprovalMode;
 
 const approvalModeColorClasses: Record<ApprovalMode, string> = {
   // Warning tone: manual supervision mode needs your attention, sitting
-  // between the neutral agent-decides and the destructive yolo.
-  "ask-for-permission": "text-warning",
-  "agent-decides": "text-foreground",
-  yolo: "text-destructive",
+  // between the neutral Auto Approve and the destructive YOLO mode.
+  "let-me-review": "text-warning",
+  "auto-approve": "text-foreground",
+  YOLO: "text-destructive",
 };
 interface ApprovalModeOption {
   value: ApprovalMode;
@@ -84,7 +102,7 @@ const props = withDefaults(
 
 const message = defineModel<string>({ default: "" });
 const approvalMode = defineModel<ApprovalMode>("approvalMode", {
-  default: "agent-decides",
+  default: "auto-approve",
 });
 const { t } = useI18n();
 const modelsStore = useModelsStore();
@@ -92,26 +110,31 @@ const { favoriteModels, featuredModels, selectedModel, selection } =
   storeToRefs(modelsStore);
 const messageId = useId();
 const isModelPickerOpen = ref(false);
+const isYoloConfirmationOpen = ref(false);
+const attachments = defineModel<PineAttachment[]>("attachments", {
+  default: () => [],
+});
 const canSubmit = computed(
   () =>
     props.isRunning ||
-    (message.value.trim().length > 0 && selectedModel.value !== undefined),
+    ((message.value.trim().length > 0 || attachments.value.length > 0) &&
+      selectedModel.value !== undefined),
 );
 const approvalModes = computed<ApprovalModeOption[]>(() => [
   {
-    value: "ask-for-permission",
+    value: "let-me-review",
     label: t("project.composer.approval.askForPermissionLabel"),
     description: t("project.composer.approval.askForPermission"),
     icon: ShieldIcon,
   },
   {
-    value: "agent-decides",
+    value: "auto-approve",
     label: t("project.composer.approval.agentDecidesLabel"),
     description: t("project.composer.approval.agentDecides"),
     icon: ShieldCheckIcon,
   },
   {
-    value: "yolo",
+    value: "YOLO",
     label: t("project.composer.approval.yoloLabel"),
     description: t("project.composer.approval.yolo"),
     icon: ShieldOffIcon,
@@ -132,6 +155,25 @@ const thinkingLevelTooltips = computed<
   off: t("models.thinkingLevelWarnings.off"),
 }));
 
+function selectApprovalMode(value: unknown): void {
+  if (value === "YOLO") {
+    isYoloConfirmationOpen.value = true;
+    return;
+  }
+  if (value === "let-me-review" || value === "auto-approve") {
+    approvalMode.value = value;
+  }
+}
+
+function requestYoloConfirmation(value: ApprovalMode): void {
+  if (value === "YOLO") isYoloConfirmationOpen.value = true;
+}
+
+function confirmYoloMode(): void {
+  approvalMode.value = "YOLO";
+  isYoloConfirmationOpen.value = false;
+}
+
 onMounted(() => void modelsStore.load());
 
 function submitMessage(): void {
@@ -140,9 +182,41 @@ function submitMessage(): void {
     return;
   }
   const normalizedMessage = message.value.trim();
-  if (!normalizedMessage) return;
+  if (!normalizedMessage && attachments.value.length === 0) return;
 
-  emit("submit", normalizedMessage);
+  emit(
+    "submit",
+    serializeAttachmentMessage(attachments.value, normalizedMessage),
+  );
+  attachments.value = [];
+}
+
+function mergeAttachments(selected: readonly PineAttachment[]): void {
+  const byPath = new Map(
+    attachments.value.map((attachment) => [attachment.path, attachment]),
+  );
+  for (const attachment of selected) {
+    byPath.set(attachment.path, attachment);
+  }
+  attachments.value = [...byPath.values()];
+}
+
+async function pickAttachments(kind: "directory" | "file"): Promise<void> {
+  try {
+    const result =
+      kind === "directory"
+        ? await window.pine.pickAttachmentFolders()
+        : await window.pine.pickAttachments();
+    mergeAttachments(result.attachments);
+  } catch {
+    toast.error(t("project.composer.attachmentPickerFailed"));
+  }
+}
+
+function removeAttachment(path: string): void {
+  attachments.value = attachments.value.filter(
+    (attachment) => attachment.path !== path,
+  );
 }
 
 function handleKeydown(event: KeyboardEvent): void {
@@ -210,28 +284,55 @@ function openModelPicker(): void {
       v-else
       class="session-composer-control min-h-[var(--session-composer-control-height)] rounded-[var(--session-composer-control-radius)] has-[textarea]:rounded-[var(--session-composer-control-radius)]"
     >
+      <ProjectAttachmentList
+        v-if="attachments.length > 0"
+        class="session-composer-attachments absolute inset-x-[var(--session-composer-control-inset)] top-[var(--session-composer-control-inset)] py-0"
+        :attachments="attachments"
+        removable
+        surface="composer"
+        @remove="removeAttachment"
+      />
+
       <InputGroupAddon class="self-end py-1.5 pl-2.5" align="inline-start">
-        <Tooltip>
-          <TooltipTrigger as-child>
+        <DropdownMenu>
+          <DropdownMenuTrigger as-child>
             <InputGroupButton
+              data-slot="attachment-menu-trigger"
               class="size-[var(--session-composer-action-size)] shrink-0 rounded-full"
               size="icon-sm"
+              type="button"
               variant="secondary"
               :aria-label="t('project.composer.addAttachment')"
             >
               <PlusIcon />
             </InputGroupButton>
-          </TooltipTrigger>
-          <TooltipContent side="top">
-            {{ t("project.composer.addAttachment") }}
-          </TooltipContent>
-        </Tooltip>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" side="top">
+            <DropdownMenuGroup>
+              <DropdownMenuItem @select="pickAttachments('file')">
+                <FileIcon />
+                {{ t("project.composer.addFile") }}
+              </DropdownMenuItem>
+              <DropdownMenuItem @select="pickAttachments('directory')">
+                <FolderIcon />
+                {{ t("project.composer.addFolder") }}
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </InputGroupAddon>
 
       <InputGroupTextarea
         :id="messageId"
         v-model="message"
-        class="session-composer-input max-h-48 min-h-[var(--session-composer-control-height)] py-3.5 text-sm leading-5"
+        :class="
+          cn(
+            'session-composer-input max-h-48 min-h-[var(--session-composer-control-height)] pb-3.5 text-sm leading-5',
+            attachments.length > 0
+              ? 'session-composer-input-with-attachments'
+              : 'pt-3.5',
+          )
+        "
         :placeholder="t('project.composer.placeholder')"
         @keydown="handleKeydown"
       />
@@ -303,11 +404,15 @@ function openModelPicker(): void {
           </DropdownMenuTrigger>
 
           <DropdownMenuContent side="top" align="start" class="w-72">
-            <DropdownMenuRadioGroup v-model="approvalMode">
+            <DropdownMenuRadioGroup
+              :model-value="approvalMode"
+              @update:model-value="selectApprovalMode"
+            >
               <DropdownMenuRadioItem
                 v-for="option in approvalModes"
                 :key="option.value"
                 :value="option.value"
+                @select="requestYoloConfirmation(option.value)"
               >
                 <component
                   :is="option.icon"
@@ -487,6 +592,29 @@ function openModelPicker(): void {
       </DropdownMenu>
     </div>
 
+    <AlertDialog v-model:open="isYoloConfirmationOpen">
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>
+            {{ t("project.composer.approval.yoloConfirmTitle") }}
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            {{ t("project.composer.approval.yoloConfirmDescription") }}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>{{ t("common.cancel") }}</AlertDialogCancel>
+          <AlertDialogAction
+            data-slot="yolo-confirm-action"
+            variant="destructive"
+            @click="confirmYoloMode"
+          >
+            {{ t("project.composer.approval.yoloConfirmAction") }}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+
     <ModelPickerDialog v-model:open="isModelPickerOpen" />
   </form>
 </template>
@@ -498,6 +626,12 @@ function openModelPicker(): void {
     var(--session-composer-control-height) / 2
   );
   --session-composer-control-inset: 0.375rem;
+  --session-composer-attachment-radius: calc(
+    var(--session-composer-control-radius) -
+      var(--session-composer-control-inset)
+  );
+  --session-composer-attachment-height: 2.75rem;
+  --session-composer-attachment-gap: 0.875rem;
   --session-composer-action-size: calc(
     var(--session-composer-control-height) - 2 *
       var(--session-composer-control-inset)
@@ -507,5 +641,13 @@ function openModelPicker(): void {
 .session-composer-input {
   padding-inline-start: var(--session-composer-control-inset);
   padding-inline-end: var(--session-input-padding-inline, 1rem);
+}
+
+.session-composer-input-with-attachments {
+  padding-top: calc(
+    var(--session-composer-control-inset) +
+      var(--session-composer-attachment-height) +
+      var(--session-composer-attachment-gap)
+  );
 }
 </style>

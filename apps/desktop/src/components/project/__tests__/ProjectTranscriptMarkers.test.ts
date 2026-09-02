@@ -133,7 +133,7 @@ describe("project transcript markers", () => {
     });
 
     const trigger = wrapper.get('button[data-slot="marker"]');
-    expect(trigger.text()).toContain("已思考 2.5 秒");
+    expect(trigger.text()).toContain("已工作 2.5 秒");
     await trigger.trigger("click");
     expect(trigger.attributes("aria-expanded")).toBe("true");
     expect(wrapper.get("[data-thinking-content]").text()).toContain(
@@ -313,6 +313,27 @@ describe("project transcript markers", () => {
       "main.ts:12-31",
     );
 
+    const offsetOnly = mount(ProjectToolCallMarker, {
+      props: {
+        toolCall: {
+          id: "tool-offset-only",
+          input: {
+            path: "/project/src/background.js",
+            offset: 1513,
+          },
+          name: "read",
+          status: "complete",
+        },
+      },
+      global: { plugins: [createAppI18n("zh-CN")] },
+    });
+    expect(offsetOnly.get('[data-slot="marker-content"] code').text()).toBe(
+      "background.js:1513",
+    );
+    expect(
+      offsetOnly.get('[data-slot="marker-content"] code').text(),
+    ).not.toContain("1513-");
+
     const editor = mount(ProjectToolCallMarker, {
       props: {
         toolCall: {
@@ -336,6 +357,9 @@ describe("project transcript markers", () => {
       .findAll("span")
       .find((node) => node.text() === "+6");
     expect(added?.classes()).toContain("text-emerald-600");
+    expect(editor.get("[data-edit-diff]").classes()).toEqual(
+      expect.arrayContaining(["ml-1", "inline-flex", "gap-1"]),
+    );
     expect(editor.get('[data-slot="marker-content"]').text()).toContain("-5");
     expect(
       editor

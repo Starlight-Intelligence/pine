@@ -28,6 +28,7 @@ import type { AgentSessionLocation } from "./protocol";
 import type { AgentFolderGrant } from "./protocol";
 import { createBashEnvironment, resolveLoginPath } from "./bash-env";
 import type { ToolGate } from "./gate";
+import type { PineApprovalMode } from "../shared/agent";
 
 type AccessMode = "read" | "write";
 
@@ -43,6 +44,30 @@ function pathContains(parentPath: string, candidatePath: string): boolean {
       relativePath !== ".." &&
       !path.isAbsolute(relativePath))
   );
+}
+
+/**
+ * Read-only paths explicitly selected by the user as message attachments.
+ * Grants accumulate for the live session. Files match exactly; directories
+ * include descendants after realpath canonicalization.
+ */
+export class PineAttachedPathAccess {
+  private readonly paths = new Set<string>();
+
+  async grant(targetPaths: readonly string[]): Promise<void> {
+    const canonicalPaths = await Promise.allSettled(
+      targetPaths.map((targetPath) => realpath(path.resolve(targetPath))),
+    );
+    for (const result of canonicalPaths) {
+      if (result.status === "fulfilled") this.paths.add(result.value);
+    }
+  }
+
+  allowsRead(canonicalPath: string): boolean {
+    return [...this.paths].some((attachedPath) =>
+      pathContains(attachedPath, canonicalPath),
+    );
+  }
 }
 
 async function canonicalizeTarget(
@@ -80,12 +105,14 @@ export class PineToolAccessPolicy {
   private constructor(
     readonly cwd: string,
     readonly folders: CanonicalFolderGrant[],
+    private readonly attachedPaths?: PineAttachedPathAccess,
     private readonly permissive = false,
   ) {}
 
   static async create(
     cwd: string,
     folders: AgentFolderGrant[],
+    attachedPaths?: PineAttachedPathAccess,
   ): Promise<PineToolAccessPolicy> {
     const canonicalFolders = await Promise.all(
       folders.map(async (folder) => ({
@@ -104,16 +131,20 @@ export class PineToolAccessPolicy {
         "The project default folder must be an available read-write folder.",
       );
     }
-    return new PineToolAccessPolicy(canonicalCwd, canonicalFolders, false);
+    return new PineToolAccessPolicy(
+      canonicalCwd,
+      canonicalFolders,
+      attachedPaths,
+      false,
+    );
   }
 
   /**
-   * A policy that authorizes every path (YOLO mode). Drops Pine's folder
-   * grants and read/write restrictions entirely, leaving the pi harness's own
-   * tool behavior (no path sandbox) as the only remaining guardrail.
+   * A policy that authorizes every path. It is only used after an approval
+   * gate explicitly allows a denied file operation to cross folder grants.
    */
   static permissive(cwd: string): PineToolAccessPolicy {
-    return new PineToolAccessPolicy(cwd, [], true);
+    return new PineToolAccessPolicy(cwd, [], undefined, true);
   }
 
   async authorize(
@@ -126,6 +157,9 @@ export class PineToolAccessPolicy {
       options.allowMissing ?? false,
     );
     if (this.permissive) return canonicalPath;
+    if (mode === "read" && this.attachedPaths?.allowsRead(canonicalPath)) {
+      return canonicalPath;
+    }
     const containingGrant = this.folders.find((folder) =>
       pathContains(folder.path, canonicalPath),
     );
@@ -407,19 +441,26 @@ function createWriteOperations(policy: PineToolAccessPolicy) {
 }
 
 /**
- * Wrap a file-mutating tool with the approval gate: ask mode confirms before
+ * Wrap a file-mutating tool with the approval gate: Let Me Review mode confirms before
  * every call, and an authorize denial (outside grants / read-only) escalates
  * to the gate, whose allowance re-runs the call with permissive operations.
  */
 function gateFileTool<TParams extends TSchema, TDetails, TState>(
   tool: ToolDefinition<TParams, TDetails, TState>,
   permissive: ToolDefinition<TParams, TDetails, TState>,
-  gate: ToolGate | null | undefined,
+  getGate: () => ToolGate | null,
+  getApprovalMode: () => PineApprovalMode,
 ): ToolDefinition<TParams, TDetails, TState> {
-  if (!gate) return tool;
   return {
     ...tool,
     execute: async (toolCallId, params, signal, onUpdate, ctx) => {
+      if (getApprovalMode() === "YOLO") {
+        return permissive.execute(toolCallId, params, signal, onUpdate, ctx);
+      }
+      const gate = getGate();
+      if (!gate) {
+        return tool.execute(toolCallId, params, signal, onUpdate, ctx);
+      }
       const targetPath = (params as { path?: unknown }).path;
       const subject = typeof targetPath === "string" ? targetPath : undefined;
       const pre = await gate.reviewFileCall({
@@ -460,14 +501,20 @@ function gateFileTool<TParams extends TSchema, TDetails, TState>(
   };
 }
 
+export interface PineToolPermissionContext {
+  getApprovalMode(): PineApprovalMode;
+  getGate(): ToolGate | null;
+}
+
 export async function createPineToolDefinitions(
   location: AgentSessionLocation,
   gate?: ToolGate | null,
+  attachedPaths?: PineAttachedPathAccess,
+  permissions?: PineToolPermissionContext,
 ): Promise<ToolDefinition[]> {
-  // YOLO mode drops Pine's folder grants and shell sandbox entirely, giving
-  // the agent full permissions and leaving only the pi harness's built-in
-  // tool behavior (no path sandbox, native shell execution) as a guardrail.
-  const isYolo = location.approvalMode === "yolo";
+  const getApprovalMode = () =>
+    permissions?.getApprovalMode() ?? location.approvalMode ?? "auto-approve";
+  const getGate = () => permissions?.getGate() ?? gate ?? null;
   const bashTemporaryDirectory = path.join(
     path.dirname(location.sessionsRoot),
     "tmp",
@@ -476,38 +523,39 @@ export async function createPineToolDefinitions(
   const canonicalBashTemporaryDirectory = await realpath(
     bashTemporaryDirectory,
   );
-  const policy = isYolo
-    ? PineToolAccessPolicy.permissive(location.cwd)
-    : await PineToolAccessPolicy.create(location.cwd, [
-        {
-          access: "read-write",
-          path: canonicalBashTemporaryDirectory,
-        },
-        ...location.folders,
-      ]);
+  const policy = await PineToolAccessPolicy.create(
+    location.cwd,
+    [
+      {
+        access: "read-write",
+        path: canonicalBashTemporaryDirectory,
+      },
+      ...location.folders,
+    ],
+    attachedPaths,
+  );
   // Permissive twin used to re-run a call the gate approved beyond the grants.
   const permissivePolicy = PineToolAccessPolicy.permissive(location.cwd);
   const loginPath = await resolveLoginPath();
 
-  // Native (unsandboxed) execution with Pine's smart environment. Used for
-  // YOLO mode, session-approved commands, and gate-approved re-runs. The
-  // spawnHook keeps the environment identical between the sandboxed run and
-  // the re-run, isolating the sandbox as the only variable.
+  // Native (unsandboxed) execution. YOLO keeps the user's full environment;
+  // reviewed native re-runs retain Pine's deterministic shell environment.
   const nativeBashTool = createBashToolDefinition(location.cwd, {
     operations: createLocalBashOperations(),
     spawnHook: (context) => ({
       ...context,
-      env: isYolo
-        ? {
-            ...context.env,
-            PATH: `${path.join(location.cwd, "node_modules", ".bin")}:${loginPath}`,
-          }
-        : createBashEnvironment(
-            context.env,
-            canonicalBashTemporaryDirectory,
-            loginPath,
-            location.cwd,
-          ),
+      env:
+        getApprovalMode() === "YOLO"
+          ? {
+              ...context.env,
+              PATH: `${path.join(location.cwd, "node_modules", ".bin")}:${loginPath}`,
+            }
+          : createBashEnvironment(
+              context.env,
+              canonicalBashTemporaryDirectory,
+              loginPath,
+              location.cwd,
+            ),
     }),
   });
 
@@ -530,19 +578,32 @@ export async function createPineToolDefinitions(
     operations: createReadOperations(permissivePolicy),
   });
 
-  const gatedReadTool = gateFileTool(readTool, permissiveReadTool, gate);
-  const gatedEditTool = gateFileTool(editTool, permissiveEditTool, gate);
-  const gatedWriteTool = gateFileTool(writeTool, permissiveWriteTool, gate);
+  const gatedReadTool = gateFileTool(
+    readTool,
+    permissiveReadTool,
+    getGate,
+    getApprovalMode,
+  );
+  const gatedEditTool = gateFileTool(
+    editTool,
+    permissiveEditTool,
+    getGate,
+    getApprovalMode,
+  );
+  const gatedWriteTool = gateFileTool(
+    writeTool,
+    permissiveWriteTool,
+    getGate,
+    getApprovalMode,
+  );
 
-  const bashTool = isYolo
-    ? nativeBashTool
-    : createBashToolDefinition(location.cwd, {
-        operations: createScopedBashOperations(
-          policy,
-          canonicalBashTemporaryDirectory,
-          loginPath,
-        ),
-      });
+  const bashTool = createBashToolDefinition(location.cwd, {
+    operations: createScopedBashOperations(
+      policy,
+      canonicalBashTemporaryDirectory,
+      loginPath,
+    ),
+  });
 
   // Rebuild the bash tool with a required `description` field so the agent
   // must state what each command does. The original execute handles the
@@ -562,24 +623,26 @@ export async function createPineToolDefinitions(
       }),
     ),
   });
-  // Sandboxed mode advertises Pine's isolated temp directory and its /tmp
-  // write restriction; YOLO mode drops both, so the guidance must not claim
-  // they still apply.
-  const sandboxGuidance = isYolo
-    ? " Pine does not sandbox the shell here; commands run with the full user environment."
-    : " Pine provides an isolated writable temporary directory through $TMPDIR; direct writes to /tmp are blocked.";
+  const sandboxGuidance =
+    " Pine provides an isolated writable temporary directory through $TMPDIR; direct writes to /tmp are blocked.";
   const pineBashTool = defineTool({
     ...bashTool,
     parameters: pineBashParams,
     prepareArguments: (args) => args as Static<typeof pineBashParams>,
     execute: async (toolCallId, params, signal, onUpdate, ctx) => {
+      if (getApprovalMode() === "YOLO") {
+        throw new Error(
+          "Ordinary bash is disabled in YOLO mode. Use privileged_bash instead.",
+        );
+      }
       const command = params.command;
       const description = params.description;
-      // Ask mode keeps its explicit "confirm every call" contract. Automatic
+      // Let Me Review mode keeps its explicit "confirm every call" contract. Automatic
       // mode never reviews ordinary bash: the project sandbox is its complete,
       // non-escalating authority boundary.
-      if (gate && location.approvalMode === "ask-for-permission") {
-        const pre = await gate.reviewBashCommand({
+      const currentGate = getGate();
+      if (currentGate && getApprovalMode() === "let-me-review") {
+        const pre = await currentGate.reviewBashCommand({
           toolCallId,
           command,
           description,
@@ -608,49 +671,57 @@ export async function createPineToolDefinitions(
       }
     },
     description: `${bashTool.description}${sandboxGuidance} Explicitly describe what each command does in the description field, written first, in the same language as the user's messages.`,
-    promptSnippet: `${bashTool.promptSnippet}.${isYolo ? "" : " Use $TMPDIR for temporary files instead of /tmp;"} Always write the description argument before composing the command, in the user's language`,
+    promptSnippet: `${bashTool.promptSnippet}. Use $TMPDIR for temporary files instead of /tmp; Always write the description argument before composing the command, in the user's language`,
   });
 
-  const privilegedBashTool = gate
-    ? defineTool({
-        ...nativeBashTool,
-        name: "privileged_bash",
-        parameters: pineBashParams,
-        prepareArguments: (args) => args as Static<typeof pineBashParams>,
-        execute: async (toolCallId, params, signal, onUpdate, ctx) => {
-          const command = params.command;
-          // Every native-permission execution crosses the gate. Ask mode
-          // routes it to the user; automatic mode routes it to the model judge
-          // without reusing session-scoped approvals.
-          const decision = await gate.reviewPrivilegedCall({
-            toolCallId,
-            toolName: "privileged_bash",
-            subject: command,
-            description: params.description,
-            evidence:
-              "The agent explicitly requested execution outside Pine's project sandbox because the required capability cannot be completed inside it.",
-            signal,
-          });
-          if (decision.kind === "deny") {
-            throw new Error(
-              decision.reason ??
-                "The reviewer did not allow this command to run outside the project sandbox.",
+  const privilegedBashTool =
+    getGate() || getApprovalMode() === "YOLO" || permissions
+      ? defineTool({
+          ...nativeBashTool,
+          name: "privileged_bash",
+          parameters: pineBashParams,
+          prepareArguments: (args) => args as Static<typeof pineBashParams>,
+          execute: async (toolCallId, params, signal, onUpdate, ctx) => {
+            const command = params.command;
+            // YOLO bypasses every Pine permission gate. Other modes require a
+            // fresh review before native execution.
+            if (getApprovalMode() !== "YOLO") {
+              const currentGate = getGate();
+              if (!currentGate) {
+                throw new Error(
+                  "Privileged execution is unavailable without an approval gate.",
+                );
+              }
+              const decision = await currentGate.reviewPrivilegedCall({
+                toolCallId,
+                toolName: "privileged_bash",
+                subject: command,
+                description: params.description,
+                evidence:
+                  "The agent explicitly requested execution outside Pine's project sandbox because the required capability cannot be completed inside it.",
+                signal,
+              });
+              if (decision.kind === "deny") {
+                throw new Error(
+                  decision.reason ??
+                    "The reviewer did not allow this command to run outside the project sandbox.",
+                );
+              }
+            }
+            return nativeBashTool.execute(
+              toolCallId,
+              params,
+              signal,
+              onUpdate,
+              ctx,
             );
-          }
-          return nativeBashTool.execute(
-            toolCallId,
-            params,
-            signal,
-            onUpdate,
-            ctx,
-          );
-        },
-        description:
-          "Run a shell command with the user's native permissions, outside Pine's project sandbox. Every call requires a fresh approval: automatic-approval mode invokes the model reviewer, and ask-for-permission mode prompts the user. Use it for macOS application control (osascript, open, Shortcuts, Automator), launching GUI applications, controlling or signaling processes outside Pine (kill, pkill, killall), reading or writing paths outside the shared project folders, or another operation that ordinary bash explicitly reports was denied by the project sandbox. Do not use it for normal project commands or ordinary command errors.",
-        promptSnippet:
-          "Use privileged_bash directly for macOS app/GUI control, external process control, out-of-project filesystem access, or after ordinary bash explicitly says the project sandbox denied an operation. Every call receives a fresh review before native execution. State why native privileges are required in description before composing command.",
-      })
-    : null;
+          },
+          description:
+            "Run a shell command with the user's native permissions, outside Pine's project sandbox. Every call requires a fresh approval unless YOLO mode is active. Use it for macOS application control (osascript, open, Shortcuts, Automator), launching GUI applications, controlling or signaling processes outside Pine (kill, pkill, killall), reading or writing paths outside the shared project folders, or another operation that ordinary bash explicitly reports was denied by the project sandbox. Do not use it for normal project commands or ordinary command errors.",
+          promptSnippet:
+            "Use privileged_bash directly for macOS app/GUI control, external process control, out-of-project filesystem access, or after ordinary bash explicitly says the project sandbox denied an operation. Calls receive a fresh review before native execution unless YOLO mode is active. State why native privileges are required in description before composing command.",
+        })
+      : null;
 
   return [
     gatedReadTool,

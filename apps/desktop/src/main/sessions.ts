@@ -14,6 +14,7 @@ import type {
   PineTextMessage,
   SessionSearchResult,
 } from "../shared/sessions";
+import { attachmentMessagePreview } from "../shared/attachments";
 import { parseMessageBlocks } from "../shared/sessions";
 
 const SEARCH_RESULT_LIMIT = 50;
@@ -177,7 +178,7 @@ function textMessages(entries: SessionTreeEntry[]): PineTextMessage[] {
 function firstUserMessage(entries: SessionTreeEntry[]): string | undefined {
   for (const entry of entries) {
     if (entry.type !== "message" || entry.message.role !== "user") continue;
-    const text = textFromMessage(entry).trim();
+    const text = attachmentMessagePreview(textFromMessage(entry)).trim();
     if (text) return text;
   }
 
@@ -208,7 +209,10 @@ function sessionBody(entries: SessionTreeEntry[]): string {
         entry.type === "message" &&
         (entry.message.role === "user" || entry.message.role === "assistant")
       ) {
-        return [textFromMessage(entry)];
+        const text = textFromMessage(entry);
+        return [
+          entry.message.role === "user" ? attachmentMessagePreview(text) : text,
+        ];
       }
       if (entry.type === "compaction" || entry.type === "branch_summary") {
         return [entry.summary];

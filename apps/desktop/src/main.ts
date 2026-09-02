@@ -10,6 +10,7 @@ import {
 } from "electron";
 import started from "electron-squirrel-startup";
 import { randomUUID } from "node:crypto";
+import { stat } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import { ProjectRuntimeRegistry } from "./main/projectRuntime";
@@ -20,11 +21,23 @@ import {
   ABORT_SESSION_CHANNEL,
   APPROVAL_RESPONSE_CHANNEL,
   PROMPT_SESSION_CHANNEL,
+  SET_APPROVAL_MODE_CHANNEL,
   SESSION_EVENT_CHANNEL,
   type AbortSessionResult,
   type PromptSessionResult,
   type RespondApprovalRequest,
+  type SetApprovalModeResult,
 } from "./shared/agent";
+import {
+  INSPECT_ATTACHMENTS_CHANNEL,
+  OPEN_ATTACHMENT_CHANNEL,
+  PICK_ATTACHMENT_FOLDERS_CHANNEL,
+  PICK_ATTACHMENTS_CHANNEL,
+  type PineAttachment,
+  type PineAttachmentKind,
+  type OpenAttachmentResult,
+  type PickAttachmentsResult,
+} from "./shared/attachments";
 import {
   CANCEL_PROVIDER_AUTH_CHANNEL,
   GET_MODEL_CATALOG_CHANNEL,
@@ -133,7 +146,9 @@ const RenameSessionRequestSchema = SessionIdRequestSchema.extend({
   name: z.string().trim().min(1).max(200),
 });
 const LoadSessionMessagesRequestSchema = z.object({
-  before: z.uuid().optional(),
+  // Pi entry cursors are opaque IDs: normally 8 hex characters, with a full
+  // UUID only as a collision fallback.
+  before: z.string().min(1).max(128).optional(),
   limit: z.number().int().min(1).max(100).optional(),
   sessionId: z.uuid(),
 });
@@ -144,14 +159,15 @@ const PromptSessionRequestSchema = z.object({
     z.object({ kind: z.literal("session"), sessionId: z.uuid() }),
   ]),
   streamingBehavior: z.enum(["follow-up", "steer"]).optional(),
-  approvalMode: z
-    .enum(["ask-for-permission", "agent-decides", "yolo"])
-    .optional(),
+  approvalMode: z.enum(["let-me-review", "auto-approve", "YOLO"]).optional(),
 });
 const RespondApprovalRequestSchema = z.object({
   requestId: z.uuid(),
   action: z.enum(["approve", "reject", "guide"]),
   guidance: z.string().trim().min(1).max(10_000).optional(),
+});
+const SetApprovalModeRequestSchema = z.object({
+  approvalMode: z.enum(["let-me-review", "auto-approve", "YOLO"]),
 });
 const LoginProviderRequestSchema = z.object({
   authType: z.enum(["api_key", "oauth"]),
@@ -194,6 +210,42 @@ const ListProjectDirectoryRequestSchema = z.object({
 const SetSidebarVibrancyRequestSchema = z.object({
   enabled: z.boolean(),
 });
+const InspectAttachmentsRequestSchema = z.object({
+  paths: z.array(z.string().min(1).max(4_096)).max(100),
+});
+const OpenAttachmentRequestSchema = z.object({
+  path: z
+    .string()
+    .min(1)
+    .max(4_096)
+    .refine((attachmentPath) => path.isAbsolute(attachmentPath)),
+});
+
+async function inspectAttachmentPaths(
+  filePaths: readonly string[],
+): Promise<PickAttachmentsResult> {
+  const attachments = await Promise.all(
+    filePaths.map(async (filePath): Promise<PineAttachment | undefined> => {
+      const metadata = await stat(filePath);
+      let kind: PineAttachmentKind;
+      if (metadata.isFile()) kind = "file";
+      else if (metadata.isDirectory()) kind = "directory";
+      else return undefined;
+      return {
+        extension:
+          kind === "file" ? path.extname(filePath).slice(1).toLowerCase() : "",
+        kind,
+        modifiedAt: metadata.mtime.toISOString(),
+        name: path.basename(filePath),
+        path: filePath,
+        size: metadata.size,
+      };
+    }),
+  );
+  return {
+    attachments: attachments.filter((attachment) => attachment !== undefined),
+  };
+}
 
 function getProjectRepository(): ProjectRepository {
   if (!projectRepository) throw new Error("Project storage is not ready.");
@@ -373,6 +425,63 @@ ipcMain.handle(OPEN_PROVIDER_AUTH_URL_CHANNEL, async (_event, url: unknown) => {
 });
 
 ipcMain.handle(
+  PICK_ATTACHMENTS_CHANNEL,
+  async (event): Promise<PickAttachmentsResult> => {
+    const parentWindow = BrowserWindow.fromWebContents(event.sender);
+    const options: OpenDialogOptions = {
+      title: "Add Attachments",
+      buttonLabel: "Add",
+      properties: ["openFile", "multiSelections"],
+    };
+    const selection = parentWindow
+      ? await dialog.showOpenDialog(parentWindow, options)
+      : await dialog.showOpenDialog(options);
+
+    if (selection.canceled) return { attachments: [] };
+    return inspectAttachmentPaths(selection.filePaths);
+  },
+);
+
+ipcMain.handle(
+  PICK_ATTACHMENT_FOLDERS_CHANNEL,
+  async (event): Promise<PickAttachmentsResult> => {
+    const parentWindow = BrowserWindow.fromWebContents(event.sender);
+    const options: OpenDialogOptions = {
+      title: "Add Attachment Folders",
+      buttonLabel: "Add",
+      properties: ["openDirectory", "multiSelections"],
+    };
+    const selection = parentWindow
+      ? await dialog.showOpenDialog(parentWindow, options)
+      : await dialog.showOpenDialog(options);
+
+    if (selection.canceled) return { attachments: [] };
+    return inspectAttachmentPaths(selection.filePaths);
+  },
+);
+
+ipcMain.handle(
+  INSPECT_ATTACHMENTS_CHANNEL,
+  (_event, request: unknown): Promise<PickAttachmentsResult> => {
+    const { paths } = InspectAttachmentsRequestSchema.parse(request);
+    return inspectAttachmentPaths(paths);
+  },
+);
+
+ipcMain.handle(
+  OPEN_ATTACHMENT_CHANNEL,
+  async (_event, request: unknown): Promise<OpenAttachmentResult> => {
+    const { path: attachmentPath } = OpenAttachmentRequestSchema.parse(request);
+    const metadata = await stat(attachmentPath);
+    if (!metadata.isFile() && !metadata.isDirectory()) {
+      return { opened: false, error: "Attachment is not a file or folder." };
+    }
+    const error = await shell.openPath(attachmentPath);
+    return error ? { opened: false, error } : { opened: true };
+  },
+);
+
+ipcMain.handle(
   PICK_PROJECT_FOLDERS_CHANNEL,
   async (event, request: unknown): Promise<PickProjectFoldersResult> => {
     const { mode } = PickProjectFoldersRequestSchema.parse(request);
@@ -547,6 +656,14 @@ ipcMain.handle(
   ABORT_SESSION_CHANNEL,
   async (event): Promise<AbortSessionResult> =>
     getProjectRuntimes().abort(event.sender.id),
+);
+
+ipcMain.handle(
+  SET_APPROVAL_MODE_CHANNEL,
+  async (event, request: unknown): Promise<SetApprovalModeResult> => {
+    const { approvalMode } = SetApprovalModeRequestSchema.parse(request);
+    return getProjectRuntimes().setApprovalMode(event.sender.id, approvalMode);
+  },
 );
 
 ipcMain.handle(

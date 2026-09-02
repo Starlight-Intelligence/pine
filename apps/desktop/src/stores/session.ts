@@ -15,6 +15,7 @@ import type {
   PineToolCall,
   SessionSearchResult,
 } from "@/shared/sessions";
+import { attachmentMessagePreview } from "@/shared/attachments";
 import { parseMessageBlocks } from "@/shared/sessions";
 
 export interface PineTranscriptMessage extends PineTextMessage {
@@ -117,7 +118,7 @@ export const useSessionStore = defineStore("session", () => {
   const isRunning = ref(false);
   const contextUsage = ref<PineContextUsage | null>(null);
   const pendingApprovals = ref<PinePendingApproval[]>([]);
-  /** Tool calls currently held by the auto-reviewer (agent-decides). */
+  /** Tool calls currently held by the auto-reviewer (auto-approve). */
   const reviewingToolCallIds = ref<ReadonlySet<string>>(new Set());
   const hasEarlierMessages = ref(false);
   const nextBefore = ref<string | undefined>();
@@ -365,7 +366,7 @@ export const useSessionStore = defineStore("session", () => {
       });
       const session = {
         ...result.session,
-        preview: result.session.preview || message,
+        preview: result.session.preview || attachmentMessagePreview(message),
       };
       const nextSession = upsertRecentSession(session);
       if (sequence !== activationSequence) return nextSession;
@@ -386,6 +387,12 @@ export const useSessionStore = defineStore("session", () => {
 
   async function abort(): Promise<void> {
     await window.pine.abortSession();
+  }
+
+  async function setApprovalMode(
+    approvalMode: PineApprovalMode,
+  ): Promise<void> {
+    await window.pine.setApprovalMode({ approvalMode });
   }
 
   /** Answer the oldest pending approval (approve / reject / guide). */
@@ -759,6 +766,7 @@ export const useSessionStore = defineStore("session", () => {
     reviewingToolCallIds,
     search,
     searchResults,
+    setApprovalMode,
     startDraft,
   };
 });

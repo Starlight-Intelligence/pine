@@ -12,9 +12,9 @@ const props = defineProps<{
   /** Nested rows repeat the folded header's kind icons, so they fall back
    * to a plain check once the call succeeds. */
   nested?: boolean;
-  /** The call is being held by the auto-reviewer (agent-decides). */
+  /** The call is being held by the auto-reviewer (auto-approve). */
   reviewing?: boolean;
-  /** The call is waiting for the user's decision (ask mode). */
+  /** The call is waiting for the user's decision (Let Me Review mode). */
   awaitingApproval?: boolean;
 }>();
 const { t } = useI18n();
@@ -65,7 +65,10 @@ function firstKey(record: Record<string, unknown>, keys: readonly string[]) {
   return undefined;
 }
 
-/** ':12-31' when a read streams or declares an explicit line window. */
+/**
+ * Mirrors read's line-window semantics: offset-only means "from this line
+ * onward", while a supplied limit makes the inclusive end line knowable.
+ */
 function readRangeSuffix(input: Record<string, unknown>): string {
   const offset = input.offset;
   const limit = input.limit;
@@ -76,7 +79,7 @@ function readRangeSuffix(input: Record<string, unknown>): string {
     typeof limit === "number" && limit > 0
       ? start + Math.round(limit) - 1
       : undefined;
-  return end === undefined ? `:${start}-` : `:${start}-${end}`;
+  return end === undefined ? `:${start}` : `:${start}-${end}`;
 }
 
 /** Per-hunk tally of touched lines (streaming-safe). */
@@ -229,14 +232,17 @@ const fullText = computed(() => {
         <code class="font-mono text-sm font-normal">{{
           presentation.target
         }}</code
-        ><template v-if="editDiffCount"
+        ><span
+          v-if="editDiffCount"
+          data-edit-diff
+          class="ml-1 inline-flex gap-1"
           ><span
-            class="mr-1 font-mono text-xs font-normal text-emerald-600 dark:text-emerald-400"
+            class="font-mono text-xs font-normal text-emerald-600 dark:text-emerald-400"
             >+{{ editDiffCount.added }}</span
           >
           <span class="font-mono text-xs font-normal text-destructive"
             >-{{ editDiffCount.removed }}</span
-          ></template
+          ></span
         ><span v-if="presentation.after">{{ presentation.after }}</span>
       </MarkerContent>
     </Marker>

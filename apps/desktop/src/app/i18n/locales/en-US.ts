@@ -154,18 +154,35 @@ export default {
       label: "Session message",
       placeholder: "Describe a task or clarify what you need…",
       addAttachment: "Add attachment",
+      addFile: "Add file",
+      addFolder: "Add folder",
+      folderAttachment: "Folder",
+      openAttachment: "Open attachment {name}",
+      attachmentOpenFailed:
+        "Could not open the attachment with the system default application",
+      removeAttachment: "Remove attachment {name}",
+      attachmentPickerFailed: "Could not open or inspect the selected items",
+      attachmentDropFailed: "Could not inspect the dropped files or folders",
+      dropAttachmentsTitle: "Drop to add attachments",
+      dropAttachmentsDescription:
+        "You can add multiple files or folders at once",
       send: "Send message",
       stop: "Stop response",
       model: "Model",
       selectModel: "Choose model",
       reasoningEffort: "Reasoning effort",
       approval: {
-        askForPermissionLabel: "Ask for Permission",
-        askForPermission: "Confirm every tool call before it runs",
-        agentDecidesLabel: "Agent Decides",
-        agentDecides: "Let the agent decide which actions need confirmation",
+        askForPermissionLabel: "Let Me Review",
+        askForPermission:
+          "Ask for confirmation for unauthorized operations outside the workspace.",
+        agentDecidesLabel: "Auto Approve",
+        agentDecides: "Let AI decide.",
         yoloLabel: "YOLO",
-        yolo: "Run autonomously and notify only when something fails",
+        yolo: "Remove all permission constraints. Not recommended.",
+        yoloConfirmTitle: "Enable “YOLO”?",
+        yoloConfirmDescription:
+          "Even though modern language models have improved significantly, their output can still be unpredictable. Enabling this option means you accept responsibility for irreversible data loss and other potential risks.",
+        yoloConfirmAction: "Enable",
       },
       contextUsage: {
         label: "Context usage",
@@ -203,8 +220,8 @@ export default {
       outlineEmpty: "Your turns will appear here after you send a message.",
       thinking: "Reasoning",
       thinkingActive: "Thinking ({duration})",
-      thinkingComplete: "Thought for {duration}",
-      thinkingCompleteWithoutDuration: "Thought",
+      thinkingComplete: "Worked for {duration}",
+      thinkingCompleteWithoutDuration: "Worked",
       thinkingDuration: {
         lessThanSecond: "<1s",
         minutes: "{minutes}m {seconds}s",
@@ -358,6 +375,10 @@ export default {
     sessionResume: {
       title: "Unable to open session",
       description: "The session may have been moved or deleted",
+    },
+    sessionHistory: {
+      title: "Unable to load earlier messages",
+      description: "Try again in a moment",
     },
     sessionPrompt: {
       title: "Unable to send message",

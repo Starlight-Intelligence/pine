@@ -1,15 +1,21 @@
 <script setup lang="ts">
+import { FilesIcon } from "@lucide/vue";
 import { storeToRefs } from "pinia";
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import type { PineApprovalAction, PineApprovalMode } from "@/shared/agent";
+import {
+  attachmentMessagePreview,
+  type PineAttachment,
+} from "@/shared/attachments";
 import { PineCharacter } from "@/components/pine";
 import { Button } from "@/components/ui/button";
 import {
   Empty,
   EmptyDescription,
   EmptyHeader,
+  EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
 import {
@@ -46,10 +52,13 @@ const {
   reviewingToolCallIds,
 } = storeToRefs(sessionStore);
 const draft = ref("");
-const approvalMode = ref<PineApprovalMode>("agent-decides");
+const attachments = ref<PineAttachment[]>([]);
+const approvalMode = ref<PineApprovalMode>("auto-approve");
+const isDraggingFiles = ref(false);
+let fileDragDepth = 0;
 /** The oldest pending approval renders above the composer. */
 const pendingApproval = computed(() => pendingApprovals.value[0]);
-/** Tool calls waiting for the user's decision (ask mode). */
+/** Tool calls waiting for the user's decision (Let Me Review mode). */
 const awaitingApprovalToolCallIds = computed(
   () => new Set(pendingApprovals.value.map((approval) => approval.toolCallId)),
 );
@@ -67,9 +76,22 @@ const TOOL_CALL_TURN_MARGIN_CLASS = "-mt-[1.375rem]";
 
 onMounted(() => sessionStore.connectAgentEvents());
 
+watch(approvalMode, (value) => {
+  // Prompt requests carry the same value as a fallback; this eager update
+  // makes the new policy apply to later tool calls in an already-running turn.
+  void sessionStore.setApprovalMode(value).catch(() => undefined);
+});
+
 function submit(message: string): void {
   const sessionId = props.sessionId;
-  if (!contentTabsStore.beginPrompt(props.tabId, message)) return;
+  if (
+    !contentTabsStore.beginPrompt(
+      props.tabId,
+      attachmentMessagePreview(message),
+    )
+  ) {
+    return;
+  }
   draft.value = "";
   void sessionStore
     .prompt(message, sessionId, approvalMode.value)
@@ -96,6 +118,68 @@ function abort(): void {
     });
   });
 }
+
+function loadEarlierMessages(): void {
+  void sessionStore.loadEarlierMessages().catch(() => {
+    toast.error(t("errors.sessionHistory.title"), {
+      description: t("errors.sessionHistory.description"),
+    });
+  });
+}
+
+function dragContainsFiles(event: DragEvent): boolean {
+  return Array.from(event.dataTransfer?.types ?? []).includes("Files");
+}
+
+function handleDragEnter(event: DragEvent): void {
+  if (!dragContainsFiles(event)) return;
+  event.preventDefault();
+  fileDragDepth += 1;
+  isDraggingFiles.value = true;
+}
+
+function handleDragOver(event: DragEvent): void {
+  if (!dragContainsFiles(event)) return;
+  event.preventDefault();
+  if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+}
+
+function handleDragLeave(event: DragEvent): void {
+  if (!isDraggingFiles.value) return;
+  event.preventDefault();
+  fileDragDepth = Math.max(0, fileDragDepth - 1);
+  if (fileDragDepth === 0) isDraggingFiles.value = false;
+}
+
+async function handleDrop(event: DragEvent): Promise<void> {
+  if (!dragContainsFiles(event)) return;
+  event.preventDefault();
+  fileDragDepth = 0;
+  isDraggingFiles.value = false;
+
+  const paths = Array.from(event.dataTransfer?.files ?? []).flatMap((file) => {
+    try {
+      const filePath = window.pine.getPathForFile(file);
+      return filePath ? [filePath] : [];
+    } catch {
+      return [];
+    }
+  });
+  if (paths.length === 0) return;
+
+  try {
+    const result = await window.pine.inspectAttachments({ paths });
+    const byPath = new Map(
+      attachments.value.map((attachment) => [attachment.path, attachment]),
+    );
+    for (const attachment of result.attachments) {
+      byPath.set(attachment.path, attachment);
+    }
+    attachments.value = [...byPath.values()];
+  } catch {
+    toast.error(t("project.composer.attachmentDropFailed"));
+  }
+}
 </script>
 
 <template>
@@ -105,7 +189,13 @@ function abort(): void {
     :scroll-previous-item-peek="64"
     :follow-animated="isRunning"
   >
-    <div class="session-layout flex h-full min-h-0 flex-col">
+    <div
+      class="session-layout flex h-full min-h-0 flex-col"
+      @dragenter="handleDragEnter"
+      @dragover="handleDragOver"
+      @dragleave="handleDragLeave"
+      @drop="handleDrop"
+    >
       <div class="relative min-h-0 w-full flex-1">
         <MessageScroller>
           <MessageScrollerViewport>
@@ -121,7 +211,7 @@ function abort(): void {
                   size="sm"
                   variant="ghost"
                   :disabled="isLoadingMessages"
-                  @click="sessionStore.loadEarlierMessages"
+                  @click="loadEarlierMessages"
                 >
                   <Spinner v-if="isLoadingMessages" data-icon="inline-start" />
                   {{
@@ -167,10 +257,30 @@ function abort(): void {
         </MessageScroller>
 
         <ProjectTranscriptOutline :messages="messages" />
+
+        <Empty
+          v-if="isDraggingFiles"
+          data-slot="attachment-drop-overlay"
+          class="pointer-events-none absolute inset-3 w-auto border bg-background/95 shadow-sm backdrop-blur-sm"
+          role="status"
+        >
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <FilesIcon />
+            </EmptyMedia>
+            <EmptyTitle>
+              {{ t("project.composer.dropAttachmentsTitle") }}
+            </EmptyTitle>
+            <EmptyDescription>
+              {{ t("project.composer.dropAttachmentsDescription") }}
+            </EmptyDescription>
+          </EmptyHeader>
+        </Empty>
       </div>
 
       <ProjectSessionComposer
         v-model="draft"
+        v-model:attachments="attachments"
         v-model:approvalMode="approvalMode"
         :is-running="isRunning"
         :pending-approval="pendingApproval"

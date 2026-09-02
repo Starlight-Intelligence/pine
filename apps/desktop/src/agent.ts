@@ -29,10 +29,18 @@ async function handleRequest(request: AgentWorkerRequest): Promise<void> {
         request.sessionId,
         request.message,
         request.streamingBehavior,
+        request.attachedPaths,
+        request.approvalMode,
       );
       break;
     case "session:abort":
       result = await runtime.abort(request.sessionId);
+      break;
+    case "session:set-approval-mode":
+      result = runtime.setSessionApprovalMode(
+        request.sessionId,
+        request.approvalMode,
+      );
       break;
     case "session:rename":
       result = runtime.renameSession(request.sessionId, request.name);

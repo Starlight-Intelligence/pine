@@ -1,6 +1,7 @@
 import { utilityProcess } from "electron";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
+import type { PineApprovalMode } from "../shared/agent";
 import type {
   LoginProviderRequest,
   PineModelCatalog,
@@ -41,6 +42,8 @@ export interface AgentHost {
     sessionId: string,
     message: string,
     streamingBehavior?: "followUp" | "steer",
+    attachedPaths?: readonly string[],
+    approvalMode?: PineApprovalMode,
   ): Promise<AgentWorkerPromptResult>;
   renameSession(
     sessionId: string,
@@ -71,6 +74,10 @@ export interface AgentHost {
   subscribe(listener: (event: PineRuntimeEvent) => void): () => void;
   /** Resolve a pending user-approval round trip inside the agent worker. */
   respondApproval(requestId: string, decision: GateDecision): void;
+  setApprovalMode(
+    sessionId: string,
+    approvalMode: PineApprovalMode,
+  ): Promise<{ updated: boolean }>;
 }
 
 type AgentProcessFactory = () => AgentProcess;
@@ -116,17 +123,32 @@ export class AgentProcessHost implements AgentHost {
     sessionId: string,
     message: string,
     streamingBehavior?: "followUp" | "steer",
+    attachedPaths?: readonly string[],
+    approvalMode?: PineApprovalMode,
   ): Promise<AgentWorkerPromptResult> {
     return this.request({
       type: "session:prompt",
       sessionId,
       message,
       ...(streamingBehavior ? { streamingBehavior } : {}),
+      ...(attachedPaths?.length ? { attachedPaths: [...attachedPaths] } : {}),
+      ...(approvalMode ? { approvalMode } : {}),
     });
   }
 
   abort(sessionId: string): Promise<{ aborted: boolean }> {
     return this.request({ type: "session:abort", sessionId });
+  }
+
+  setApprovalMode(
+    sessionId: string,
+    approvalMode: PineApprovalMode,
+  ): Promise<{ updated: boolean }> {
+    return this.request({
+      type: "session:set-approval-mode",
+      sessionId,
+      approvalMode,
+    });
   }
 
   renameSession(

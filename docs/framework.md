@@ -277,7 +277,7 @@ annotation:
 
 ### 7.1 工具清单（第一版）
 
-优先保持最小集合。默认 HITL 模式为 **Agent Decides**：项目目录内的 `read`/`edit`/`write`/`ls`/`find`/`grep` 等操作免确认，`bash` 等高 versatile/高风险工具需要确认。
+优先保持最小集合。默认 HITL 模式为 **Auto Approve**：项目目录内的 `read`/`edit`/`write`/`ls`/`find`/`grep` 等操作免确认，`bash` 等高 versatile/高风险工具需要确认。
 
 | 工具 | 职责 | 安全策略 |
 |---|---|---|
@@ -301,11 +301,11 @@ annotation:
 
 | 模式 | 行为 | 适用场景 |
 |---|---|---|
-| **Ask for Permission** | 每个工具调用都等待用户确认 | 新手、关键项目、教育场景 |
-| **Agent Decides** | Agent 自行判断是否需要确认 | 默认推荐模式 |
+| **Let Me Review** | 每个工具调用都等待用户确认 | 新手、关键项目、教育场景 |
+| **Auto Approve** | Agent 自行判断是否需要确认 | 默认推荐模式 |
 | **YOLO** | Agent 自主执行，只在出错时通知 | 高级用户、可信环境、重复性任务 |
 
-**默认策略（Agent Decides）**：
+**默认策略（Auto Approve）**：
 
 - 项目目录内的 `read`、`edit`、`write`、`find`、`grep`、`ls` 等操作**不需要确认**。
 - `bash` 工具作为高 versatile/高风险的工具，**默认需要确认**，并受危险命令黑名单限制。
@@ -316,7 +316,7 @@ annotation:
 技术实现上利用 `AgentHarness` 的 `before_agent_start` 和 `tool_call` 事件：
 
 1. 渲染层收到 `before_agent_start`，在 UI 中显示「Agent 开始工作」。
-2. 在 **Ask for Permission** / **Agent Decides** 模式下，工具调用触发 `tool_call` 事件，主进程暂停执行并向渲染层发送确认请求。
+2. 在 **Let Me Review** / **Auto Approve** 模式下，工具调用触发 `tool_call` 事件，主进程暂停执行并向渲染层发送确认请求。
 3. 用户点击「允许」后，主进程继续；点击「拒绝」则返回 `{ block: true, reason: "..." }`。
 4. 用户可随时点击「停止」调用 `agent.abort()`。
 
@@ -455,7 +455,7 @@ interface PineAPI {
 - 所有工具执行前检查路径是否越界（`path` 必须解析到项目目录内或项目级外部白名单内）。
 - **项目级外部文件夹白名单**：用户可以把外部目录（如 `~/Downloads/references`）加入某个项目的 context 白名单，Agent 才能读取其中的文件。
 - `bash` 工具默认需要确认，使用受限 shell profile，禁止 `rm -rf /`、`sudo` 等危险模式；命令工作目录限制在项目目录。
-- 提供三种 Human-in-the-loop 模式（Ask for Permission / Agent Decides / YOLO），默认 Agent Decides。
+- 提供三种 Human-in-the-loop 模式（Let Me Review / Auto Approve / YOLO），默认 Auto Approve。
 - 工具执行超时，防止 hang 住。
 
 ---
