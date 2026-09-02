@@ -189,7 +189,12 @@ function openModelPicker(): void {
 
 <template>
   <form
-    class="mx-auto w-full max-w-[var(--session-composer-max-width)] px-[var(--session-composer-gutter)] pb-3"
+    :class="
+      cn(
+        'mx-auto w-full max-w-[var(--session-composer-max-width)] px-[var(--session-composer-gutter)]',
+        props.pendingApproval ? 'pb-4' : 'pb-3',
+      )
+    "
     @submit.prevent="submitMessage"
   >
     <label class="sr-only" :for="messageId">

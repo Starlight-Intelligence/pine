@@ -4,11 +4,13 @@ import { describe, expect, it } from "vitest";
 import { createAppI18n } from "@/app/i18n";
 import type { PineThinkingLevel } from "@/shared/models";
 import { useModelsStore } from "@/stores/models";
+import type { PinePendingApproval } from "@/stores/session";
 import ProjectSessionComposer from "../ProjectSessionComposer.vue";
 
 interface ComposerProps {
   approvalMode?: "ask-for-permission" | "agent-decides" | "yolo";
   isRunning?: boolean;
+  pendingApproval?: PinePendingApproval | null;
 }
 
 function mountComposer(
@@ -155,6 +157,23 @@ describe("ProjectSessionComposer", () => {
         '[data-slot="model-selector-trigger"], [data-slot="reasoning-effort-trigger"]',
       ),
     ).toHaveLength(1);
+  });
+
+  it("restores the original bottom spacing while approval is pending", () => {
+    const wrapper = mountComposer({
+      pendingApproval: {
+        requestId: "approval-1",
+        toolCallId: "tool-1",
+        toolName: "bash",
+        trigger: "sandbox-denied",
+        subject: "ls -la ~/Desktop",
+      },
+    });
+    const form = wrapper.get("form");
+
+    expect(form.classes()).toContain("pb-4");
+    expect(form.classes()).not.toContain("pb-3");
+    expect(wrapper.find("textarea").exists()).toBe(false);
   });
 
   it("shows the default approval mode and configured Pi model", () => {
