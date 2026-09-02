@@ -12,6 +12,7 @@ export interface GateTurnContext {
 }
 
 export interface JudgeRequest {
+  toolCallId: string;
   toolName: string;
   trigger:
     | "sandbox-denied"
@@ -29,6 +30,7 @@ export interface JudgeRequest {
 }
 
 export interface JudgeRuling {
+  toolCallId: string;
   verdict: "allow" | "deny";
   reason?: string;
   scope?: "once" | "session";
@@ -57,7 +59,7 @@ export interface GateHost {
   sessionId: string;
   emit(event: PineAgentEvent): void;
   turnContext(): GateTurnContext;
-  judge(request: JudgeRequest): Promise<JudgeRuling>;
+  judge(requests: JudgeRequest[]): Promise<JudgeRuling[]>;
   /**
    * Route a review to the renderer. Resolves with the user's decision; the
    * runtime emits both the approval-request and approval-decided events.
@@ -201,6 +203,11 @@ export class UserApprovalGate implements ToolGate {
  */
 export class AutoReviewGate implements ToolGate {
   private readonly approvedCommands = new Set<string>();
+  private privilegedBatch: Array<{
+    input: DenialReviewInput;
+    resolve: (decision: GateDecision) => void;
+  }> = [];
+  private isPrivilegedFlushScheduled = false;
   private consecutiveEscalations = 0;
   private sequence = 0;
 
@@ -246,7 +253,12 @@ export class AutoReviewGate implements ToolGate {
   }
 
   reviewPrivilegedCall(input: DenialReviewInput): Promise<GateDecision> {
-    return this.judge("privileged-execution", input, false);
+    return new Promise((resolve) => {
+      this.privilegedBatch.push({ input, resolve });
+      if (this.isPrivilegedFlushScheduled) return;
+      this.isPrivilegedFlushScheduled = true;
+      setTimeout(() => void this.flushPrivilegedBatch(), 0);
+    });
   }
 
   isApprovedCommand(command: string): boolean {
@@ -272,61 +284,127 @@ export class AutoReviewGate implements ToolGate {
     },
     allowSessionScope = true,
   ): Promise<GateDecision> {
-    if (this.consecutiveEscalations >= MAX_CONSECUTIVE_ESCALATIONS) {
-      const reason =
-        "Too many escalations in this turn; the auto-reviewer stopped responding. Change your approach or ask the user directly.";
-      this.emitDecided(++this.sequence, input.toolCallId, "denied", reason);
-      return { kind: "deny", reason };
-    }
+    const [decision] = await this.judgeBatch([
+      { trigger, input, allowSessionScope },
+    ]);
+    return decision;
+  }
 
-    this.consecutiveEscalations += 1;
-    // Signal the transcript so the tool marker can show a review status.
-    this.host.emit({
-      type: "tool-review",
-      sessionId: this.host.sessionId,
-      toolCallId: input.toolCallId,
-      toolName: input.toolName,
-      state: "reviewing",
-    });
-    let ruling: JudgeRuling;
-    try {
-      ruling = await this.host.judge({
-        toolName: input.toolName,
-        trigger,
-        subject: input.subject,
-        evidence: input.evidence,
-        signal: input.signal,
-        turn: this.host.turnContext(),
-        allowSessionScope,
+  private async flushPrivilegedBatch(): Promise<void> {
+    this.isPrivilegedFlushScheduled = false;
+    const batch = this.privilegedBatch.splice(0);
+    if (batch.length === 0) return;
+    const decisions = await this.judgeBatch(
+      batch.map(({ input }) => ({
+        trigger: "privileged-execution" as const,
+        input,
+        allowSessionScope: false,
+      })),
+    );
+    batch.forEach(({ resolve }, index) => resolve(decisions[index]));
+  }
+
+  private async judgeBatch(
+    reviews: Array<{
+      trigger: JudgeRequest["trigger"];
+      input: DenialReviewInput;
+      allowSessionScope: boolean;
+    }>,
+  ): Promise<GateDecision[]> {
+    const decisions: Array<GateDecision | undefined> = reviews.map(
+      () => undefined,
+    );
+    const pending: Array<{
+      index: number;
+      sequence: number;
+      request: JudgeRequest;
+      input: DenialReviewInput;
+      allowSessionScope: boolean;
+    }> = [];
+
+    reviews.forEach((review, index) => {
+      const sequence = ++this.sequence;
+      if (this.consecutiveEscalations >= MAX_CONSECUTIVE_ESCALATIONS) {
+        const reason =
+          "Too many escalations in this turn; the auto-reviewer stopped responding. Change your approach or ask the user directly.";
+        this.emitDecided(sequence, review.input.toolCallId, "denied", reason);
+        decisions[index] = { kind: "deny", reason };
+        return;
+      }
+
+      this.consecutiveEscalations += 1;
+      this.host.emit({
+        type: "tool-review",
+        sessionId: this.host.sessionId,
+        toolCallId: review.input.toolCallId,
+        toolName: review.input.toolName,
+        state: "reviewing",
       });
+      pending.push({
+        index,
+        sequence,
+        input: review.input,
+        allowSessionScope: review.allowSessionScope,
+        request: {
+          toolCallId: review.input.toolCallId,
+          toolName: review.input.toolName,
+          trigger: review.trigger,
+          subject: review.input.subject,
+          evidence: review.input.evidence,
+          signal: review.input.signal,
+          turn: this.host.turnContext(),
+          allowSessionScope: review.allowSessionScope,
+        },
+      });
+    });
+
+    if (pending.length === 0) return decisions as GateDecision[];
+
+    let rulings: JudgeRuling[];
+    try {
+      rulings = await this.host.judge(pending.map(({ request }) => request));
     } catch (error) {
-      // Fail closed: an unavailable reviewer must not widen permissions.
       const reason = `Auto-review unavailable: ${
         error instanceof Error ? error.message : String(error)
       }`;
-      this.emitDecided(this.sequence, input.toolCallId, "denied", reason);
-      return { kind: "deny", reason };
+      pending.forEach(({ index, input, sequence }) => {
+        this.emitDecided(sequence, input.toolCallId, "denied", reason);
+        decisions[index] = { kind: "deny", reason };
+      });
+      return decisions as GateDecision[];
     }
 
-    if (ruling.verdict === "allow") {
-      this.consecutiveEscalations = 0;
-      if (allowSessionScope && ruling.scope === "session") {
-        this.approvedCommands.add(normalizeCommand(input.subject));
+    const rulingsById = new Map(
+      rulings.map((ruling) => [ruling.toolCallId, ruling]),
+    );
+    let allowed = false;
+    pending.forEach(({ index, input, sequence, allowSessionScope }) => {
+      const ruling = rulingsById.get(input.toolCallId);
+      if (!ruling) {
+        const reason =
+          "Auto-review unavailable: The reviewer omitted this tool call from its rulings.";
+        this.emitDecided(sequence, input.toolCallId, "denied", reason);
+        decisions[index] = { kind: "deny", reason };
+        return;
       }
-      this.emitDecided(
-        this.sequence,
-        input.toolCallId,
-        "approved",
-        ruling.reason,
-      );
-      return {
-        kind: "allow",
-        scope: allowSessionScope ? ruling.scope : "once",
-      };
-    }
-    const denyReason = ruling.reason ?? "The auto-reviewer denied this call.";
-    this.emitDecided(this.sequence, input.toolCallId, "denied", denyReason);
-    return { kind: "deny", reason: denyReason };
+      if (ruling.verdict === "allow") {
+        allowed = true;
+        if (allowSessionScope && ruling.scope === "session") {
+          this.approvedCommands.add(normalizeCommand(input.subject));
+        }
+        this.emitDecided(sequence, input.toolCallId, "approved", ruling.reason);
+        decisions[index] = {
+          kind: "allow",
+          scope: allowSessionScope ? ruling.scope : "once",
+        };
+        return;
+      }
+      const reason = ruling.reason ?? "The auto-reviewer denied this call.";
+      this.emitDecided(sequence, input.toolCallId, "denied", reason);
+      decisions[index] = { kind: "deny", reason };
+    });
+    if (allowed) this.consecutiveEscalations = 0;
+    return decisions as GateDecision[];
   }
 
   private emitDecided(
@@ -351,20 +429,32 @@ export class AutoReviewGate implements ToolGate {
 export const RULING_TOOL: Tool = {
   name: "submit_ruling",
   description:
-    "Submit your verdict for the reviewed tool call. Call this exactly once and do not answer in plain text.",
+    "Submit one verdict for every reviewed tool call. Call this exactly once and do not answer in plain text.",
   parameters: Type.Object({
-    verdict: Type.Union([Type.Literal("allow"), Type.Literal("deny")], {
-      description: "Whether the agent may proceed with the call.",
-    }),
-    reason: Type.String({
-      description:
-        "Short explanation of the verdict. For denials, make it actionable: tell the agent what safer alternative to use. Write it in the same language as the user's messages.",
-    }),
-    scope: Type.Optional(
-      Type.Union([Type.Literal("once"), Type.Literal("session")], {
-        description:
-          "once (default): the allowance applies to this single execution. session: identical commands are allowed without re-review for the rest of the session.",
+    rulings: Type.Array(
+      Type.Object({
+        toolCallId: Type.String({
+          description: "The exact toolCallId from the review request.",
+        }),
+        verdict: Type.Union([Type.Literal("allow"), Type.Literal("deny")], {
+          description: "Whether the agent may proceed with this call.",
+        }),
+        reason: Type.String({
+          description:
+            "Short explanation of this verdict. For denials, make it actionable: tell the agent what safer alternative to use. Write it in the same language as the user's messages.",
+        }),
+        scope: Type.Optional(
+          Type.Union([Type.Literal("once"), Type.Literal("session")], {
+            description:
+              "once (default): the allowance applies to this single execution. session: identical commands are allowed without re-review for the rest of the session.",
+          }),
+        ),
       }),
+      {
+        description:
+          "One ruling per reviewed tool call. Do not omit, duplicate, or invent toolCallIds.",
+        minItems: 1,
+      },
     ),
   }),
 };

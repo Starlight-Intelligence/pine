@@ -65,7 +65,7 @@ Deny when the call:
 
 Allow destructive-looking commands whose target is clearly safe to regenerate (build output, dependency caches, temporary files inside the project).
 
-Call submit_ruling exactly once with your verdict. Set scope to "session" only when identical commands should skip re-review for the rest of this session (for example a package manager the project clearly relies on). Write reason in the same language the user's messages use; for denials make it actionable by naming the safer alternative.`;
+Call submit_ruling exactly once with a rulings array containing one verdict for every supplied toolCallId. Do not omit, duplicate, or invent toolCallIds. Set scope to "session" only when identical commands should skip re-review for the rest of this session (for example a package manager the project clearly relies on). Write each reason in the same language the user's messages use; for denials make it actionable by naming the safer alternative.`;
 
 const TRIGGER_DESCRIPTIONS: Record<JudgeRequest["trigger"], string> = {
   "sandbox-denied":
@@ -85,6 +85,7 @@ function truncateText(value: string, maxLength: number): string {
 
 function buildJudgeEvidence(request: JudgeRequest): string {
   const sections = [
+    `Tool call ID: ${request.toolCallId}`,
     `Review trigger: ${TRIGGER_DESCRIPTIONS[request.trigger]}`,
     `Tool: ${request.toolName}`,
     `Call subject:\n${truncateText(request.subject, 4_000)}`,
@@ -110,6 +111,56 @@ function buildJudgeEvidence(request: JudgeRequest): string {
     );
   }
   return sections.join("\n\n");
+}
+
+export function parseJudgeRulings(
+  value: unknown,
+  expectedToolCallIds: readonly string[],
+): JudgeRuling[] {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error("The reviewer's rulings were malformed.");
+  }
+  const rulings = (value as { rulings?: unknown }).rulings;
+  if (
+    !Array.isArray(rulings) ||
+    rulings.length !== expectedToolCallIds.length
+  ) {
+    throw new Error("The reviewer did not return one ruling per tool call.");
+  }
+
+  const expected = new Set(expectedToolCallIds);
+  const seen = new Set<string>();
+  return rulings.map((value): JudgeRuling => {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+      throw new Error("The reviewer's rulings were malformed.");
+    }
+    const ruling = value as {
+      toolCallId?: unknown;
+      verdict?: unknown;
+      reason?: unknown;
+      scope?: unknown;
+    };
+    if (
+      typeof ruling.toolCallId !== "string" ||
+      !expected.has(ruling.toolCallId) ||
+      seen.has(ruling.toolCallId) ||
+      (ruling.verdict !== "allow" && ruling.verdict !== "deny")
+    ) {
+      throw new Error("The reviewer's rulings were malformed.");
+    }
+    seen.add(ruling.toolCallId);
+    const result: JudgeRuling = {
+      toolCallId: ruling.toolCallId,
+      verdict: ruling.verdict,
+    };
+    if (typeof ruling.reason === "string" && ruling.reason.trim()) {
+      result.reason = ruling.reason.trim();
+    }
+    if (ruling.scope === "session" || ruling.scope === "once") {
+      result.scope = ruling.scope;
+    }
+    return result;
+  });
 }
 
 interface LiveAgentSession {
@@ -626,31 +677,42 @@ export class PineAgentRuntime {
   }
 
   /**
-   * Structured-output judge: one direct stream call against the session's
-   * selected model with a submit_ruling tool, then read the tool call back.
+   * Structured-output judge: one direct stream call for the whole review batch
+   * against the session's selected model, then read every ruling back by ID.
    * Never goes through session.prompt (no recursion into the tool pipeline).
    */
   private async runJudge(
     live: LiveAgentSession,
-    request: JudgeRequest,
-  ): Promise<JudgeRuling> {
+    requests: JudgeRequest[],
+  ): Promise<JudgeRuling[]> {
+    if (requests.length === 0) return [];
     const model = live.session.model;
     if (!model) throw new Error("No model is selected for this session.");
     const modelRuntime = await this.getModelRuntime(live.agentDir);
     const timeout = AbortSignal.timeout(JUDGE_TIMEOUT_MS);
-    const signal = request.signal
-      ? AbortSignal.any([request.signal, timeout])
-      : timeout;
+    const requestSignals = requests.flatMap((request) =>
+      request.signal ? [request.signal] : [],
+    );
+    const signal =
+      requestSignals.length > 0
+        ? AbortSignal.any([...requestSignals, timeout])
+        : timeout;
     const context: Context = {
-      systemPrompt:
-        request.allowSessionScope === false
-          ? `${JUDGE_SYSTEM_PROMPT}\n\nThis privileged call must be reviewed independently. Set scope to "once"; session scope is not available.`
-          : JUDGE_SYSTEM_PROMPT,
+      systemPrompt: requests.every(
+        (request) => request.allowSessionScope === false,
+      )
+        ? `${JUDGE_SYSTEM_PROMPT}\n\nThese privileged calls must each receive an independent verdict. Set every scope to "once"; session scope is not available.`
+        : JUDGE_SYSTEM_PROMPT,
       messages: [
         {
           role: "user",
           timestamp: Date.now(),
-          content: buildJudgeEvidence(request),
+          content: `Review all ${requests.length} tool call${requests.length === 1 ? "" : "s"} below and return one ruling for every exact toolCallId.\n\n${requests
+            .map(
+              (request, index) =>
+                `## Tool call ${index + 1}\n${buildJudgeEvidence(request)}`,
+            )
+            .join("\n\n")}`,
         },
       ],
       tools: [RULING_TOOL],
@@ -677,19 +739,10 @@ export class PineAgentRuntime {
     if (!call || call.type !== "toolCall") {
       throw new Error("The reviewer did not submit a ruling.");
     }
-    const args = call.arguments as
-      { verdict?: unknown; reason?: unknown; scope?: unknown } | undefined;
-    if (args?.verdict !== "allow" && args?.verdict !== "deny") {
-      throw new Error("The reviewer's ruling was malformed.");
-    }
-    const ruling: JudgeRuling = { verdict: args.verdict };
-    if (typeof args.reason === "string" && args.reason.trim()) {
-      ruling.reason = args.reason.trim();
-    }
-    if (args.scope === "session" || args.scope === "once") {
-      ruling.scope = args.scope;
-    }
-    return ruling;
+    return parseJudgeRulings(
+      call.arguments,
+      requests.map((request) => request.toolCallId),
+    );
   }
 
   /** Keep the latest assistant text/thinking as gate review context. */

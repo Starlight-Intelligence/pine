@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { GateHost, ToolGate } from "../gate";
+import type { GateHost, JudgeRequest, JudgeRuling, ToolGate } from "../gate";
 import { AutoReviewGate, normalizeCommand, UserApprovalGate } from "../gate";
 
 interface HostMocks {
@@ -9,12 +9,22 @@ interface HostMocks {
 }
 
 function createHost(
-  judgeImpl: GateHost["judge"] = () => Promise.resolve({ verdict: "allow" }),
+  judgeImpl: (
+    request: JudgeRequest,
+  ) => Promise<Omit<JudgeRuling, "toolCallId">> = () =>
+    Promise.resolve({ verdict: "allow" }),
   requestApprovalImpl: GateHost["requestUserApproval"] = () =>
     Promise.resolve({ kind: "allow" }),
 ): { host: GateHost; mocks: HostMocks } {
   const emit = vi.fn();
-  const judge = vi.fn(judgeImpl);
+  const judge = vi.fn(async (requests: JudgeRequest[]) =>
+    Promise.all(
+      requests.map(async (request) => ({
+        toolCallId: request.toolCallId,
+        ...(await judgeImpl(request)),
+      })),
+    ),
+  );
   const requestUserApproval = vi.fn(requestApprovalImpl);
   const host: GateHost = {
     sessionId: "session-1",
@@ -152,13 +162,14 @@ describe("AutoReviewGate", () => {
         command: "rm -rf node_modules",
       }),
     ).resolves.toEqual({ kind: "deny", reason: "untracked files" });
-    expect(mocks.judge).toHaveBeenCalledWith(
+    expect(mocks.judge).toHaveBeenCalledWith([
       expect.objectContaining({
+        toolCallId: "t1",
         trigger: "destructive-pattern",
         subject: "rm -rf node_modules",
         evidence: expect.stringContaining("recursive-force-delete"),
       }),
-    );
+    ]);
     expect(mocks.emit).toHaveBeenCalledWith(
       expect.objectContaining({
         type: "approval-decided",
@@ -170,8 +181,9 @@ describe("AutoReviewGate", () => {
   });
 
   it("records session-scope approvals as normalized allowlist entries", async () => {
-    const { host, mocks } = createHost();
-    mocks.judge.mockResolvedValue({ verdict: "allow", scope: "session" });
+    const { host, mocks } = createHost(() =>
+      Promise.resolve({ verdict: "allow", scope: "session" }),
+    );
     const gate = new AutoReviewGate(host);
 
     // Only escalated (destructive-pattern) commands reach the judge, so the
@@ -190,8 +202,9 @@ describe("AutoReviewGate", () => {
   });
 
   it("reviews identical privileged calls every time without caching session scope", async () => {
-    const { host, mocks } = createHost();
-    mocks.judge.mockResolvedValue({ verdict: "allow", scope: "session" });
+    const { host, mocks } = createHost(() =>
+      Promise.resolve({ verdict: "allow", scope: "session" }),
+    );
     const gate = new AutoReviewGate(host);
     const review = {
       toolName: "privileged_bash",
@@ -208,14 +221,60 @@ describe("AutoReviewGate", () => {
     ).resolves.toEqual({ kind: "allow", scope: "once" });
 
     expect(mocks.judge).toHaveBeenCalledTimes(2);
-    expect(mocks.judge).toHaveBeenNthCalledWith(
-      1,
+    expect(mocks.judge).toHaveBeenNthCalledWith(1, [
       expect.objectContaining({
+        toolCallId: "p1",
         trigger: "privileged-execution",
         allowSessionScope: false,
       }),
-    );
+    ]);
     expect(gate.isApprovedCommand("open -a Finder")).toBe(false);
+  });
+
+  it("batches parallel privileged calls into one judge request", async () => {
+    const { host, mocks } = createHost((request) =>
+      Promise.resolve(
+        request.toolCallId === "p2"
+          ? { verdict: "deny", reason: "unsafe target" }
+          : { verdict: "allow", reason: "expected native operation" },
+      ),
+    );
+    const gate = new AutoReviewGate(host);
+    const review = {
+      toolName: "privileged_bash",
+      description: "Run a native operation",
+      evidence: "Native permissions are required.",
+    };
+
+    const decisions = await Promise.all([
+      gate.reviewPrivilegedCall({
+        toolCallId: "p1",
+        subject: "open -a Finder",
+        ...review,
+      }),
+      gate.reviewPrivilegedCall({
+        toolCallId: "p2",
+        subject: "rm -rf ~/Documents",
+        ...review,
+      }),
+      gate.reviewPrivilegedCall({
+        toolCallId: "p3",
+        subject: "osascript -e 'display dialog \"Done\"'",
+        ...review,
+      }),
+    ]);
+
+    expect(mocks.judge).toHaveBeenCalledTimes(1);
+    expect(mocks.judge).toHaveBeenCalledWith([
+      expect.objectContaining({ toolCallId: "p1" }),
+      expect.objectContaining({ toolCallId: "p2" }),
+      expect.objectContaining({ toolCallId: "p3" }),
+    ]);
+    expect(decisions).toEqual([
+      { kind: "allow", scope: "once" },
+      { kind: "deny", reason: "unsafe target" },
+      { kind: "allow", scope: "once" },
+    ]);
   });
 
   it("fails closed when the judge errors", async () => {
