@@ -7,7 +7,7 @@ import {
 } from "@lucide/vue";
 import { storeToRefs } from "pinia";
 import type { ComponentPublicInstance } from "vue";
-import { computed, nextTick, watch } from "vue";
+import { computed, nextTick, useTemplateRef, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { handleError } from "@/app/errors/errorHandler";
 import { Button } from "@/components/ui/button";
@@ -32,6 +32,36 @@ const shouldReserveWindowControlsSpace = computed(
 );
 
 const tabButtons = new Map<string, HTMLButtonElement>();
+const tabList = useTemplateRef<HTMLDivElement>("tabList");
+
+function revealActiveTab(): void {
+  const viewport = tabList.value;
+  const button = tabButtons.get(activeTabId.value);
+  if (!viewport || !button || viewport.clientWidth === 0) return;
+
+  const viewportRect = viewport.getBoundingClientRect();
+  const buttonRect = button.getBoundingClientRect();
+  const left = viewportRect.left + viewport.clientLeft;
+  const right = left + viewport.clientWidth;
+  if (buttonRect.left >= left && buttonRect.right <= right) return;
+
+  // Center clipped tabs so the edge fade does not obscure the active label.
+  // Scroll only this viewport; scrollIntoView can also move its ancestors.
+  const target =
+    viewport.scrollLeft +
+    (buttonRect.left + buttonRect.right - left - right) / 2;
+  viewport.scrollTo({
+    left: Math.max(
+      0,
+      Math.min(target, viewport.scrollWidth - viewport.clientWidth),
+    ),
+    behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+      ? "instant"
+      : "smooth",
+  });
+}
+
+watch([activeTabId, tabList], revealActiveTab, { flush: "post" });
 
 function getTabLabel(tab: ProjectContentTab): string {
   return "label" in tab && tab.label
@@ -86,7 +116,7 @@ function moveTabFocus(index: number, event: KeyboardEvent): void {
   const normalizedIndex = (nextIndex + tabs.value.length) % tabs.value.length;
   const tab = tabs.value[normalizedIndex];
   tabNavigation.activate(tab.id);
-  void nextTick(() => tabButtons.get(tab.id)?.focus());
+  void nextTick(() => tabButtons.get(tab.id)?.focus({ preventScroll: true }));
 }
 
 watch(
@@ -131,6 +161,7 @@ watch(activeSession, (session) => {
       "
     >
       <div
+        ref="tabList"
         data-slot="project-content-tab-list"
         role="tablist"
         :aria-label="t('project.contentTabs.tabListLabel')"

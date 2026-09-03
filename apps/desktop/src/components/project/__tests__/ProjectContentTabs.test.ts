@@ -2,7 +2,7 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { computed, nextTick } from "vue";
 import { createMemoryHistory, createRouter } from "vue-router";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createAppI18n } from "@/app/i18n";
 import type { PineSessionSummary } from "@/shared/sessions";
 import { useContentTabsStore } from "@/stores/contentTabs";
@@ -82,6 +82,80 @@ const secondSession: PineSessionSummary = {
 };
 
 describe("ProjectContentTabs", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it.each([
+    { name: "right-clipped", left: 500, target: 520 },
+    { name: "left-clipped", left: 20, target: 40 },
+    { name: "visible", left: 120, target: null },
+  ])("reveals a $name tab on route activation", async ({ left, target }) => {
+    const { router, wrapper } = await mountTabs();
+    const viewport = wrapper.get<HTMLDivElement>('[role="tablist"]').element;
+    const button = wrapper.get<HTMLButtonElement>(
+      "#project-content-tab-file-project-view",
+    ).element;
+    Object.defineProperties(viewport, {
+      clientWidth: { value: 320 },
+      scrollWidth: { value: 1000 },
+      scrollLeft: { value: 200, writable: true },
+    });
+    vi.spyOn(viewport, "getBoundingClientRect").mockReturnValue(
+      new DOMRect(100, 0, 320, 40),
+    );
+    vi.spyOn(button, "getBoundingClientRect").mockReturnValue(
+      new DOMRect(left, 0, 160, 32),
+    );
+    const scroll = vi.spyOn(viewport, "scrollTo").mockImplementation(() => {});
+
+    await router.push({ query: { tab: "file-project-view" } });
+    await flushPromises();
+
+    if (target === null) {
+      expect(scroll).not.toHaveBeenCalled();
+    } else {
+      expect(scroll).toHaveBeenCalledExactlyOnceWith({
+        left: target,
+        behavior: "smooth",
+      });
+    }
+    wrapper.unmount();
+  });
+
+  it("reveals keyboard-selected tabs without focus scrolling and respects reduced motion", async () => {
+    const { wrapper } = await mountTabs();
+    const viewport = wrapper.get<HTMLDivElement>('[role="tablist"]').element;
+    const button = wrapper.get<HTMLButtonElement>(
+      "#project-content-tab-file-project-view",
+    ).element;
+    Object.defineProperties(viewport, {
+      clientWidth: { value: 200 },
+      scrollWidth: { value: 400 },
+    });
+    vi.spyOn(viewport, "getBoundingClientRect").mockReturnValue(
+      new DOMRect(0, 0, 200, 40),
+    );
+    vi.spyOn(button, "getBoundingClientRect").mockReturnValue(
+      new DOMRect(240, 0, 160, 32),
+    );
+    vi.spyOn(window, "matchMedia").mockReturnValue({
+      matches: true,
+    } as MediaQueryList);
+    const scroll = vi.spyOn(viewport, "scrollTo").mockImplementation(() => {});
+    const focus = vi.spyOn(button, "focus");
+
+    await wrapper.get('[role="tab"]').trigger("keydown", { key: "End" });
+    await flushPromises();
+
+    expect(focus).toHaveBeenCalledWith({ preventScroll: true });
+    expect(scroll).toHaveBeenCalledExactlyOnceWith({
+      left: 200,
+      behavior: "instant",
+    });
+    wrapper.unmount();
+  });
+
   it("does not reserve window controls space beside an expanded desktop sidebar", async () => {
     sidebar.state = "expanded";
     sidebar.isMobile = false;
