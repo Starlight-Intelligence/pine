@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import { Files, MessagesSquare, Settings2 } from "@lucide/vue";
 import { storeToRefs } from "pinia";
-import { ref } from "vue";
+import { computed, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import {
+  useProjectSidebarStore,
+  type ProjectSidebarTab,
+} from "@/stores/projectSidebar";
 import { useI18n } from "vue-i18n";
 import {
   Sidebar,
@@ -18,8 +23,6 @@ import { useProjectStore } from "@/stores/project";
 import ProjectFileTree from "./ProjectFileTree.vue";
 import ProjectSessionList from "./ProjectSessionList.vue";
 
-type SidebarTab = "files" | "sessions";
-
 const { t } = useI18n();
 const emit = defineEmits<{
   editProject: [];
@@ -27,7 +30,33 @@ const emit = defineEmits<{
 }>();
 const projectStore = useProjectStore();
 const { activeProject } = storeToRefs(projectStore);
-const activeTab = ref<SidebarTab>("sessions");
+const sidebarStore = useProjectSidebarStore();
+const route = useRoute();
+const router = useRouter();
+const activeTab = computed<ProjectSidebarTab>({
+  get() {
+    const requested = route.query.sidebar;
+    if (
+      route.params.projectId === activeProject.value?.id &&
+      (requested === "files" || requested === "sessions")
+    )
+      return requested;
+    return activeProject.value
+      ? sidebarStore.stateFor(activeProject.value.id).tab
+      : "sessions";
+  },
+  set(tab) {
+    if (activeProject.value) sidebarStore.setTab(activeProject.value.id, tab);
+    void router.replace({ query: { ...route.query, sidebar: tab } });
+  },
+});
+watch(
+  [() => activeProject.value?.id, activeTab],
+  ([projectId, tab]) => {
+    if (projectId) sidebarStore.setTab(projectId, tab);
+  },
+  { immediate: true },
+);
 </script>
 
 <template>
