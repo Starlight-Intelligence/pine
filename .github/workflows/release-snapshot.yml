@@ -15,9 +15,14 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-macos-dmg:
-    name: Build arm64 + x64 DMGs & publish snapshot
+  build:
+    name: Build ${{ matrix.arch }} DMG
     runs-on: macos-latest
+    strategy:
+      # Build each arch on its own runner: MakerDMG uses a fixed intermediate
+      # name (Pine.dmg), so arm64 and x64 would collide if built in one run.
+      matrix:
+        arch: [arm64, x64]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -36,6 +41,38 @@ jobs:
       - name: Bump snapshot version
         run: bun run apps/desktop/scripts/bump-snapshot.mjs
 
+      - name: Build ${{ matrix.arch }} DMG
+        working-directory: apps/desktop
+        run: >-
+          bunx electron-forge make --platform=darwin --arch=${{ matrix.arch }}
+          --targets @electron-forge/maker-dmg
+
+      - name: Upload DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: dmg-${{ matrix.arch }}
+          path: apps/desktop/out/make/*.dmg
+          if-no-files-found: error
+
+  release:
+    name: Publish snapshot
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Bump snapshot version
+        run: bun run apps/desktop/scripts/bump-snapshot.mjs
+
       - name: Resolve snapshot version
         id: version
         working-directory: apps/desktop
@@ -43,11 +80,12 @@ jobs:
           SNAPSHOT=$(bun -p "require('./package.json').version")
           echo "snapshot=$SNAPSHOT" >> "$GITHUB_OUTPUT"
 
-      - name: Build arm64 + x64 DMGs
-        working-directory: apps/desktop
-        run: >-
-          bunx electron-forge make --platform=darwin --arch=arm64,x64
-          --targets @electron-forge/maker-dmg
+      - name: Download DMGs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: dmg-*
+          path: dmgs
+          merge-multiple: true
 
       - name: Publish snapshot release
         uses: softprops/action-gh-release@v2
@@ -62,4 +100,4 @@ jobs:
             Source commit: `${{ github.sha }}`
           prerelease: true
           generate_release_notes: true
-          files: apps/desktop/out/make/**/*.dmg
+          files: dmgs/*.dmg
