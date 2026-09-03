@@ -43,7 +43,7 @@ const indicators = computed(() => [
     <Badge
       v-if="recommended"
       data-model-capability="recommended"
-      class="text-primary-foreground!"
+      class="mr-1 text-primary-foreground!"
     >
       {{ t("models.picker.recommended") }}
     </Badge>
