@@ -423,7 +423,7 @@ const createWindow = () => {
       ? { trafficLightPosition: { x: 21, y: 21 } }
       : { titleBarOverlay: true }),
     width: 1120,
-    height: 760,
+    height: 840,
     minWidth: 720,
     minHeight: 540,
     show: false,
