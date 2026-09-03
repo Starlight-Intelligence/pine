@@ -104,6 +104,46 @@ const isDark = computed(() => colorScheme.value === "dark");
   @apply bg-transparent p-0 font-normal;
 }
 
+/* Keep the pre-migration table styling. Put flow spacing on the wrapper so
+   it collapses with prose margins and obeys the message boundary rules. */
+.markdown-content :deep(.table-node-wrapper) {
+  @apply my-6;
+}
+
+.markdown-content :deep(.table-node) {
+  @apply m-0 block w-full border-collapse;
+  table-layout: auto;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.markdown-content :deep(.table-node tr) {
+  @apply border-b border-border;
+}
+
+.markdown-content :deep(.table-node :is(th, td)),
+.markdown-content :deep(.table-node th:last-child),
+.markdown-content :deep(.table-node td:last-child),
+.markdown-content :deep(.table-node tbody tr:last-child td) {
+  @apply border border-border px-4 py-2;
+}
+
+.markdown-content :deep(.table-node thead th) {
+  @apply font-bold;
+  background: transparent;
+}
+
+.markdown-content :deep(.table-node tbody tr:nth-child(2n)),
+.markdown-content :deep(.table-node tbody tr:hover) {
+  background: transparent;
+}
+
+.markdown-content :deep(.table-node__resize-handle) {
+  display: none;
+}
+
 /* markstream's flow spacing gives each block a top margin; neutralize the very
    first one so the message doesn't start with a gap. */
 .markdown-content :deep(.node-slot:first-child .node-content > :first-child) {
