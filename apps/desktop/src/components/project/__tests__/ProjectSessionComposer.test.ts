@@ -212,7 +212,7 @@ describe("ProjectSessionComposer", () => {
     ).toContain("text-destructive!");
   });
 
-  it("shows model capability icons with accessible meanings", async () => {
+  it("shows the recommendation label and accessible capability icons", async () => {
     const wrapper = mountComposer();
 
     await wrapper.get('[data-slot="model-selector-trigger"]').trigger("click");
@@ -221,9 +221,11 @@ describe("ProjectSessionComposer", () => {
     const recommended = document.querySelector(
       '[data-model-capability="recommended"]',
     );
-    expect(recommended?.getAttribute("aria-label")).toBe("推荐");
-    expect(recommended?.querySelector("svg")).not.toBeNull();
-    expect(recommended?.textContent).toBe("");
+    expect(recommended?.textContent).toBe("推荐");
+    expect(recommended?.querySelector("svg")).toBeNull();
+    expect(recommended?.classList.contains("text-primary-foreground!")).toBe(
+      true,
+    );
     const context = document.querySelector('[data-model-capability="context"]');
     expect(context?.getAttribute("aria-label")).toBe("上下文窗口：200K");
     expect(context?.querySelector("svg")).not.toBeNull();

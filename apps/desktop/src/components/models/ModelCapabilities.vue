@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { EyeIcon, StarIcon } from "@lucide/vue";
+import { EyeIcon } from "@lucide/vue";
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
+import { Badge } from "@/components/ui/badge";
 import {
   Tooltip,
   TooltipContent,
@@ -25,15 +26,6 @@ const contextTier = computed(() =>
       : 1,
 );
 const indicators = computed(() => [
-  ...(props.recommended
-    ? [
-        {
-          id: "recommended",
-          icon: StarIcon,
-          label: t("models.picker.recommended"),
-        },
-      ]
-    : []),
   ...(props.model.input.includes("image")
     ? [{ id: "vision", icon: EyeIcon, label: t("models.picker.vision") }]
     : []),
@@ -48,6 +40,13 @@ const indicators = computed(() => [
 
 <template>
   <span class="inline-flex shrink-0 items-center gap-1 text-muted-foreground">
+    <Badge
+      v-if="recommended"
+      data-model-capability="recommended"
+      class="text-primary-foreground!"
+    >
+      {{ t("models.picker.recommended") }}
+    </Badge>
     <TooltipProvider :delay-duration="300">
       <Tooltip v-for="indicator in indicators" :key="indicator.id">
         <TooltipTrigger as-child>

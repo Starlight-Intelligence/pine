@@ -2,7 +2,7 @@
 import {
   ArrowLeftIcon,
   CheckIcon,
-  StarIcon,
+  HeartIcon,
   UnplugIcon,
   WrenchIcon,
 } from "@lucide/vue";
@@ -268,7 +268,8 @@ async function handleConnected(): Promise<void> {
                 @pointerdown.stop
                 @click.stop="modelsStore.toggleFavorite(model)"
               >
-                <StarIcon
+                <HeartIcon
+                  aria-hidden="true"
                   :class="
                     cn({
                       'fill-current': modelsStore.isFavorite(model),
