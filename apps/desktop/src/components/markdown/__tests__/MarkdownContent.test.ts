@@ -80,4 +80,44 @@ describe("MarkdownContent", () => {
     expect(wrapper.find('[data-slot="code-block"]').exists()).toBe(true);
     expect(wrapper.find('button[aria-label="复制代码"]').exists()).toBe(true);
   });
+
+  it("renders rich Markdown and column alignment in shadcn table cells", () => {
+    const wrapper = mount(MarkdownContent, {
+      props: {
+        source:
+          "| Name | Count | Details |\n| :--- | ---: | :---: |\n| **Pine** | 2 | [Docs](https://example.com) and `code` |\n| <img src=x onerror=alert(1)> | 3 | Plain text |",
+        final: true,
+      },
+    });
+
+    const table = wrapper.get('[data-slot="table"]');
+    expect(table.findAll("th").map((cell) => cell.text())).toEqual([
+      "Name",
+      "Count",
+      "Details",
+    ]);
+    expect(table.get("strong").text()).toBe("Pine");
+    expect(table.get("code").text()).toBe("code");
+    expect(table.get("a").attributes("target")).toBe("_blank");
+    expect(table.findAll("th")[1].classes()).toContain("text-right");
+    expect(table.findAll("td")[2].classes()).toContain("text-center");
+    expect(table.find("img").exists()).toBe(false);
+    expect(table.text()).toContain("<img src=x onerror=alert(1)>");
+    wrapper.unmount();
+  });
+
+  it("appends streamed table rows without replacing existing content", async () => {
+    const source = "| Name | Count |\n| --- | --- |\n| Pine | 1 |\n";
+    const wrapper = mount(MarkdownContent, {
+      props: { source, final: false },
+    });
+    const firstRow = wrapper.get("tbody tr").element;
+    await wrapper.setProps({ source: `${source}| Oak | 2 |\n`, final: true });
+    await nextTick();
+
+    expect(wrapper.findAll("tbody tr")).toHaveLength(2);
+    expect(wrapper.get("tbody tr").element).toBe(firstRow);
+    expect(wrapper.findAll("tbody tr")[1].text()).toContain("Oak");
+    wrapper.unmount();
+  });
 });
