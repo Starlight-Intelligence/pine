@@ -1,11 +1,16 @@
 import { flushPromises, mount } from "@vue/test-utils";
+import { computed, ref } from "vue";
+import { useSessionStore } from "@/stores/session";
 import { createPinia, setActivePinia } from "pinia";
 import { describe, expect, it, vi } from "vitest";
 import { createAppI18n } from "@/app/i18n";
 import ProjectSessionView from "../ProjectSessionView.vue";
 
+const activeTabId = ref("session-1");
+
 vi.mock("@/composables/useContentTabNavigation", () => ({
   useContentTabNavigation: () => ({
+    activeTabId: computed(() => activeTabId.value),
     bindSession: vi.fn(),
     failPrompt: vi.fn(),
   }),
@@ -20,6 +25,7 @@ function fileTransfer(files: File[] = []): DataTransfer {
 }
 
 function mountView() {
+  activeTabId.value = "session-1";
   const pinia = createPinia();
   setActivePinia(pinia);
   const inspectAttachments = vi.fn().mockResolvedValue({
@@ -68,6 +74,48 @@ function mountView() {
 }
 
 describe("ProjectSessionView file drop", () => {
+  it("keeps a hidden view on its own transcript while the active session changes", async () => {
+    const { wrapper } = mountView();
+    const store = useSessionStore();
+    store.messages = [
+      {
+        id: "first-message",
+        createdAt: "2026-09-03T00:00:00Z",
+        role: "assistant",
+        status: "complete",
+        blocks: [{ type: "text", text: "First session" }],
+      },
+    ];
+    await flushPromises();
+    const firstMessages = wrapper
+      .findComponent({ name: "ProjectTranscriptOutline" })
+      .props("messages");
+
+    activeTabId.value = "session-2";
+    store.messages = [
+      {
+        id: "second-message",
+        createdAt: "2026-09-03T00:00:00Z",
+        role: "assistant",
+        status: "complete",
+        blocks: [{ type: "text", text: "Second session" }],
+      },
+    ];
+    await flushPromises();
+
+    expect(
+      wrapper
+        .findComponent({ name: "ProjectTranscriptOutline" })
+        .props("messages"),
+    ).toBe(firstMessages);
+    expect(
+      wrapper
+        .findComponent({ name: "ProjectTranscriptMessage" })
+        .props("message").id,
+    ).toBe("first-message");
+    wrapper.unmount();
+  });
+
   it("shows and clears the attachment drop overlay", async () => {
     const { wrapper } = mountView();
     const layout = wrapper.get(".session-layout");

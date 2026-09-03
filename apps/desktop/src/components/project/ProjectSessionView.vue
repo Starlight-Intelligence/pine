@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { FilesIcon } from "@lucide/vue";
 import { storeToRefs } from "pinia";
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onMounted, ref, watch, type Ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import type { PineApprovalAction, PineApprovalMode } from "@/shared/agent";
@@ -43,14 +43,25 @@ const props = defineProps<{
 const contentTabsStore = useContentTabsStore();
 const tabNavigation = useContentTabNavigation();
 const sessionStore = useSessionStore();
-const {
-  hasEarlierMessages,
-  isLoadingMessages,
-  isRunning,
-  messages,
-  pendingApprovals,
-  reviewingToolCallIds,
-} = storeToRefs(sessionStore);
+const liveState = storeToRefs(sessionStore);
+
+// KeepAlive preserves DOM, but does not stop reactive updates. A hidden tab
+// must retain its own projection instead of rendering every newly active
+// session's transcript (and reparsing its Markdown) in the detached DOM.
+function tabValue<T>(source: Ref<T>) {
+  return computed<T>((previous) =>
+    tabNavigation.activeTabId.value === props.tabId || previous === undefined
+      ? source.value
+      : previous,
+  );
+}
+
+const hasEarlierMessages = tabValue(liveState.hasEarlierMessages);
+const isLoadingMessages = tabValue(liveState.isLoadingMessages);
+const isRunning = tabValue(liveState.isRunning);
+const messages = tabValue(liveState.messages);
+const pendingApprovals = tabValue(liveState.pendingApprovals);
+const reviewingToolCallIds = tabValue(liveState.reviewingToolCallIds);
 const draft = ref("");
 const attachments = ref<PineAttachment[]>([]);
 const approvalMode = ref<PineApprovalMode>("auto-approve");

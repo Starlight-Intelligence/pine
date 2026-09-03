@@ -27,6 +27,23 @@ const tabNavigation = useContentTabNavigation();
 const sessionStore = useSessionStore();
 const { activeTab: activeContentTab, activeTabId, tabs } = tabNavigation;
 const { activeSession } = storeToRefs(sessionStore);
+const sessionTabs = computed(() =>
+  tabs.value.filter((tab) => tab.kind === "session"),
+);
+watch(
+  () =>
+    new Set(
+      sessionTabs.value.flatMap((tab) =>
+        tab.state === "bound" ? [tab.sessionId] : [],
+      ),
+    ),
+  (openSessionIds, previousSessionIds) => {
+    for (const sessionId of previousSessionIds) {
+      if (!openSessionIds.has(sessionId))
+        sessionStore.dropSessionCache(sessionId);
+    }
+  },
+);
 const shouldReserveWindowControlsSpace = computed(
   () => sidebarState.value === "collapsed" || isMobile.value,
 );
@@ -233,19 +250,13 @@ watch(activeSession, (session) => {
       :aria-labelledby="`project-content-tab-${activeContentTab.id}`"
       class="min-h-0 flex-1 overflow-hidden"
     >
-      <!-- KeepAlive caches each tab's session view so scroll position, expand /
-           collapse state and the streaming DOM survive tab switches instead of
-           remounting. The :key keeps one cached instance per tab id. -->
-      <KeepAlive>
+      <!-- Each open tab owns its cache. Removing the tab also unmounts its
+           cached view; switching tabs still preserves drafts and scroll state. -->
+      <KeepAlive v-for="tab in sessionTabs" :key="tab.id">
         <ProjectSessionView
-          v-if="activeContentTab.kind === 'session'"
-          :key="activeContentTab.id"
-          :tab-id="activeContentTab.id"
-          :session-id="
-            activeContentTab.state === 'bound'
-              ? activeContentTab.sessionId
-              : undefined
-          "
+          v-if="activeTabId === tab.id"
+          :tab-id="tab.id"
+          :session-id="tab.state === 'bound' ? tab.sessionId : undefined"
         />
       </KeepAlive>
     </div>

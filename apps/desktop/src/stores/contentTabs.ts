@@ -52,6 +52,9 @@ export const useContentTabsStore = defineStore("content-tabs", () => {
   }
 
   const tabs = ref<ProjectContentTab[]>(initialTabs());
+  // Router replacement is async. Keep the intended successor available while
+  // the route still points to a tab that has just been removed.
+  const fallbackActiveTabId = ref<string | null>(null);
 
   function makeDraftTab(): DraftSessionTab {
     const tab = {
@@ -211,21 +214,22 @@ export const useContentTabsStore = defineStore("content-tabs", () => {
     let replacement: DraftSessionTab | null = null;
 
     if (
-      closingTab.kind === "session" &&
-      !nextTabs.some((tab) => tab.kind === "session")
+      nextTabs.length === 0 ||
+      (closingTab.kind === "session" &&
+        !nextTabs.some((tab) => tab.kind === "session"))
     ) {
       replacement = makeDraftTab();
       nextTabs.splice(Math.min(closingIndex, nextTabs.length), 0, replacement);
     }
 
+    const nextActiveTabId = wasActive
+      ? (replacement?.id ??
+        nextTabs[Math.min(closingIndex, nextTabs.length - 1)]?.id ??
+        activeTabId)
+      : activeTabId;
+    if (wasActive) fallbackActiveTabId.value = nextActiveTabId;
     tabs.value = nextTabs;
-    if (!wasActive) return activeTabId;
-
-    return (
-      replacement?.id ??
-      nextTabs[Math.min(closingIndex, nextTabs.length - 1)]?.id ??
-      createSessionTab().id
-    );
+    return nextActiveTabId;
   }
 
   function removeSession(sessionId: string, activeTabId: string): string {
@@ -246,17 +250,23 @@ export const useContentTabsStore = defineStore("content-tabs", () => {
     if (!tabs.value.some((tab) => tab.kind === "session")) {
       const replacement = makeDraftTab();
       tabs.value = [replacement, ...tabs.value];
-      if (activeWasRemoved) return replacement.id;
+      if (activeWasRemoved) {
+        fallbackActiveTabId.value = replacement.id;
+        return replacement.id;
+      }
     } else if (activeWasRemoved) {
-      return (
-        tabs.value.find((tab) => tab.kind === "session")?.id ?? tabs.value[0].id
-      );
+      const nextActiveTabId =
+        tabs.value.find((tab) => tab.kind === "session")?.id ??
+        tabs.value[0].id;
+      fallbackActiveTabId.value = nextActiveTabId;
+      return nextActiveTabId;
     }
     return activeTabId;
   }
 
   function reset(): void {
     nextSessionTabNumber = 2;
+    fallbackActiveTabId.value = null;
     tabs.value = initialTabs();
   }
 
@@ -266,6 +276,7 @@ export const useContentTabsStore = defineStore("content-tabs", () => {
     close,
     createSessionTab,
     failPrompt,
+    fallbackActiveTabId,
     openSession,
     removeSession,
     reset,

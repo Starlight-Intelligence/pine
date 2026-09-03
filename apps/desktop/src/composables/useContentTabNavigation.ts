@@ -18,6 +18,14 @@ export function useContentTabNavigation() {
     if (requestedId && tabs.value.some((tab) => tab.id === requestedId)) {
       return requestedId;
     }
+    const fallbackId = store.fallbackActiveTabId;
+    if (
+      requestedId &&
+      fallbackId &&
+      tabs.value.some((tab) => tab.id === fallbackId)
+    ) {
+      return fallbackId;
+    }
     return (
       tabs.value.find((tab) => tab.kind === "session")?.id ??
       tabs.value[0]?.id ??

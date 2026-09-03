@@ -748,6 +748,7 @@ export const useSessionStore = defineStore("session", () => {
     connectAgentEvents,
     contextUsage,
     deleteSession,
+    dropSessionCache,
     hasEarlierMessages,
     isLoadingRecent,
     isLoadingMessages,

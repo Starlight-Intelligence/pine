@@ -1,10 +1,11 @@
 import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
-import { computed, nextTick } from "vue";
+import { computed, nextTick, onUnmounted } from "vue";
 import { createMemoryHistory, createRouter } from "vue-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createAppI18n } from "@/app/i18n";
 import type { PineSessionSummary } from "@/shared/sessions";
+import { useSessionStore } from "@/stores/session";
 import { useContentTabsStore } from "@/stores/contentTabs";
 import ProjectContentTabs from "../ProjectContentTabs.vue";
 
@@ -12,7 +13,7 @@ const sidebar = vi.hoisted(() => ({
   state: "expanded",
   isMobile: false,
 }));
-const sessionView = vi.hoisted(() => ({ mounts: 0 }));
+const sessionView = vi.hoisted(() => ({ mounts: 0, unmounts: 0 }));
 
 vi.mock("@/components/ui/sidebar", () => ({
   useSidebar: () => ({
@@ -25,6 +26,9 @@ vi.mock("../ProjectSessionView.vue", () => ({
   default: {
     setup() {
       sessionView.mounts += 1;
+      onUnmounted(() => {
+        sessionView.unmounts += 1;
+      });
     },
     template: "<div />",
   },
@@ -45,6 +49,7 @@ async function mountTabs() {
   await router.push({ path: "/", query: { tab: "session-1" } });
   await router.isReady();
   sessionView.mounts = 0;
+  sessionView.unmounts = 0;
   Object.defineProperty(window, "pine", {
     configurable: true,
     value: {
@@ -237,7 +242,7 @@ describe("ProjectContentTabs", () => {
     ).toContain("h-8");
   });
 
-  it("binds each session tab to its own session and remounts its view", async () => {
+  it("binds each session tab to its own session and reuses its view", async () => {
     const { router, wrapper } = await mountTabs();
     const tabsStore = useContentTabsStore();
     tabsStore.bindSession("session-1", firstSession);
@@ -261,6 +266,8 @@ describe("ProjectContentTabs", () => {
     expect(window.pine.resumeSession).toHaveBeenCalledWith({
       sessionId: firstSession.id,
     });
+    expect(sessionView.mounts).toBe(2);
+    wrapper.unmount();
   });
 
   it("selects exactly one newly created session tab and switches its panel", async () => {
@@ -284,6 +291,70 @@ describe("ProjectContentTabs", () => {
     expect(wrapper.get('[role="tabpanel"]').attributes("id")).toBe(
       `project-content-panel-${selectedId}`,
     );
+  });
+
+  it("closes directly to the next draft without briefly resuming the first tab", async () => {
+    const { router, wrapper } = await mountTabs();
+    const store = useContentTabsStore();
+    store.bindSession("session-1", firstSession);
+    await flushPromises();
+    const second = store.openSession(secondSession);
+    await router.push({ query: { tab: second.id } });
+    await flushPromises();
+    const draft = store.createSessionTab();
+    await flushPromises();
+    const resume = vi.spyOn(useSessionStore(), "resume");
+
+    await wrapper
+      .get('button[aria-label="Close Second prompt"]')
+      .trigger("click");
+    await flushPromises();
+
+    expect(router.currentRoute.value.query.tab).toBe(draft.id);
+    expect(resume).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it("releases a closed background view and its transcript cache", async () => {
+    const { router, wrapper } = await mountTabs();
+    const store = useContentTabsStore();
+    store.bindSession("session-1", firstSession);
+    await flushPromises();
+    const second = store.openSession(secondSession);
+    await router.push({ query: { tab: second.id } });
+    await flushPromises();
+    const resume = vi.spyOn(useSessionStore(), "resume");
+    const loadMessages = vi.mocked(window.pine.loadSessionMessages);
+    loadMessages.mockClear();
+
+    await wrapper
+      .get('button[aria-label="Close First prompt"]')
+      .trigger("click");
+    await flushPromises();
+
+    expect(router.currentRoute.value.query.tab).toBe(second.id);
+    expect(sessionView.unmounts).toBe(1);
+    expect(resume).not.toHaveBeenCalled();
+    const reopened = store.openSession(firstSession);
+    await router.push({ query: { tab: reopened.id } });
+    await flushPromises();
+    expect(loadMessages).toHaveBeenCalledExactlyOnceWith({
+      sessionId: firstSession.id,
+      limit: 50,
+    });
+    wrapper.unmount();
+  });
+
+  it("releases closed views instead of accumulating them in KeepAlive", async () => {
+    const { wrapper } = await mountTabs();
+    for (let index = 0; index < 5; index += 1) {
+      await wrapper
+        .get('button[aria-label="Close New session"]')
+        .trigger("click");
+      await flushPromises();
+      expect(sessionView.mounts - sessionView.unmounts).toBe(1);
+    }
+    wrapper.unmount();
   });
 
   it("replaces the final closed session tab with a new draft", async () => {
