@@ -78,10 +78,10 @@ function prefersReducedMotion(): boolean {
   );
 }
 
-const DEFAULT_DURATION_MS = 300;
+const DEFAULT_DURATION_MS = 500;
 
 export interface AnimateScrollTopOptions {
-  /** Sweep duration in milliseconds (default 300). */
+  /** Sweep duration in milliseconds (default 500). */
   duration?: number;
 }
 

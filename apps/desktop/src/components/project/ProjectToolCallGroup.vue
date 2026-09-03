@@ -103,7 +103,7 @@ function toggleExpanded(): void {
         <Spinner v-if="anyRunning && !isExpanded" />
         <ChevronRightIcon
           v-else
-          class="transition-transform duration-300 ease-out motion-reduce:transition-none"
+          class="transition-transform duration-500 ease-out motion-reduce:transition-none"
           :class="isExpanded && 'rotate-90'"
         />
       </MarkerIcon>
@@ -112,7 +112,7 @@ function toggleExpanded(): void {
     <div
       :id="contentId"
       data-tool-calls-content
-      class="grid transition-[grid-template-rows,opacity] duration-300 ease-out-expo motion-reduce:transition-none"
+      class="grid transition-[grid-template-rows,opacity] duration-500 ease-out-expo motion-reduce:transition-none"
       :class="
         isExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
       "

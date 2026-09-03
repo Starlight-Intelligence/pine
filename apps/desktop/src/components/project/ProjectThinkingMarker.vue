@@ -176,7 +176,7 @@ onBeforeUnmount(() => {
 
       <MarkerIcon>
         <ChevronRightIcon
-          class="transition-transform duration-300 ease-out-expo motion-reduce:transition-none"
+          class="transition-transform duration-500 ease-out-expo motion-reduce:transition-none"
           :class="isExpanded && 'rotate-90'"
         />
       </MarkerIcon>
@@ -184,7 +184,7 @@ onBeforeUnmount(() => {
 
     <div
       :id="contentId"
-      class="grid transition-[grid-template-rows,opacity] duration-300 ease-out-expo motion-reduce:transition-none"
+      class="grid transition-[grid-template-rows,opacity] duration-500 ease-out-expo motion-reduce:transition-none"
       :class="
         isExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
       "
