@@ -66,7 +66,7 @@ function formatFileSize(size: number): string {
 
 <template>
   <AttachmentGroup
-    :class="cn('project-attachment-list gap-1.5', props.class)"
+    :class="cn('project-attachment-list items-end gap-1.5', props.class)"
     role="list"
   >
     <Attachment
