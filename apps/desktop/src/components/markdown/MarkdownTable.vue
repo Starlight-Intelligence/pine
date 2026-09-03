@@ -28,13 +28,14 @@ function alignment(align?: "left" | "right" | "center"): string {
 </script>
 
 <template>
-  <div data-slot="markdown-table" class="my-6">
+  <div data-slot="markdown-table" class="my-6 overflow-hidden rounded-lg">
     <Table>
       <TableHeader class="bg-muted">
         <TableRow>
           <TableHead
             v-for="(cell, index) in node.header.cells"
             :key="index"
+            class="px-4 py-3"
             :class="alignment(cell.align)"
           >
             <MarkdownRender
@@ -55,6 +56,7 @@ function alignment(align?: "left" | "right" | "center"): string {
           <TableCell
             v-for="(cell, cellIndex) in row.cells"
             :key="cellIndex"
+            class="px-4 py-3"
             :class="alignment(cell.align)"
           >
             <MarkdownRender
