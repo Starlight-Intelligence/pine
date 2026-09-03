@@ -548,6 +548,7 @@ function openModelPicker(): void {
                     />
                     <span class="truncate">{{ model.providerName }}</span>
                     <ModelCapabilities
+                      class="ml-1"
                       :model="model"
                       :recommended="modelsStore.isRecommended(model)"
                     />
