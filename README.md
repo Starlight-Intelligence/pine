@@ -46,12 +46,12 @@ Pine 是一个本地优先、开源的桌面 Agent 工作区实验。它希望�
 
 ## 本地开发
 
-需要安装 [Bun](https://bun.sh/)。
+需要安装 [Bun](https://bun.sh/)，版本以根目录 `package.json` 的 `packageManager` 为准。
 
 ```bash
 git clone https://github.com/Starlight-Intelligence/pine.git
 cd pine
-bun install
+bun install --frozen-lockfile
 bun run dev
 ```
 
@@ -78,6 +78,12 @@ docs/            产品、架构与项目系统文档
 这是一个 Bun monorepo。桌面端渲染进程不会直接访问 Node.js、文件系统或 shell；原生能力应通过 preload 暴露的最小 IPC API 进入主进程。
 
 ## 参与贡献
+
+直接依赖统一使用精确版本，`bunfig.toml` 已设置 [`install.exact = true`](https://bun.sh/docs/runtime/bunfig#install-exact)。`bun.lock` 必须随依赖变更一起提交；首次安装、CI 和复现构建使用 [`bun install --frozen-lockfile`](https://bun.sh/docs/pm/cli/install)，避免安装时修改锁文件。
+
+新增或升级依赖时，在所属 workspace 执行 `bun add <包名>@<明确版本>`，开发工具加 `--dev`。桌面端工具声明在 `apps/desktop/package.json`；根目录仅保留仓库级工具，TypeScript 在两处声明相同版本，因为 Vue 编译器显式从根目录加载它。Electron Forge 各包、Vue 及其内部包、Tailwind 及其 Vite 插件、Vitest 及覆盖率插件应分别同步升级并验证。
+
+`bun run shadcn:add <component>` 使用仓库固定版本的 shadcn-vue CLI；升级 CLI 时先显式更新它的依赖版本。组件生成器可能修改依赖约束，运行后需检查 `package.json` 与锁文件，将直接依赖保存为本次解析出的精确版本，并保留生成器带来的升级结果。
 
 Issue、设计讨论和代码贡献都欢迎，但请注意当前架构仍会频繁调整。提交改动前请运行：
 

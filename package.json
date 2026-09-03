@@ -20,23 +20,8 @@
     "shadcn:add": "bun run apps/desktop/scripts/shadcn-add.mjs"
   },
   "devDependencies": {
-    "@electron-forge/cli": "latest",
-    "@electron-forge/maker-dmg": "latest",
-    "@electron-forge/maker-deb": "latest",
-    "@electron-forge/maker-rpm": "latest",
-    "@electron-forge/maker-squirrel": "latest",
-    "@electron-forge/maker-zip": "latest",
-    "@electron-forge/plugin-vite": "latest",
-    "@electron-forge/shared-types": "latest",
-    "@tailwindcss/vite": "latest",
-    "@types/bun": "latest",
-    "@vitejs/plugin-vue": "latest",
-    "electron": "latest",
-    "tailwindcss": "latest",
-    "ts-node": "latest",
-    "tw-animate-css": "latest",
-    "typescript": "5.9.3",
-    "vite": "latest",
-    "vue-tsc": "3.3.6"
-  }
+    "@types/bun": "1.3.14",
+    "typescript": "5.9.3"
+  },
+  "packageManager": "bun@1.3.4"
 }

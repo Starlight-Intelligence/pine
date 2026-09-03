@@ -15,7 +15,7 @@ if (args.length === 0) {
 
 const result = spawnSync(
   "bun",
-  ["x", "--bun", "shadcn-vue@latest", "add", ...args],
+  ["run", "--bun", "shadcn-vue", "add", ...args],
   {
     cwd: desktopRoot,
     stdio: "inherit",

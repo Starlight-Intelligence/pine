@@ -31,7 +31,9 @@
     bun install --network-concurrency 8
   ```
 
-- 依赖安装默认不使用 `--force`；项目包含较多 `latest` 依赖，强制安装会重新解析并可能更新无关包。仅在确认需要完整重建依赖时使用。
+- 直接依赖使用精确版本，不使用 `latest`、`*`、`^` 或 `~`；新增依赖由 `bunfig.toml` 的 `install.exact = true` 默认保存精确版本。升级依赖时显式指定版本，并同步提交 `package.json` 和 `bun.lock`。
+- Bun 版本以根目录 `package.json` 的 `packageManager` 为准；首次安装、CI 和复现构建使用 `bun install --frozen-lockfile`。
+- 依赖安装默认不使用 `--force`；强制安装会重新解析并可能更新无关传递依赖。仅在确认需要完整重建依赖时使用。
 
 ## shadcn-vue 组件流程
 
@@ -45,6 +47,7 @@
 - 不要直接把 shadcn Studio / React shadcn 的 `style: "radix-rhea"` 写进 `components.json`。Studio 来源和映射记录在 `apps/desktop/shadcn-studio.json`。
 - 组件添加后保持 shadcn-vue 生成结果，不套用 React shadcn 的 Rhea patch。
 - `shadcn:add` 遇到已存在的文件提示覆盖时直接覆盖（可传 `--overwrite`）；CLI 带来的依赖升级、lockfile 与 CSS 变量等副作用一并保留，不回退。
+- `shadcn:add` 使用 workspace 已安装的固定版本 CLI；生成后检查依赖约束，将直接依赖固定到本次锁文件解析出的版本，保留升级结果。
 - 当 skill、生成代码与当前 shadcn-vue 官方文档或用例存在分歧时，先核对当前官方用例；以官方用例和项目实际需求为准，并记录偏离原因，不为迎合 skill 机械修改官方生成结果。
 
 - 添加或修改组件后运行：
