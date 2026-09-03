@@ -1,5 +1,6 @@
 import { flushPromises, mount } from "@vue/test-utils";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createPinia, setActivePinia } from "pinia";
 import { createAppI18n } from "@/app/i18n";
 import type { PineTranscriptMessage } from "@/stores/session";
 import ProjectErrorMarker from "../ProjectErrorMarker.vue";
@@ -17,6 +18,8 @@ function mountMessage(message: PineTranscriptMessage) {
 }
 
 describe("ProjectTranscriptMessage", () => {
+  beforeEach(() => setActivePinia(createPinia()));
+
   it("renders completed assistant output as Markdown", () => {
     const wrapper = mountMessage({
       createdAt: "2026-08-26T00:00:00.000Z",
@@ -31,7 +34,7 @@ describe("ProjectTranscriptMessage", () => {
     );
   });
 
-  it("keeps streaming assistant output as plain text", () => {
+  it("renders streaming assistant output as Markdown too", () => {
     const wrapper = mountMessage({
       createdAt: "2026-08-26T00:00:00.000Z",
       id: "assistant-streaming",
@@ -40,8 +43,10 @@ describe("ProjectTranscriptMessage", () => {
       blocks: [{ type: "text", text: "**Still streaming**" }],
     });
 
-    expect(wrapper.find('[data-slot="markdown-content"]').exists()).toBe(false);
-    expect(wrapper.text()).toContain("**Still streaming**");
+    expect(wrapper.find('[data-slot="markdown-content"]').exists()).toBe(true);
+    expect(wrapper.get('[data-slot="markdown-content"] strong').text()).toBe(
+      "Still streaming",
+    );
   });
 
   it("keeps user messages as plain text", () => {

@@ -135,18 +135,11 @@ const renderItems = computed<RenderItem[]>(() => {
             v-else-if="item.kind === 'block' && item.block.type === 'text'"
             :variant="'ghost'"
           >
-            <BubbleContent
-              v-if="message.status === 'streaming'"
-              class="whitespace-pre-wrap"
-            >
-              {{ item.block.text }}
-              <span
-                class="ml-0.5 inline-block h-[1em] w-0.5 animate-pulse bg-current align-[-0.12em]"
-                aria-hidden="true"
+            <BubbleContent>
+              <MarkdownContent
+                :source="item.block.text"
+                :final="message.status === 'complete'"
               />
-            </BubbleContent>
-            <BubbleContent v-else>
-              <MarkdownContent :source="item.block.text" />
             </BubbleContent>
           </Bubble>
         </template>

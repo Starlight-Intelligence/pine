@@ -1,0 +1,161 @@
+<script setup lang="ts">
+import { computed, onUnmounted, ref, watch } from "vue";
+import { storeToRefs } from "pinia";
+import { CheckIcon, CopyIcon } from "@lucide/vue";
+import { toast } from "vue-sonner";
+import { Button } from "@/components/ui/button";
+import { codeToHtml } from "@/lib/codeHighlight";
+import { cn } from "@/lib/utils";
+import { useAppearanceStore } from "@/stores/appearance";
+
+/**
+ * The `node` markstream hands a custom `code_block` renderer. `code` is the
+ * fenced code text; `language` is the fence's info string (empty when absent).
+ */
+interface CodeBlockNodeProps {
+  type: "code_block";
+  language: string;
+  code: string;
+  raw?: string;
+  loading?: boolean;
+}
+
+const props = defineProps<{
+  node: CodeBlockNodeProps;
+  loading?: boolean;
+}>();
+
+const { colorScheme } = storeToRefs(useAppearanceStore());
+const language = computed(
+  () => props.node.language.trim().split(/\s+/)[0]?.toLowerCase() || "text",
+);
+
+const html = ref("");
+watch(
+  () => [props.node.code, language.value] as const,
+  async ([code, lang], _previous, onCleanup) => {
+    let active = true;
+    onCleanup(() => {
+      active = false;
+    });
+    // Display the current source immediately while highlighting is pending.
+    html.value = "";
+    try {
+      const text = await codeToHtml(code, {
+        lang,
+        themes: { light: "vitesse-light", dark: "vitesse-dark" },
+        // Keep both palettes in the DOM so theme changes are synchronous and
+        // never clear highlighted code while another render is pending.
+        defaultColor: false,
+      });
+      if (active) html.value = text;
+    } catch {
+      // The template keeps a preformatted, Vue-escaped source fallback.
+    }
+  },
+  { immediate: true },
+);
+
+const hovered = ref(false);
+const copied = ref(false);
+let resetTimer: ReturnType<typeof setTimeout> | undefined;
+onUnmounted(() => clearTimeout(resetTimer));
+
+async function copyCode(): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(props.node.code);
+    copied.value = true;
+    clearTimeout(resetTimer);
+    resetTimer = setTimeout(() => {
+      copied.value = false;
+    }, 1600);
+  } catch {
+    toast.error("复制代码失败");
+  }
+}
+</script>
+
+<template>
+  <div
+    class="relative my-6"
+    data-slot="code-block"
+    @mouseenter="hovered = true"
+    @mouseleave="hovered = false"
+  >
+    <div class="overflow-hidden rounded-lg bg-muted">
+      <div class="code-highlight" :data-color-scheme="colorScheme">
+        <div v-if="html" v-html="html"></div>
+        <pre v-else><code>{{ node.code }}</code></pre>
+      </div>
+    </div>
+    <div
+      data-slot="code-block-toolbar"
+      :class="
+        cn(
+          'absolute right-2 top-2 flex items-center gap-1 rounded-md bg-muted focus-within:pointer-events-auto focus-within:opacity-100',
+          hovered ? 'opacity-100' : 'pointer-events-none opacity-0',
+        )
+      "
+    >
+      <span
+        data-slot="code-block-language"
+        class="pointer-events-none px-1 font-mono text-xs text-muted-foreground select-none"
+      >
+        {{ language }}
+      </span>
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        aria-label="复制代码"
+        @click="copyCode"
+      >
+        <CheckIcon v-if="copied" data-icon="inline-start" />
+        <CopyIcon v-else data-icon="inline-start" />
+      </Button>
+    </div>
+  </div>
+</template>
+
+<style scoped>
+/* Highlighted and fallback code share the same layout. Shiki already inserts
+   newlines between its inline line spans; block spans would double the spacing. */
+.code-highlight :deep(pre) {
+  margin: 0;
+  padding: 0.75rem 1rem; /* px-4 py-3, matching the original code block */
+  border-radius: 0;
+  background: transparent;
+  white-space: pre;
+  overflow-wrap: normal;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: inherit;
+}
+
+.code-highlight :deep(pre code) {
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  background: transparent;
+  padding: 0;
+}
+
+/* Shiki emits both palettes as token variables. Explicitly apply each palette
+   from the app preference, including when switching back to light mode. */
+.code-highlight[data-color-scheme="light"] :deep(.shiki),
+.code-highlight[data-color-scheme="light"] :deep(.shiki span) {
+  color: var(--shiki-light);
+  font-style: var(--shiki-light-font-style, normal);
+  font-weight: var(--shiki-light-font-weight, normal);
+  text-decoration: var(--shiki-light-text-decoration, none);
+}
+
+.code-highlight[data-color-scheme="dark"] :deep(.shiki),
+.code-highlight[data-color-scheme="dark"] :deep(.shiki span) {
+  color: var(--shiki-dark);
+  font-style: var(--shiki-dark-font-style, normal);
+  font-weight: var(--shiki-dark-font-weight, normal);
+  text-decoration: var(--shiki-dark-text-decoration, none);
+}
+</style>

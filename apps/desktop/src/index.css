@@ -4,6 +4,7 @@
    ---break---
    */
 @import "@fontsource-variable/inter";
+@import "@fontsource-variable/jetbrains-mono";
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn-vue/tailwind.css";
@@ -68,8 +69,8 @@
   --radius: 0.625rem;
   --font-ui: "Inter Variable", system-ui, sans-serif;
   --font-jetbrains-mono:
-    "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-    monospace;
+    "JetBrains Mono Variable", ui-monospace, SFMono-Regular, Menlo, Monaco,
+    Consolas, monospace;
   --font-heading: var(--font-ui);
   --font-mono: var(--font-jetbrains-mono);
   --shadow-2xs: 0 1px 3px 0px oklch(0 0 0 / 0.05);
