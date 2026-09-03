@@ -62,6 +62,13 @@ const isDark = computed(() => colorScheme.value === "dark");
   overflow-wrap: anywhere;
 }
 
+/* The transcript owns scrolling. Offscreen Markdown must contribute its real
+   height immediately, not swap a 600px intrinsic placeholder on first visit. */
+.markdown-content :deep(.markdown-renderer) {
+  content-visibility: visible;
+  contain-intrinsic-size: none;
+}
+
 /* markstream sets the base/heading font sizes through its own CSS variables on
    the `.markstream-vue` container (base `font-size: var(--ms-text-body)` =
    1rem, headings `var(--ms-text-h1..h6)`). Without overriding these, the body
