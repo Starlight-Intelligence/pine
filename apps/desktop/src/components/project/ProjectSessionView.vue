@@ -190,7 +190,7 @@ async function handleDrop(event: DragEvent): Promise<void> {
     :follow-animated="isRunning"
   >
     <div
-      class="session-layout flex h-full min-h-0 flex-col"
+      class="session-layout relative flex h-full min-h-0 flex-col"
       @dragenter="handleDragEnter"
       @dragover="handleDragOver"
       @dragleave="handleDragLeave"
@@ -257,25 +257,6 @@ async function handleDrop(event: DragEvent): Promise<void> {
         </MessageScroller>
 
         <ProjectTranscriptOutline :messages="messages" />
-
-        <Empty
-          v-if="isDraggingFiles"
-          data-slot="attachment-drop-overlay"
-          class="pointer-events-none absolute inset-3 w-auto border bg-background/95 shadow-sm backdrop-blur-sm"
-          role="status"
-        >
-          <EmptyHeader>
-            <EmptyMedia variant="icon">
-              <FilesIcon />
-            </EmptyMedia>
-            <EmptyTitle>
-              {{ t("project.composer.dropAttachmentsTitle") }}
-            </EmptyTitle>
-            <EmptyDescription>
-              {{ t("project.composer.dropAttachmentsDescription") }}
-            </EmptyDescription>
-          </EmptyHeader>
-        </Empty>
       </div>
 
       <ProjectSessionComposer
@@ -288,6 +269,25 @@ async function handleDrop(event: DragEvent): Promise<void> {
         @respond="respondToApproval"
         @submit="submit"
       />
+
+      <Empty
+        v-if="isDraggingFiles"
+        data-slot="attachment-drop-overlay"
+        class="pointer-events-none absolute inset-3 z-20 w-auto border bg-background/95 shadow-sm backdrop-blur-sm"
+        role="status"
+      >
+        <EmptyHeader>
+          <EmptyMedia variant="icon">
+            <FilesIcon />
+          </EmptyMedia>
+          <EmptyTitle>
+            {{ t("project.composer.dropAttachmentsTitle") }}
+          </EmptyTitle>
+          <EmptyDescription>
+            {{ t("project.composer.dropAttachmentsDescription") }}
+          </EmptyDescription>
+        </EmptyHeader>
+      </Empty>
     </div>
   </MessageScrollerProvider>
 </template>
