@@ -102,7 +102,11 @@ const renderItems = computed<RenderItem[]>(() => {
 </script>
 <template>
   <Message :align="isUser ? 'end' : 'start'">
-    <MessageContent :class="cn(isUser && attachments.length > 0 && 'gap-1.5')">
+    <MessageContent
+      :class="
+        cn(!isUser && 'gap-3.5', isUser && attachments.length > 0 && 'gap-1.5')
+      "
+    >
       <!-- Non-user messages render blocks in their original order so a tool
            call that happens after body text appears after that text. -->
       <template v-if="!isUser">

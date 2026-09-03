@@ -197,10 +197,13 @@ const fullText = computed(() => {
     :reviewing="reviewing"
     :awaiting-approval="awaitingApproval"
   >
+    <!-- Offset standalone hit-area padding so the transcript's 14px gap is
+         measured between content rows. Nested rows already use 6px + 8px. -->
     <Marker
       as="button"
       type="button"
       class="-mx-1.5 w-[calc(100%+0.75rem)] cursor-pointer rounded-md px-1.5 py-1 transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+      :class="!nested && '-my-1'"
       :aria-live="isActive ? 'polite' : undefined"
       @click="open"
     >

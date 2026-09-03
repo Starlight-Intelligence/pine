@@ -79,11 +79,11 @@ const awaitingApprovalToolCallIds = computed(
 const expandedToolRuns = useToolActivityExpansion({ messages, isRunning });
 
 /**
- * Turn gap collapses to the in-turn tool spacing (gap-2.5) when the model
+ * Turn gap collapses to the in-turn tool spacing (gap-3.5) when the model
  * skips thinking and starts a turn directly with a tool call, cancelling the
  * MessageScrollerContent `gap-8` down to that rhythm.
  */
-const TOOL_CALL_TURN_MARGIN_CLASS = "-mt-[1.375rem]";
+const TOOL_CALL_TURN_MARGIN_CLASS = "-mt-[1.125rem]";
 
 onMounted(() => sessionStore.connectAgentEvents());
 
