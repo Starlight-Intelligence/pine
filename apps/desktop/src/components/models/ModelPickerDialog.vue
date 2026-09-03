@@ -32,13 +32,13 @@ import {
   CommandSeparator,
 } from "@/components/ui/command";
 import { Spinner } from "@/components/ui/spinner";
-import { formatTokenCount } from "@/lib/format-token-count";
 import { cn } from "@/lib/utils";
 import type {
   PineModelDescriptor,
   PineProviderDescriptor,
 } from "@/shared/models";
 import { pineModelKey, useModelsStore } from "@/stores/models";
+import ModelCapabilities from "./ModelCapabilities.vue";
 import ProviderAuthDialog from "./ProviderAuthDialog.vue";
 import ProviderIcon from "./ProviderIcon.vue";
 
@@ -251,25 +251,10 @@ async function handleConnected(): Promise<void> {
               </span>
             </span>
             <span class="ml-auto flex shrink-0 items-center gap-1">
-              <Badge
-                v-if="modelsStore.isRecommended(model)"
-                class="text-primary-foreground!"
-              >
-                {{ t("models.picker.recommended") }}
-              </Badge>
-              <Badge v-if="model.input.includes('image')" variant="secondary">
-                {{ t("models.picker.vision") }}
-              </Badge>
-              <Badge
-                variant="outline"
-                :title="
-                  t('models.picker.contextWindow', {
-                    tokens: formatTokenCount(model.contextWindow),
-                  })
-                "
-              >
-                {{ formatTokenCount(model.contextWindow) }}
-              </Badge>
+              <ModelCapabilities
+                :model="model"
+                :recommended="modelsStore.isRecommended(model)"
+              />
               <Button
                 type="button"
                 variant="ghost"

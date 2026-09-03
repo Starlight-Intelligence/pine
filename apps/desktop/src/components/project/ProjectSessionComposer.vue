@@ -16,6 +16,7 @@ import { storeToRefs } from "pinia";
 import { computed, onMounted, ref, useId } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
+import ModelCapabilities from "@/components/models/ModelCapabilities.vue";
 import ModelPickerDialog from "@/components/models/ModelPickerDialog.vue";
 import ProviderIcon from "@/components/models/ProviderIcon.vue";
 import ProjectApprovalCard from "@/components/project/ProjectApprovalCard.vue";
@@ -31,7 +32,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -58,7 +58,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { formatTokenCount } from "@/lib/format-token-count";
 import { cn } from "@/lib/utils";
 import type { PineApprovalAction, PineApprovalMode } from "@/shared/agent";
 import {
@@ -548,29 +547,10 @@ function openModelPicker(): void {
                       :provider-name="model.providerName"
                     />
                     <span class="truncate">{{ model.providerName }}</span>
-                    <Badge
-                      v-if="modelsStore.isRecommended(model)"
-                      data-recommended-model
-                      class="text-primary-foreground!"
-                    >
-                      {{ t("models.picker.recommended") }}
-                    </Badge>
-                    <Badge
-                      v-if="model.input.includes('image')"
-                      variant="secondary"
-                    >
-                      {{ t("models.picker.vision") }}
-                    </Badge>
-                    <Badge
-                      variant="outline"
-                      :title="
-                        t('models.picker.contextWindow', {
-                          tokens: formatTokenCount(model.contextWindow),
-                        })
-                      "
-                    >
-                      {{ formatTokenCount(model.contextWindow) }}
-                    </Badge>
+                    <ModelCapabilities
+                      :model="model"
+                      :recommended="modelsStore.isRecommended(model)"
+                    />
                   </span>
                 </span>
               </DropdownMenuRadioItem>

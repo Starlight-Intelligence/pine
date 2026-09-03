@@ -212,15 +212,21 @@ describe("ProjectSessionComposer", () => {
     ).toContain("text-destructive!");
   });
 
-  it("keeps recommended badge text readable when the model option is focused", async () => {
+  it("shows model capability icons with accessible meanings", async () => {
     const wrapper = mountComposer();
 
     await wrapper.get('[data-slot="model-selector-trigger"]').trigger("click");
     await flushPromises();
 
-    const badge = document.querySelector("[data-recommended-model]");
-    expect(badge).not.toBeNull();
-    expect(badge?.classList.contains("text-primary-foreground!")).toBe(true);
+    const recommended = document.querySelector(
+      '[data-model-capability="recommended"]',
+    );
+    expect(recommended?.getAttribute("aria-label")).toBe("推荐");
+    expect(recommended?.querySelector("svg")).not.toBeNull();
+    expect(recommended?.textContent).toBe("");
+    const context = document.querySelector('[data-model-capability="context"]');
+    expect(context?.getAttribute("aria-label")).toBe("上下文窗口：200K");
+    expect(context?.querySelector("svg")).not.toBeNull();
 
     wrapper.unmount();
   });
