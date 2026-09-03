@@ -1,0 +1,65 @@
+name: publish-snapshot
+
+on:
+  schedule:
+    # Nightly snapshot; 18:00 UTC every day.
+    - cron: "0 18 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: snapshot
+  cancel-in-progress: true
+
+jobs:
+  build-macos-dmg:
+    name: Build universal DMG & publish snapshot
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Bump snapshot version
+        run: bun run apps/desktop/scripts/bump-snapshot.mjs
+
+      - name: Resolve snapshot version
+        id: version
+        working-directory: apps/desktop
+        run: |
+          SNAPSHOT=$(bun -p "require('./package.json').version")
+          echo "snapshot=$SNAPSHOT" >> "$GITHUB_OUTPUT"
+
+      - name: Build universal DMG
+        working-directory: apps/desktop
+        run: >-
+          bunx electron-forge make --platform=darwin --arch=universal
+          --targets @electron-forge/maker-dmg
+
+      - name: Publish snapshot release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.snapshot }}
+          name: Pine snapshot ${{ steps.version.outputs.snapshot }}
+          body: |
+            Snapshot alpha build of Pine for macOS (universal).
+
+            Version: `${{ steps.version.outputs.snapshot }}`
+
+            Source commit: `${{ github.sha }}`
+          prerelease: true
+          generate_release_notes: true
+          files: apps/desktop/out/make/**/*.dmg

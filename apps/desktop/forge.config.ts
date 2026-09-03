@@ -1,4 +1,5 @@
 import type { ForgeConfig } from "@electron-forge/shared-types";
+import { MakerDMG } from "@electron-forge/maker-dmg";
 import { MakerSquirrel } from "@electron-forge/maker-squirrel";
 import { MakerZIP } from "@electron-forge/maker-zip";
 import { MakerDeb } from "@electron-forge/maker-deb";
@@ -11,6 +12,7 @@ const config: ForgeConfig = {
   makers: [
     new MakerSquirrel({}),
     new MakerZIP({}, ["darwin"]),
+    new MakerDMG({ format: "ULFO" }, ["darwin"]),
     new MakerRpm({}),
     new MakerDeb({}),
   ],
