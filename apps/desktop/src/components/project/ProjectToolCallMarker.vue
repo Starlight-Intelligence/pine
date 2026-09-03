@@ -197,8 +197,8 @@ const fullText = computed(() => {
     :reviewing="reviewing"
     :awaiting-approval="awaitingApproval"
   >
-    <!-- Offset standalone hit-area padding so the transcript's 14px gap is
-         measured between content rows. Nested rows already use 6px + 8px. -->
+    <!-- Offset standalone hit-area padding so the transcript's 12px gap is
+         measured between content rows. Nested rows already use 4px + 8px. -->
     <Marker
       as="button"
       type="button"

@@ -104,7 +104,7 @@ const renderItems = computed<RenderItem[]>(() => {
   <Message :align="isUser ? 'end' : 'start'">
     <MessageContent
       :class="
-        cn(!isUser && 'gap-3.5', isUser && attachments.length > 0 && 'gap-1.5')
+        cn(!isUser && 'gap-3', isUser && attachments.length > 0 && 'gap-1.5')
       "
     >
       <!-- Non-user messages render blocks in their original order so a tool
