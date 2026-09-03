@@ -465,6 +465,7 @@ function createEngine(props: MessageScrollerProviderProps) {
   let visibilityFrame: number | null = null;
   let pendingScrollFrame: number | null = null;
   let autoscrollingTimeout: number | null = null;
+  let cancelScrollAnimation: (() => void) | null = null;
   let visibilityObserver: IntersectionObserver | null = null;
   let visibilityConsumers = 0;
   const messageElements = new Map<string, HTMLElement>();
@@ -490,10 +491,14 @@ function createEngine(props: MessageScrollerProviderProps) {
   function updateModeFromScroll(next: MessageScrollerScrollable) {
     const scrollTop = viewport?.scrollTop ?? 0;
     const scrolledUp = scrollTop < lastScrollTop - SCROLL_EPSILON;
+    const scrolledDown = scrollTop > lastScrollTop + SCROLL_EPSILON;
     lastScrollTop = scrollTop;
     if (
       autoScroll() &&
       !next.end &&
+      // A resize or a small upward wheel delta inside the edge threshold must
+      // not undo userScrollIntent. Resume only after scrolling down to the edge.
+      (mode === "following-bottom" || scrolledDown) &&
       mode !== "settling-jump" &&
       mode !== "anchored-to-message"
     ) {
@@ -594,6 +599,8 @@ function createEngine(props: MessageScrollerProviderProps) {
     } = {},
   ) {
     if (!viewport) return;
+    cancelScrollAnimation?.();
+    cancelScrollAnimation = null;
     const target = Math.max(0, top);
     if (Math.abs(viewport.scrollTop - target) <= SCROLL_EPSILON) {
       viewport.scrollTop = target;
@@ -606,7 +613,7 @@ function createEngine(props: MessageScrollerProviderProps) {
       // live turn glides — hydrating or re-entering a finished conversation
       // snaps to the anchor so no animation plays on entry.
       if (isAutoscrolling) setAutoscrolling(true);
-      animateScrollTop(viewport, target);
+      cancelScrollAnimation = animateScrollTop(viewport, target);
       scheduleStateCommit();
       return;
     }
@@ -982,6 +989,8 @@ function createEngine(props: MessageScrollerProviderProps) {
   // --- user intent + element setters -----------------------------------------
 
   function userScrollIntent() {
+    cancelScrollAnimation?.();
+    cancelScrollAnimation = null;
     if (
       mode === "following-bottom" ||
       mode === "anchored-to-message" ||
@@ -990,6 +999,10 @@ function createEngine(props: MessageScrollerProviderProps) {
       streamingTurn = null;
       mode = "free-scrolling";
     }
+    // Consume the last programmatic position before the user's scroll event,
+    // so pending observers cannot mistake animation progress for a down-scroll.
+    lastScrollTop = viewport?.scrollTop ?? 0;
+    setAutoscrolling(false);
   }
 
   function setViewportElement(element: HTMLElement | null) {
@@ -1027,6 +1040,8 @@ function createEngine(props: MessageScrollerProviderProps) {
   }
 
   function destroy() {
+    cancelScrollAnimation?.();
+    cancelScrollAnimation = null;
     if (stateFrame !== null) {
       window.cancelAnimationFrame(stateFrame);
       stateFrame = null;
