@@ -83,6 +83,8 @@ import {
   type SearchSessionsResult,
 } from "./shared/sessions";
 import {
+  PROJECT_FILE_OPERATION_CHANNEL,
+  PROJECT_FILE_ATTACHMENTS_CHANNEL,
   LIST_PROJECT_DIRECTORY_CHANNEL,
   type ListProjectDirectoryRequest,
   type ListProjectDirectoryResult,
@@ -114,6 +116,10 @@ const pineApi: PineDesktopApi = {
     request: ListProjectDirectoryRequest,
   ): Promise<ListProjectDirectoryResult> =>
     ipcRenderer.invoke(LIST_PROJECT_DIRECTORY_CHANNEL, request),
+  operateProjectFile: (request) =>
+    ipcRenderer.invoke(PROJECT_FILE_OPERATION_CHANNEL, request),
+  inspectProjectAttachments: (entries) =>
+    ipcRenderer.invoke(PROJECT_FILE_ATTACHMENTS_CHANNEL, entries),
   listProjects: (): Promise<ListProjectsResult> =>
     ipcRenderer.invoke(LIST_PROJECTS_CHANNEL),
   getModelCatalog: (): Promise<PineModelCatalog> =>

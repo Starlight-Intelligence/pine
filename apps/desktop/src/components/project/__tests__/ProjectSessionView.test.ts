@@ -1,3 +1,4 @@
+import { PROJECT_ENTRY_DRAG_TYPE } from "@/lib/projectFileDrag";
 import { flushPromises, mount } from "@vue/test-utils";
 import { computed, ref } from "vue";
 import { useSessionStore } from "@/stores/session";
@@ -169,6 +170,61 @@ describe("ProjectSessionView file drop", () => {
     expect(inspectAttachments).toHaveBeenCalledWith({
       paths: ["/tmp/references"],
     });
+  });
+
+  it("adds internal tree entries through the existing attachment system and deduplicates them", async () => {
+    const { wrapper } = mountView();
+    const entries = [{ folderId: "folder-1", relativePath: "notes.md" }];
+    const inspectProjectAttachments = vi.fn().mockResolvedValue({
+      attachments: [
+        {
+          kind: "file",
+          name: "notes.md",
+          path: "/project/notes.md",
+          size: 12,
+          extension: "md",
+        },
+      ],
+    });
+    window.pine.inspectProjectAttachments = inspectProjectAttachments;
+    const transfer = {
+      types: [PROJECT_ENTRY_DRAG_TYPE],
+      files: [],
+      getData: () => JSON.stringify(entries),
+    };
+    const layout = wrapper.get(".session-layout");
+    await layout.trigger("dragenter", { dataTransfer: transfer });
+    expect(wrapper.find('[data-slot="attachment-drop-overlay"]').exists()).toBe(
+      true,
+    );
+    await layout.trigger("drop", { dataTransfer: transfer });
+    await flushPromises();
+    await layout.trigger("drop", { dataTransfer: transfer });
+    await flushPromises();
+    expect(inspectProjectAttachments).toHaveBeenCalledWith(entries);
+    expect(
+      wrapper
+        .get('[data-slot="composer-stub"]')
+        .attributes("data-attachment-count"),
+    ).toBe("1");
+    expect(wrapper.find('[data-slot="attachment-drop-overlay"]').exists()).toBe(
+      false,
+    );
+  });
+
+  it("rejects malformed internal drags without inspecting arbitrary paths", async () => {
+    const { wrapper, inspectAttachments } = mountView();
+    const inspectProjectAttachments = vi.fn();
+    window.pine.inspectProjectAttachments = inspectProjectAttachments;
+    await wrapper.get(".session-layout").trigger("drop", {
+      dataTransfer: {
+        types: [PROJECT_ENTRY_DRAG_TYPE],
+        getData: () => "invalid",
+      },
+    });
+    await flushPromises();
+    expect(inspectProjectAttachments).not.toHaveBeenCalled();
+    expect(inspectAttachments).not.toHaveBeenCalled();
   });
 
   it("ignores drags that do not contain files", async () => {

@@ -1,4 +1,9 @@
 <script setup lang="ts">
+import {
+  containsFileDrag,
+  externalFilePaths,
+  readProjectEntryDrag,
+} from "@/lib/projectFileDrag";
 import { FilesIcon } from "@lucide/vue";
 import { storeToRefs } from "pinia";
 import { computed, onMounted, ref, watch, type Ref } from "vue";
@@ -139,7 +144,7 @@ function loadEarlierMessages(): void {
 }
 
 function dragContainsFiles(event: DragEvent): boolean {
-  return Array.from(event.dataTransfer?.types ?? []).includes("Files");
+  return containsFileDrag(event.dataTransfer);
 }
 
 function handleDragEnter(event: DragEvent): void {
@@ -168,18 +173,15 @@ async function handleDrop(event: DragEvent): Promise<void> {
   fileDragDepth = 0;
   isDraggingFiles.value = false;
 
-  const paths = Array.from(event.dataTransfer?.files ?? []).flatMap((file) => {
-    try {
-      const filePath = window.pine.getPathForFile(file);
-      return filePath ? [filePath] : [];
-    } catch {
-      return [];
-    }
-  });
-  if (paths.length === 0) return;
-
   try {
-    const result = await window.pine.inspectAttachments({ paths });
+    const transfer = event.dataTransfer;
+    if (!transfer) return;
+    const entries = readProjectEntryDrag(transfer);
+    const paths = entries ? [] : externalFilePaths(transfer);
+    if (!entries && !paths.length) return;
+    const result = entries
+      ? await window.pine.inspectProjectAttachments(entries)
+      : await window.pine.inspectAttachments({ paths });
     const byPath = new Map(
       attachments.value.map((attachment) => [attachment.path, attachment]),
     );

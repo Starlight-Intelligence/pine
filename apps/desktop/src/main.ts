@@ -1,6 +1,11 @@
 import {
+  ProjectFileOperationSchema,
+  ProjectEntryReferenceSchema,
+} from "./main/projectFileOperations";
+import {
   app,
   BrowserWindow,
+  clipboard,
   dialog,
   ipcMain,
   nativeTheme,
@@ -86,6 +91,8 @@ import {
   type SearchSessionsResult,
 } from "./shared/sessions";
 import {
+  PROJECT_FILE_OPERATION_CHANNEL,
+  PROJECT_FILE_ATTACHMENTS_CHANNEL,
   LIST_PROJECT_DIRECTORY_CHANNEL,
   type ListProjectDirectoryResult,
 } from "./shared/projectFiles";
@@ -746,6 +753,43 @@ ipcMain.handle(
       await getProjectRuntimes().dispose(event.sender.id);
     }
     return { deleted: await getProjectRepository().delete(id) };
+  },
+);
+
+// Serialize filesystem operations so concurrent drags cannot overwrite one another.
+let projectFileOperationQueue: Promise<void> = Promise.resolve();
+ipcMain.handle(PROJECT_FILE_OPERATION_CHANNEL, (event, request: unknown) => {
+  const operation = ProjectFileOperationSchema.parse(request);
+  const pending = projectFileOperationQueue.then(() =>
+    getProjectRuntimes().operateFile(event.sender.id, operation, {
+      trash: (filePath) => shell.trashItem(filePath),
+      open: (filePath) => shell.openPath(filePath),
+      reveal: (filePath) => shell.showItemInFolder(filePath),
+      copyPath: (filePath) => clipboard.writeText(filePath),
+    }),
+  );
+  projectFileOperationQueue = pending.catch(() => undefined);
+  return pending;
+});
+
+ipcMain.handle(
+  PROJECT_FILE_ATTACHMENTS_CHANNEL,
+  async (event, request: unknown): Promise<PickAttachmentsResult> => {
+    const entries = z
+      .array(ProjectEntryReferenceSchema)
+      .min(1)
+      .max(100)
+      .parse(request);
+    const paths = await getProjectRuntimes().projectEntryPaths(
+      event.sender.id,
+      entries,
+    );
+    const result = await inspectAttachmentPaths(paths);
+    registerAttachmentPreviewPaths(
+      event.sender.id,
+      result.attachments.map((attachment) => attachment.path),
+    );
+    return result;
   },
 );
 

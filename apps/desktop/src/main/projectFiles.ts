@@ -13,12 +13,15 @@ function isWithinRoot(rootPath: string, candidatePath: string): boolean {
   );
 }
 
-async function resolveProjectDirectory(
+export async function resolveProjectPath(
   folder: PineProjectFolder,
   relativePath: string,
 ): Promise<string> {
   if (!folder.isAvailable) throw new Error("Project folder is unavailable.");
 
+  if (path.isAbsolute(relativePath) || relativePath.includes("\0")) {
+    throw new Error("Expected a relative project path.");
+  }
   const resolvedRoot = await realpath(folder.path);
   const requestedDirectory = path.resolve(resolvedRoot, relativePath);
   if (!isWithinRoot(resolvedRoot, requestedDirectory)) {
@@ -46,7 +49,7 @@ export async function listProjectDirectory(
   folder: PineProjectFolder,
   relativePath: string,
 ): Promise<ProjectEntry[]> {
-  const directoryPath = await resolveProjectDirectory(folder, relativePath);
+  const directoryPath = await resolveProjectPath(folder, relativePath);
   const entries = await readdir(directoryPath, { withFileTypes: true });
 
   return entries

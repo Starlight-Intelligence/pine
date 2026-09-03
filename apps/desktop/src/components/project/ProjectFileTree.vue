@@ -1,8 +1,16 @@
 <script setup lang="ts">
-import { ChevronRight, File, Folder, FolderOpen } from "@lucide/vue";
+import {
+  ChevronRight,
+  File,
+  Folder,
+  FolderOpen,
+  FolderPlus,
+  Pencil,
+  Trash2,
+} from "@lucide/vue";
 import { TreeItem, TreeRoot, TreeVirtualizer } from "reka-ui";
 import { storeToRefs } from "pinia";
-import { ref, watch } from "vue";
+import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { handleError } from "@/app/errors/errorHandler";
 import { Badge } from "@/components/ui/badge";
@@ -13,7 +21,37 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { ProjectEntry } from "@/shared/projectFiles";
+import type {
+  ProjectEntry,
+  ProjectEntryReference,
+  ProjectFileOperation,
+} from "@/shared/projectFiles";
+import {
+  containsFileDrag,
+  externalFilePaths,
+  PROJECT_ENTRY_DRAG_TYPE,
+  readProjectEntryDrag,
+} from "@/lib/projectFileDrag";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuGroup,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Field, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { useProjectSidebarStore } from "@/stores/projectSidebar";
 import { useProjectStore } from "@/stores/project";
 
 interface ProjectTreeNode extends ProjectEntry {
@@ -29,6 +67,33 @@ const projectStore = useProjectStore();
 const { activeProject } = storeToRefs(projectStore);
 const items = ref<ProjectTreeNode[]>([]);
 const loadingDirectories = new Set<string>();
+const sidebarStore = useProjectSidebarStore();
+const expanded = computed<string[]>({
+  get: () =>
+    activeProject.value
+      ? sidebarStore.stateFor(activeProject.value.id).expanded
+      : [],
+  set: (keys) => {
+    if (activeProject.value)
+      sidebarStore.setExpanded(activeProject.value.id, keys);
+  },
+});
+const dropTarget = ref<string>();
+const contextTarget = ref<string>();
+const busy = ref(false);
+const dialog = ref<{
+  mode: "newFolder" | "rename" | "trash";
+  node: ProjectTreeNode;
+}>();
+const entryName = ref("");
+const operationError = ref("");
+const validName = computed(
+  () =>
+    entryName.value.trim().length > 0 &&
+    !/[\\/\u0000-\u001f]/u.test(entryName.value) &&
+    ![".", ".."].includes(entryName.value),
+);
+let generation = 0;
 
 function nodeKey(node: ProjectTreeNode): string {
   return `${node.folderId}:${node.relativePath}`;
@@ -58,6 +123,11 @@ function toTreeNode(folderId: string, entry: ProjectEntry): ProjectTreeNode {
 }
 
 function resetRoots(): void {
+  generation += 1;
+  loadingDirectories.clear();
+  dialog.value = undefined;
+  contextTarget.value = undefined;
+  dropTarget.value = undefined;
   items.value =
     activeProject.value?.folders.map((folder) => ({
       children: folder.isAvailable
@@ -70,6 +140,12 @@ function resetRoots(): void {
       name: folder.name,
       relativePath: "",
     })) ?? [];
+  void refresh().catch((error) =>
+    handleError(error, {
+      id: "project.files.restore",
+      title: t("errors.projectFiles.title"),
+    }),
+  );
 }
 
 async function readDirectory(
@@ -95,9 +171,16 @@ async function loadChildren(node: ProjectTreeNode): Promise<void> {
   }
 
   loadingDirectories.add(key);
+  const currentGeneration = generation;
   try {
     const children = await readDirectory(node.folderId, node.relativePath);
-    node.children = children.length > 0 ? children : undefined;
+    if (currentGeneration !== generation) return;
+    node.children = children;
+    await Promise.all(
+      children
+        .filter((child) => expanded.value.includes(nodeKey(child)))
+        .map(loadChildren),
+    );
   } catch (error) {
     handleError(error, {
       id: `project.files.${key}`,
@@ -124,6 +207,165 @@ function loadTreeNode(node: unknown): void {
   if (isProjectTreeNode(node)) void loadChildren(node);
 }
 
+function reference(node: unknown): ProjectEntryReference {
+  if (!isProjectTreeNode(node)) throw new Error("Invalid tree entry.");
+  return { folderId: node.folderId, relativePath: node.relativePath };
+}
+
+function writable(node: ProjectTreeNode): boolean {
+  return (
+    !node.isUnavailable &&
+    !node.isPlaceholder &&
+    activeProject.value?.folders.find((folder) => folder.id === node.folderId)
+      ?.access === "read-write"
+  );
+}
+
+function parentReference(node: ProjectTreeNode): ProjectEntryReference {
+  return {
+    folderId: node.folderId,
+    relativePath: node.relativePath.split("/").slice(0, -1).join("/"),
+  };
+}
+
+async function refresh(): Promise<void> {
+  const currentGeneration = generation;
+  async function reload(node: ProjectTreeNode): Promise<void> {
+    if (
+      node.kind !== "directory" ||
+      node.isUnavailable ||
+      !expanded.value.includes(nodeKey(node))
+    )
+      return;
+    const children = await readDirectory(node.folderId, node.relativePath);
+    if (currentGeneration !== generation) return;
+    node.children = children;
+    await Promise.all(children.map(reload));
+  }
+  await Promise.all(items.value.map(reload));
+}
+
+async function runOperation(operation: ProjectFileOperation): Promise<boolean> {
+  if (busy.value) return false;
+  busy.value = true;
+  operationError.value = "";
+  try {
+    await window.pine.operateProjectFile(operation);
+    return true;
+  } catch (error) {
+    operationError.value =
+      error instanceof Error ? error.message : String(error);
+    handleError(error, {
+      id: "project.files.operation",
+      title: t("project.files.operationFailed"),
+      description: operationError.value,
+    });
+    return false;
+  } finally {
+    // Also refresh after partial failures (for example a multi-file cross-volume move).
+    try {
+      await refresh();
+    } catch (error) {
+      handleError(error, {
+        id: "project.files.refresh",
+        title: t("errors.projectFiles.title"),
+      });
+    }
+    busy.value = false;
+  }
+}
+
+function showDialog(
+  mode: "newFolder" | "rename" | "trash",
+  node: ProjectTreeNode,
+): void {
+  entryName.value = mode === "rename" ? node.name : "";
+  operationError.value = "";
+  dialog.value = { mode, node };
+}
+
+async function submitDialog(): Promise<void> {
+  const current = dialog.value;
+  if (!current || busy.value || (current.mode !== "trash" && !validName.value))
+    return;
+  const { mode, node } = current;
+  const operation: ProjectFileOperation =
+    mode === "rename"
+      ? { action: "rename", target: reference(node), name: entryName.value }
+      : mode === "trash"
+        ? { action: "trash", target: reference(node) }
+        : {
+            action: "create",
+            target:
+              node.kind === "directory"
+                ? reference(node)
+                : parentReference(node),
+            name: entryName.value,
+            kind: "directory",
+          };
+  if (await runOperation(operation)) dialog.value = undefined;
+}
+
+function startDrag(event: DragEvent, node: ProjectTreeNode): void {
+  if (
+    !event.dataTransfer ||
+    node.isPlaceholder ||
+    node.isUnavailable ||
+    busy.value
+  ) {
+    event.preventDefault();
+    return;
+  }
+  event.dataTransfer.setData(
+    PROJECT_ENTRY_DRAG_TYPE,
+    JSON.stringify([reference(node)]),
+  );
+  // Even read-only folders can be attached to a message.
+  event.dataTransfer.effectAllowed = "copyMove";
+}
+
+function dragOver(event: DragEvent, node: ProjectTreeNode): void {
+  if (!containsFileDrag(event.dataTransfer)) return;
+  event.preventDefault();
+  event.stopPropagation();
+  const allowed = node.kind === "directory" && writable(node) && !busy.value;
+  if (event.dataTransfer)
+    event.dataTransfer.dropEffect = allowed ? "move" : "none";
+  dropTarget.value = allowed ? nodeKey(node) : undefined;
+}
+
+async function drop(event: DragEvent, node: ProjectTreeNode): Promise<void> {
+  if (!containsFileDrag(event.dataTransfer)) return;
+  event.preventDefault();
+  event.stopPropagation();
+  dropTarget.value = undefined;
+  if (
+    !event.dataTransfer ||
+    node.kind !== "directory" ||
+    !writable(node) ||
+    busy.value
+  )
+    return;
+  try {
+    const sources = readProjectEntryDrag(event.dataTransfer);
+    const target = reference(node);
+    const paths = sources ? [] : externalFilePaths(event.dataTransfer);
+    if (!sources && !paths.length) return;
+    if (!expanded.value.includes(nodeKey(node)))
+      expanded.value = [...expanded.value, nodeKey(node)];
+    await runOperation(
+      sources
+        ? { action: "move", target, sources }
+        : { action: "move-external", target, paths },
+    );
+  } catch (error) {
+    handleError(error, {
+      id: "project.files.drop",
+      title: t("project.files.operationFailed"),
+    });
+  }
+}
+
 watch(activeProject, resetRoots, { immediate: true });
 </script>
 
@@ -139,10 +381,28 @@ watch(activeProject, resetRoots, { immediate: true });
 
   <TreeRoot
     v-else
+    v-model:expanded="expanded"
     :items="items"
     :get-key="nodeKey"
     :get-children="(item) => item.children"
     class="scroll-fade h-full overflow-y-auto p-2 outline-none"
+    @dragover="
+      (event: DragEvent) => {
+        const root = items.find(
+          (node) => node.folderId === activeProject?.defaultFolderId,
+        );
+        if (root) dragOver(event, root);
+      }
+    "
+    @drop="
+      (event: DragEvent) => {
+        const root = items.find(
+          (node) => node.folderId === activeProject?.defaultFolderId,
+        );
+        if (root) drop(event, root);
+      }
+    "
+    @dragleave="dropTarget = undefined"
   >
     <TreeVirtualizer
       v-slot="{ item }"
@@ -151,42 +411,220 @@ watch(activeProject, resetRoots, { immediate: true });
       :text-content="(node) => node.name"
     >
       <TreeItem
+        v-if="isProjectTreeNode(item.value)"
         v-bind="item.bind"
         v-slot="{ isExpanded }"
-        class="flex h-7 w-full items-center gap-1 rounded-lg px-2 text-sm outline-none hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-sidebar-ring data-[selected]:bg-sidebar-accent"
+        class="flex h-7 w-full items-center gap-1 rounded-lg px-2 text-sm outline-none transition-colors duration-150 ease-out motion-reduce:transition-none hover:bg-sidebar-accent data-[context-open]:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-sidebar-ring data-[selected]:bg-sidebar-accent"
+        :draggable="
+          !item.value.isPlaceholder && !item.value.isUnavailable && !busy
+        "
+        :data-path="item.value.relativePath"
+        :data-context-open="
+          contextTarget === nodeKey(item.value) ? '' : undefined
+        "
+        :class="{
+          'bg-sidebar-accent ring-1 ring-sidebar-ring':
+            dropTarget === nodeKey(item.value),
+        }"
         :disabled="item.value.isPlaceholder || item.value.isUnavailable"
+        @dragstart="startDrag($event, item.value)"
+        @dragover="dragOver($event, item.value)"
+        @dragleave="dropTarget = undefined"
+        @dragend="dropTarget = undefined"
+        @drop="drop($event, item.value)"
         :style="{ paddingInlineStart: `${(item.level - 1) * 12 + 8}px` }"
         @toggle="loadTreeNode(item.value)"
       >
-        <template v-if="item.value.isPlaceholder">
-          <Skeleton class="h-4 w-24" />
-        </template>
-        <template v-else>
-          <ChevronRight
-            v-if="item.value.kind === 'directory' && !item.value.isUnavailable"
-            class="size-4 shrink-0 transition-transform"
-            :class="{ 'rotate-90': isExpanded }"
-          />
-          <span v-else class="size-4 shrink-0" />
-          <FolderOpen
-            v-if="item.value.kind === 'directory' && isExpanded"
-            class="size-4 shrink-0"
-          />
-          <Folder
-            v-else-if="item.value.kind === 'directory'"
-            class="size-4 shrink-0"
-          />
-          <File v-else class="size-4 shrink-0" />
-          <span class="truncate">{{ item.value.name }}</span>
-          <Badge
-            v-if="item.value.isUnavailable"
-            class="ml-auto"
-            variant="destructive"
+        <ContextMenu
+          @update:open="
+            (open) => {
+              contextTarget =
+                open && isProjectTreeNode(item.value)
+                  ? nodeKey(item.value)
+                  : undefined;
+            }
+          "
+        >
+          <ContextMenuTrigger
+            as-child
+            :disabled="item.value.isPlaceholder || item.value.isUnavailable"
           >
-            {{ t("projects.unavailable") }}
-          </Badge>
-        </template>
+            <div class="flex h-full min-w-0 flex-1 items-center gap-1">
+              <template v-if="item.value.isPlaceholder">
+                <Skeleton class="h-4 w-24" />
+              </template>
+              <template v-else>
+                <ChevronRight
+                  v-if="
+                    item.value.kind === 'directory' && !item.value.isUnavailable
+                  "
+                  class="size-4 shrink-0 transition-transform"
+                  :class="{ 'rotate-90': isExpanded }"
+                />
+                <span v-else class="size-4 shrink-0" />
+                <FolderOpen
+                  v-if="item.value.kind === 'directory' && isExpanded"
+                  class="size-4 shrink-0"
+                />
+                <Folder
+                  v-else-if="item.value.kind === 'directory'"
+                  class="size-4 shrink-0"
+                />
+                <File v-else class="size-4 shrink-0" />
+                <span class="truncate">{{ item.value.name }}</span>
+                <Badge
+                  v-if="item.value.isUnavailable"
+                  class="ml-auto"
+                  variant="destructive"
+                >
+                  {{ t("projects.unavailable") }}
+                </Badge>
+              </template>
+            </div>
+          </ContextMenuTrigger>
+          <ContextMenuContent class="w-48 [&_[data-inset]]:pl-8">
+            <ContextMenuGroup>
+              <ContextMenuItem
+                inset
+                :disabled="busy"
+                @select="
+                  runOperation({
+                    action: 'open',
+                    target: reference(item.value),
+                  })
+                "
+                >{{ t("project.files.open") }}</ContextMenuItem
+              >
+              <ContextMenuItem
+                inset
+                :disabled="busy"
+                @select="
+                  runOperation({
+                    action: 'reveal',
+                    target: reference(item.value),
+                  })
+                "
+                >{{ t("project.files.reveal") }}</ContextMenuItem
+              >
+              <ContextMenuItem
+                inset
+                :disabled="busy"
+                @select="
+                  runOperation({
+                    action: 'copy-path',
+                    target: reference(item.value),
+                  })
+                "
+                >{{ t("project.files.copyPath") }}</ContextMenuItem
+              >
+            </ContextMenuGroup>
+            <ContextMenuSeparator />
+            <ContextMenuGroup>
+              <ContextMenuItem
+                :disabled="busy || !writable(item.value)"
+                @select="showDialog('newFolder', item.value)"
+                ><FolderPlus />{{
+                  t("project.files.newFolder")
+                }}</ContextMenuItem
+              >
+              <ContextMenuItem
+                :disabled="busy || !writable(item.value) || item.value.isRoot"
+                @select="showDialog('rename', item.value)"
+                ><Pencil />{{ t("project.files.rename") }}</ContextMenuItem
+              >
+            </ContextMenuGroup>
+            <ContextMenuSeparator />
+            <ContextMenuItem
+              inset
+              :disabled="busy"
+              @select="
+                refresh().catch((error) =>
+                  handleError(error, {
+                    id: 'project.files.refresh',
+                    title: t('errors.projectFiles.title'),
+                  }),
+                )
+              "
+              >{{ t("project.files.refresh") }}</ContextMenuItem
+            >
+            <ContextMenuItem
+              variant="destructive"
+              :disabled="busy || !writable(item.value) || item.value.isRoot"
+              @select="showDialog('trash', item.value)"
+              ><Trash2 />{{ t("project.files.trash") }}</ContextMenuItem
+            >
+          </ContextMenuContent>
+        </ContextMenu>
       </TreeItem>
     </TreeVirtualizer>
   </TreeRoot>
+
+  <Dialog
+    :open="!!dialog"
+    @update:open="
+      (open) => {
+        if (!open && !busy) dialog = undefined;
+      }
+    "
+  >
+    <DialogContent
+      :show-close-button="!busy"
+      @interact-outside="
+        (event) => {
+          if (busy) event.preventDefault();
+        }
+      "
+      @escape-key-down="
+        (event) => {
+          if (busy) event.preventDefault();
+        }
+      "
+    >
+      <DialogHeader>
+        <DialogTitle>{{
+          dialog ? t(`project.files.${dialog.mode}`) : ""
+        }}</DialogTitle>
+        <DialogDescription>{{
+          dialog?.mode === "trash"
+            ? t("project.files.trashDescription", { name: dialog.node.name })
+            : t("project.files.nameDescription")
+        }}</DialogDescription>
+      </DialogHeader>
+      <form class="flex flex-col gap-4" @submit.prevent="submitDialog">
+        <Field v-if="dialog?.mode !== 'trash'">
+          <FieldLabel for="project-entry-name">{{
+            t("project.files.name")
+          }}</FieldLabel>
+          <Input
+            id="project-entry-name"
+            v-model="entryName"
+            :disabled="busy"
+            autocomplete="off"
+          />
+        </Field>
+        <p v-if="operationError" role="alert" class="text-sm text-destructive">
+          {{ operationError }}
+        </p>
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            :disabled="busy"
+            @click="dialog = undefined"
+            >{{ t("common.cancel") }}</Button
+          >
+          <Button
+            type="submit"
+            :variant="dialog?.mode === 'trash' ? 'destructive' : 'default'"
+            :disabled="busy || (dialog?.mode !== 'trash' && !validName)"
+            >{{
+              dialog?.mode === "trash"
+                ? t("project.files.trash")
+                : t("common.save")
+            }}</Button
+          >
+        </DialogFooter>
+      </form>
+    </DialogContent>
+  </Dialog>
 </template>

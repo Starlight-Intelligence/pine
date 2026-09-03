@@ -1,4 +1,8 @@
-import type { ProjectEntry } from "../shared/projectFiles";
+import type {
+  ProjectEntryReference,
+  ProjectFileOperation,
+  ProjectEntry,
+} from "../shared/projectFiles";
 import type { PineProject, PineProjectFolder } from "../shared/projects";
 import type {
   PineApprovalMode,
@@ -19,6 +23,11 @@ import type {
   ResumeSessionResult,
   SessionSearchResult,
 } from "../shared/sessions";
+import {
+  operateProjectFile,
+  resolveProjectEntry,
+  type ProjectFileNativeActions,
+} from "./projectFileOperations";
 import { listProjectDirectory } from "./projectFiles";
 import type { ProjectDataPaths } from "./projects/projectRepository";
 import { ProjectSessionService } from "./sessions";
@@ -184,6 +193,25 @@ export class ProjectRuntimeRegistry {
       return result.session;
     }
     return runtime.sessions.renameSession(sessionId, name);
+  }
+
+  async projectEntryPaths(
+    webContentsId: number,
+    entries: ProjectEntryReference[],
+  ): Promise<string[]> {
+    const { project } = this.get(webContentsId);
+    return Promise.all(
+      entries.map((entry) => resolveProjectEntry(project.folders, entry)),
+    );
+  }
+
+  async operateFile(
+    webContentsId: number,
+    request: ProjectFileOperation,
+    native: ProjectFileNativeActions,
+  ): Promise<void> {
+    const { project } = this.get(webContentsId);
+    await operateProjectFile(project.folders, request, native);
   }
 
   async listDirectory(

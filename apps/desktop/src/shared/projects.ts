@@ -25,6 +25,8 @@ import type {
   SelectModelRequest,
 } from "./models";
 import type {
+  ProjectEntryReference,
+  ProjectFileOperation,
   ListProjectDirectoryRequest,
   ListProjectDirectoryResult,
 } from "./projectFiles";
@@ -128,6 +130,10 @@ export interface PineDesktopApi extends PineWindowApi {
   listProjectDirectory: (
     request: ListProjectDirectoryRequest,
   ) => Promise<ListProjectDirectoryResult>;
+  operateProjectFile: (request: ProjectFileOperation) => Promise<void>;
+  inspectProjectAttachments: (
+    entries: ProjectEntryReference[],
+  ) => Promise<PickAttachmentsResult>;
   listProjects: () => Promise<ListProjectsResult>;
   getModelCatalog: () => Promise<PineModelCatalog>;
   getPathForFile: (file: File) => string;
