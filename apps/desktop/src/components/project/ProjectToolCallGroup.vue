@@ -78,7 +78,8 @@ function toggleExpanded(): void {
 </script>
 
 <template>
-  <div class="group/tool-steps">
+  <!-- Compensate the last expanded row's hit-area padding at the boundary. -->
+  <div class="group/tool-steps" :class="isExpanded && '-mb-1'">
     <Marker
       as="button"
       type="button"
@@ -119,7 +120,8 @@ function toggleExpanded(): void {
       :aria-hidden="!isExpanded"
     >
       <div class="min-h-0 overflow-hidden">
-        <div class="mt-2 flex flex-col gap-1.5 pl-6">
+        <!-- Header gap: 10px + 4px row padding. Between rows: 6px + 8px. -->
+        <div class="mt-2.5 flex flex-col gap-1.5 pl-6">
           <ProjectToolCallMarker
             v-for="toolCall in toolCalls"
             :key="toolCall.id"

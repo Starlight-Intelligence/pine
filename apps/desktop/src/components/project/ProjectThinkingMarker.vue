@@ -194,7 +194,7 @@ onBeforeUnmount(() => {
         <div
           ref="thinkingContent"
           data-thinking-content
-          class="scroll-fade no-scrollbar mt-2 max-h-64 overflow-y-auto overscroll-contain pl-6 pr-3 text-sm text-muted-foreground whitespace-pre-wrap"
+          class="scroll-fade no-scrollbar mt-3.5 max-h-64 overflow-y-auto overscroll-contain pl-6 pr-3 text-sm text-muted-foreground whitespace-pre-wrap"
           @scroll.passive="handleThinkingScroll"
         >
           {{ thinkingText }}
