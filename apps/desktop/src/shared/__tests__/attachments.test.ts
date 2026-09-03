@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  attachmentImageUrl,
   attachmentMessagePreview,
+  extensionForPastedImage,
+  isImageAttachment,
+  isPastedImageMimeType,
   parseAttachmentMessage,
   serializeAttachmentMessage,
   type PineAttachment,
@@ -71,5 +75,30 @@ describe("attachment messages", () => {
     expect(
       attachmentMessagePreview(serializeAttachmentMessage([attachment], "")),
     ).toBe("notes.md");
+  });
+});
+
+describe("pasted image helpers", () => {
+  it("treats image files but not folders as image attachments", () => {
+    expect(isImageAttachment({ ...attachment, extension: "PNG" })).toBe(true);
+    expect(isImageAttachment({ ...attachment, extension: "png" })).toBe(true);
+    expect(
+      isImageAttachment({ ...attachment, extension: "png", kind: "directory" }),
+    ).toBe(false);
+    expect(isImageAttachment(attachment)).toBe(false);
+  });
+
+  it("maps pasted mime types to canonical extensions", () => {
+    expect(extensionForPastedImage("image/jpeg")).toBe("jpg");
+    expect(extensionForPastedImage("image/png")).toBe("png");
+    expect(extensionForPastedImage("image/webp")).toBe("webp");
+    expect(isPastedImageMimeType("image/webp")).toBe(true);
+    expect(isPastedImageMimeType("application/pdf")).toBe(false);
+  });
+
+  it("builds scoped protocol URLs for attachment previews", () => {
+    expect(attachmentImageUrl("/tmp/a b/pic.png")).toBe(
+      "pine-attachment://local/?p=%2Ftmp%2Fa%20b%2Fpic.png",
+    );
   });
 });

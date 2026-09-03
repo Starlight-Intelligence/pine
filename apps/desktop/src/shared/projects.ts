@@ -12,6 +12,8 @@ import type {
   OpenAttachmentRequest,
   OpenAttachmentResult,
   PickAttachmentsResult,
+  SavePastedAttachmentRequest,
+  SavePastedAttachmentResult,
 } from "./attachments";
 import type {
   LoginProviderRequest,
@@ -44,6 +46,8 @@ export const PROJECTS_DIRECTORY = "projects" as const;
 export const PROJECT_METADATA_FILE = "project.json" as const;
 export const PROJECT_SESSIONS_DIRECTORY = "sessions" as const;
 export const PROJECT_CACHE_DIRECTORY = "cache" as const;
+/** Pine-managed storage for attachments pasted without a filesystem path. */
+export const PROJECT_ATTACHMENTS_DIRECTORY = "attachments" as const;
 
 export const LIST_PROJECTS_CHANNEL = "project:list" as const;
 export const CREATE_PROJECT_CHANNEL = "project:create" as const;
@@ -133,6 +137,9 @@ export interface PineDesktopApi extends PineWindowApi {
   openAttachment: (
     request: OpenAttachmentRequest,
   ) => Promise<OpenAttachmentResult>;
+  savePastedAttachment: (
+    request: SavePastedAttachmentRequest,
+  ) => Promise<SavePastedAttachmentResult>;
   loginProvider: (
     request: LoginProviderRequest,
   ) => Promise<ProviderLoginResult>;

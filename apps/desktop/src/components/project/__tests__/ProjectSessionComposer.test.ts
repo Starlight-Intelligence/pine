@@ -1,7 +1,8 @@
 import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createAppI18n, type AppLocale } from "@/app/i18n";
+import type { PineAttachment } from "@/shared/attachments";
 import type { PineThinkingLevel } from "@/shared/models";
 import { useModelsStore } from "@/stores/models";
 import type { PinePendingApproval } from "@/stores/session";
@@ -375,18 +376,16 @@ describe("ProjectSessionComposer", () => {
     expect(
       wrapper.get('[data-slot="attachment"]').attributes("title"),
     ).toBeUndefined();
-    expect(wrapper.get("textarea").classes()).toContain(
+    expect(wrapper.get("textarea").classes()).toContain("pt-3.5");
+    expect(wrapper.get("textarea").classes()).not.toContain(
       "session-composer-input-with-attachments",
     );
-    expect(wrapper.get('[data-slot="attachment-group"]').classes()).toContain(
-      "py-0",
+    const attachmentGroup = wrapper.get('[data-slot="attachment-group"]');
+    expect(attachmentGroup.classes()).toContain("session-composer-attachments");
+    expect(attachmentGroup.classes()).toContain(
+      "px-[var(--session-composer-control-inset)]",
     );
-    expect(wrapper.get('[data-slot="attachment-group"]').classes()).toContain(
-      "gap-1.5",
-    );
-    expect(
-      wrapper.get('[data-slot="attachment-group"]').classes(),
-    ).not.toContain("gap-3");
+    expect(attachmentGroup.classes()).toContain("pb-0");
     expect(wrapper.get('[data-slot="attachment"]').classes()).toContain(
       "rounded-[var(--session-composer-attachment-radius)]",
     );
@@ -506,5 +505,96 @@ describe("ProjectSessionComposer", () => {
 
     expect(wrapper.emitted("abort")).toEqual([[]]);
     expect(wrapper.emitted("submit")).toBeUndefined();
+  });
+
+  it("saves pathless pasted images into Pine-managed attachment storage", async () => {
+    const wrapper = mountComposer();
+    const savedAttachment: PineAttachment = {
+      extension: "png",
+      kind: "file",
+      modifiedAt: "2026-09-02T12:02:00.000Z",
+      name: "image.png",
+      path: "/pine/projects/p1/attachments/uuid.png",
+      size: 4,
+    };
+    const savePastedAttachment = vi.fn(() =>
+      Promise.resolve({ attachment: savedAttachment }),
+    );
+    window.pine.savePastedAttachment = savePastedAttachment;
+    window.pine.getPathForFile = () => {
+      throw new Error("Clipboard file has no filesystem path.");
+    };
+    const pastedImage = {
+      name: "image.png",
+      type: "image/png",
+      arrayBuffer: () => Promise.resolve(new ArrayBuffer(4)),
+    } as unknown as File;
+
+    await wrapper
+      .get("textarea")
+      .trigger("paste", { clipboardData: { files: [pastedImage] } });
+    await flushPromises();
+
+    expect(savePastedAttachment).toHaveBeenCalledWith({
+      bytes: expect.any(Uint8Array),
+      mimeType: "image/png",
+      name: "image.png",
+    });
+    expect(wrapper.emitted("update:attachments")).toContainEqual([
+      [savedAttachment],
+    ]);
+  });
+
+  it("reuses the inspect flow for pasted files with real paths", async () => {
+    const wrapper = mountComposer();
+    const inspectedAttachment: PineAttachment = {
+      extension: "md",
+      modifiedAt: "2026-09-02T12:00:00.000Z",
+      name: "notes.md",
+      path: "/Users/example/notes.md",
+      size: 1_024,
+    };
+    const inspectAttachments = vi.fn(() =>
+      Promise.resolve({ attachments: [inspectedAttachment] }),
+    );
+    const savePastedAttachment = vi.fn();
+    window.pine.inspectAttachments = inspectAttachments;
+    window.pine.savePastedAttachment = savePastedAttachment;
+    window.pine.getPathForFile = () => "/Users/example/notes.md";
+    const copiedFile = {
+      name: "notes.md",
+      type: "",
+      arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)),
+    } as unknown as File;
+
+    await wrapper
+      .get("textarea")
+      .trigger("paste", { clipboardData: { files: [copiedFile] } });
+    await flushPromises();
+
+    expect(inspectAttachments).toHaveBeenCalledWith({
+      paths: ["/Users/example/notes.md"],
+    });
+    expect(savePastedAttachment).not.toHaveBeenCalled();
+    expect(wrapper.emitted("update:attachments")).toContainEqual([
+      [inspectedAttachment],
+    ]);
+  });
+
+  it("ignores paste events without clipboard files", async () => {
+    const wrapper = mountComposer();
+    const inspectAttachments = vi.fn();
+    const savePastedAttachment = vi.fn();
+    window.pine.inspectAttachments = inspectAttachments;
+    window.pine.savePastedAttachment = savePastedAttachment;
+
+    await wrapper
+      .get("textarea")
+      .trigger("paste", { clipboardData: { files: [] } });
+    await flushPromises();
+
+    expect(inspectAttachments).not.toHaveBeenCalled();
+    expect(savePastedAttachment).not.toHaveBeenCalled();
+    expect(wrapper.emitted("update:attachments")).toBeUndefined();
   });
 });

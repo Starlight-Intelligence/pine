@@ -4,13 +4,14 @@ import {
   dialog,
   ipcMain,
   nativeTheme,
+  protocol,
   shell,
   webContents,
   type OpenDialogOptions,
 } from "electron";
 import started from "electron-squirrel-startup";
 import { randomUUID } from "node:crypto";
-import { stat } from "node:fs/promises";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import { ProjectRuntimeRegistry } from "./main/projectRuntime";
@@ -29,14 +30,20 @@ import {
   type SetApprovalModeResult,
 } from "./shared/agent";
 import {
+  ATTACHMENT_IMAGE_PROTOCOL,
   INSPECT_ATTACHMENTS_CHANNEL,
+  MAX_PASTED_IMAGE_BYTES,
   OPEN_ATTACHMENT_CHANNEL,
   PICK_ATTACHMENT_FOLDERS_CHANNEL,
   PICK_ATTACHMENTS_CHANNEL,
+  SAVE_PASTED_ATTACHMENT_CHANNEL,
+  extensionForPastedImage,
+  PASTED_IMAGE_MIME_TYPES,
   type PineAttachment,
   type PineAttachmentKind,
   type OpenAttachmentResult,
   type PickAttachmentsResult,
+  type SavePastedAttachmentResult,
 } from "./shared/attachments";
 import {
   CANCEL_PROVIDER_AUTH_CHANNEL,
@@ -59,6 +66,7 @@ import {
   OPEN_PROJECT_CHANNEL,
   PICK_PROJECT_FOLDERS_CHANNEL,
   PROJECTS_DIRECTORY,
+  PROJECT_ATTACHMENTS_DIRECTORY,
   UPDATE_PROJECT_CHANNEL,
   type DeleteProjectResult,
   type ListProjectsResult,
@@ -96,6 +104,123 @@ declare const MAIN_WINDOW_VITE_NAME: string;
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
   app.quit();
+}
+
+// Must run before app ready. The attachment image protocol lets the renderer
+// display local images without granting it general filesystem access.
+protocol.registerSchemesAsPrivileged([
+  {
+    privileges: { standard: true, stream: true, supportFetchAPI: true },
+    scheme: ATTACHMENT_IMAGE_PROTOCOL,
+  },
+]);
+
+const ATTACHMENT_IMAGE_CONTENT_TYPES: Record<string, string> = {
+  avif: "image/avif",
+  gif: "image/gif",
+  jpeg: "image/jpeg",
+  jpg: "image/jpeg",
+  png: "image/png",
+  webp: "image/webp",
+};
+const PROJECT_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const MAX_PASTED_ATTACHMENT_NAME_LENGTH = 200;
+
+const SavePastedAttachmentRequestSchema = z.object({
+  bytes: z
+    .instanceof(Uint8Array)
+    .refine(
+      (bytes) =>
+        bytes.byteLength > 0 && bytes.byteLength <= MAX_PASTED_IMAGE_BYTES,
+    ),
+  mimeType: z.enum(PASTED_IMAGE_MIME_TYPES),
+  name: z.string().max(MAX_PASTED_ATTACHMENT_NAME_LENGTH).optional(),
+});
+
+/** Root of the Pine-managed projects tree; set once the app is ready. */
+let projectsRootPath: string | null = null;
+
+/**
+ * Filesystem paths the user explicitly selected as message attachments, per
+ * window. Previewing them mirrors the agent's read-only grant for the same
+ * paths, so the protocol may serve them even outside granted folders.
+ */
+const attachedPreviewPaths = new Map<number, Set<string>>();
+
+function registerAttachmentPreviewPaths(
+  webContentsId: number,
+  attachmentPaths: readonly string[],
+): void {
+  const registered = attachedPreviewPaths.get(webContentsId) ?? new Set();
+  for (const attachmentPath of attachmentPaths) {
+    registered.add(path.resolve(attachmentPath));
+  }
+  attachedPreviewPaths.set(webContentsId, registered);
+}
+
+/**
+ * Whether the protocol may serve this file: either a Pine-managed pasted
+ * attachment (`<projectsRoot>/<projectId>/attachments/<file>`) or a file
+ * inside a folder granted to one of the currently open projects.
+ */
+function isServableAttachmentPath(resolvedPath: string): boolean {
+  if (!projectsRootPath) return false;
+
+  const relativePath = path.relative(projectsRootPath, resolvedPath);
+  if (
+    relativePath !== "" &&
+    !relativePath.startsWith(`..${path.sep}`) &&
+    relativePath !== ".." &&
+    !path.isAbsolute(relativePath)
+  ) {
+    const segments = relativePath.split(path.sep);
+    if (
+      segments.length === 3 &&
+      segments[1] === PROJECT_ATTACHMENTS_DIRECTORY &&
+      PROJECT_ID_PATTERN.test(segments[0])
+    ) {
+      return true;
+    }
+  }
+  if (getProjectRuntimes().isInsideGrantedFolder(resolvedPath)) {
+    return true;
+  }
+  for (const registered of attachedPreviewPaths.values()) {
+    if (registered.has(resolvedPath)) return true;
+  }
+  return false;
+}
+
+function registerAttachmentImageProtocol(): void {
+  protocol.handle(ATTACHMENT_IMAGE_PROTOCOL, async (request) => {
+    let requestedPath: string | null;
+    try {
+      requestedPath = new URL(request.url).searchParams.get("p");
+    } catch {
+      return new Response("Bad request", { status: 400 });
+    }
+    if (!requestedPath) {
+      return new Response("Bad request", { status: 400 });
+    }
+    const resolvedPath = path.resolve(requestedPath);
+    if (!isServableAttachmentPath(resolvedPath)) {
+      return new Response("Forbidden", { status: 403 });
+    }
+    try {
+      const contents = await readFile(resolvedPath);
+      const extension = path.extname(resolvedPath).slice(1).toLowerCase();
+      return new Response(contents, {
+        headers: {
+          "content-type":
+            ATTACHMENT_IMAGE_CONTENT_TYPES[extension] ??
+            "application/octet-stream",
+        },
+      });
+    } catch {
+      return new Response("Not found", { status: 404 });
+    }
+  });
 }
 
 nativeTheme.themeSource = "system";
@@ -322,6 +447,7 @@ const createWindow = () => {
     mainWindow.show();
   });
   mainWindow.webContents.once("destroyed", () => {
+    attachedPreviewPaths.delete(webContentsId);
     void projectRuntimes?.dispose(webContentsId);
   });
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
@@ -438,7 +564,12 @@ ipcMain.handle(
       : await dialog.showOpenDialog(options);
 
     if (selection.canceled) return { attachments: [] };
-    return inspectAttachmentPaths(selection.filePaths);
+    const result = await inspectAttachmentPaths(selection.filePaths);
+    registerAttachmentPreviewPaths(
+      event.sender.id,
+      result.attachments.map((attachment) => attachment.path),
+    );
+    return result;
   },
 );
 
@@ -456,15 +587,25 @@ ipcMain.handle(
       : await dialog.showOpenDialog(options);
 
     if (selection.canceled) return { attachments: [] };
-    return inspectAttachmentPaths(selection.filePaths);
+    const result = await inspectAttachmentPaths(selection.filePaths);
+    registerAttachmentPreviewPaths(
+      event.sender.id,
+      result.attachments.map((attachment) => attachment.path),
+    );
+    return result;
   },
 );
 
 ipcMain.handle(
   INSPECT_ATTACHMENTS_CHANNEL,
-  (_event, request: unknown): Promise<PickAttachmentsResult> => {
+  async (event, request: unknown): Promise<PickAttachmentsResult> => {
     const { paths } = InspectAttachmentsRequestSchema.parse(request);
-    return inspectAttachmentPaths(paths);
+    const result = await inspectAttachmentPaths(paths);
+    registerAttachmentPreviewPaths(
+      event.sender.id,
+      result.attachments.map((attachment) => attachment.path),
+    );
+    return result;
   },
 );
 
@@ -478,6 +619,45 @@ ipcMain.handle(
     }
     const error = await shell.openPath(attachmentPath);
     return error ? { opened: false, error } : { opened: true };
+  },
+);
+
+ipcMain.handle(
+  SAVE_PASTED_ATTACHMENT_CHANNEL,
+  async (event, request: unknown): Promise<SavePastedAttachmentResult> => {
+    const parsed = SavePastedAttachmentRequestSchema.parse(request);
+    const attachmentsRoot = getProjectRuntimes().attachmentsRootFor(
+      event.sender.id,
+    );
+    if (!attachmentsRoot) {
+      throw new Error("No project is open in this window.");
+    }
+
+    const extension = extensionForPastedImage(parsed.mimeType);
+    const displayName =
+      path
+        .basename(parsed.name ?? "")
+        .trim()
+        .slice(0, 200) || `image.${extension}`;
+
+    await mkdir(attachmentsRoot, { recursive: true });
+    const attachmentPath = path.join(
+      attachmentsRoot,
+      `${randomUUID()}.${extension}`,
+    );
+    await writeFile(attachmentPath, parsed.bytes);
+    const metadata = await stat(attachmentPath);
+
+    const attachment: PineAttachment = {
+      extension,
+      kind: "file",
+      modifiedAt: metadata.mtime.toISOString(),
+      name: displayName,
+      path: attachmentPath,
+      size: metadata.size,
+    };
+    registerAttachmentPreviewPaths(event.sender.id, [attachmentPath]);
+    return { attachment };
   },
 );
 
@@ -701,9 +881,9 @@ ipcMain.handle(
 // Some APIs can only be used after this event occurs.
 app.on("ready", () => {
   agentHost = AgentProcessHost.createDefault();
-  projectRepository = new ProjectRepository(
-    path.join(app.getPath("userData"), PROJECTS_DIRECTORY),
-  );
+  projectsRootPath = path.join(app.getPath("userData"), PROJECTS_DIRECTORY);
+  projectRepository = new ProjectRepository(projectsRootPath);
+  registerAttachmentImageProtocol();
   projectRuntimes = new ProjectRuntimeRegistry(
     agentHost,
     path.join(app.getPath("userData"), "agent"),

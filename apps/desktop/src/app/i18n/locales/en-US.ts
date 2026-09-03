@@ -163,6 +163,7 @@ export default {
       removeAttachment: "Remove attachment {name}",
       attachmentPickerFailed: "Could not open or inspect the selected items",
       attachmentDropFailed: "Could not inspect the dropped files or folders",
+      attachmentPasteFailed: "Could not read the pasted image or file",
       dropAttachmentsTitle: "Drop to add attachments",
       dropAttachmentsDescription:
         "You can add multiple files or folders at once",

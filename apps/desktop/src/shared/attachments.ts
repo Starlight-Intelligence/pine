@@ -3,6 +3,76 @@ export const PICK_ATTACHMENT_FOLDERS_CHANNEL =
   "attachment-folders:pick" as const;
 export const INSPECT_ATTACHMENTS_CHANNEL = "attachments:inspect" as const;
 export const OPEN_ATTACHMENT_CHANNEL = "attachments:open" as const;
+export const SAVE_PASTED_ATTACHMENT_CHANNEL =
+  "attachments:save-pasted" as const;
+
+/** Extensions rendered with the image variant of the attachment component. */
+export const IMAGE_EXTENSIONS = ["avif", "gif", "jpeg", "jpg", "png", "webp"];
+
+/** MIME types accepted for images pasted without a filesystem path. */
+export const PASTED_IMAGE_MIME_TYPES = [
+  "image/avif",
+  "image/gif",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+] as const;
+
+export type PastedImageMimeType = (typeof PASTED_IMAGE_MIME_TYPES)[number];
+
+const MIME_TO_EXTENSION: Record<PastedImageMimeType, string> = {
+  "image/avif": "avif",
+  "image/gif": "gif",
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+};
+
+/** Upper bound for a single pasted image, in bytes. */
+export const MAX_PASTED_IMAGE_BYTES = 25 * 1024 * 1024;
+
+export interface SavePastedAttachmentRequest {
+  bytes: Uint8Array;
+  mimeType: PastedImageMimeType;
+  /** Original clipboard file name, used as the display name when present. */
+  name?: string;
+}
+
+export interface AttachmentImageUrlRequest {
+  path: string;
+}
+
+/** Custom protocol that serves local attachment images to the renderer. */
+export const ATTACHMENT_IMAGE_PROTOCOL = "pine-attachment";
+
+export function extensionForPastedImage(mimeType: PastedImageMimeType): string {
+  return MIME_TO_EXTENSION[mimeType];
+}
+
+export function isPastedImageMimeType(
+  value: string,
+): value is PastedImageMimeType {
+  return (PASTED_IMAGE_MIME_TYPES as readonly string[]).includes(value);
+}
+
+export function isImageAttachment(attachment: {
+  extension: string;
+  kind?: PineAttachmentKind;
+}): boolean {
+  return (
+    attachment.kind !== "directory" &&
+    IMAGE_EXTENSIONS.includes(attachment.extension.toLowerCase())
+  );
+}
+
+/**
+ * URL that loads a local attachment image through the scoped
+ * `pine-attachment://` protocol. The absolute path travels in the query
+ * string; the main process validates it before serving anything.
+ */
+export function attachmentImageUrl(path: string): string {
+  return `${ATTACHMENT_IMAGE_PROTOCOL}://local/?p=${encodeURIComponent(path)}`;
+}
 
 export type PineAttachmentKind = "directory" | "file";
 
@@ -22,6 +92,10 @@ export interface PickAttachmentsResult {
 
 export interface InspectAttachmentsRequest {
   paths: string[];
+}
+
+export interface SavePastedAttachmentResult {
+  attachment: PineAttachment;
 }
 
 export interface OpenAttachmentRequest {

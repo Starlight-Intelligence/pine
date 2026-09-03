@@ -113,6 +113,7 @@ describe("ProjectRuntimeRegistry", () => {
 
     try {
       await registry.open(1, project, {
+        attachmentsRoot: path.join(dataRoot, "attachments"),
         cacheRoot: path.join(dataRoot, "cache"),
         projectRoot: dataRoot,
         sessionsRoot: path.join(dataRoot, "sessions"),
@@ -140,6 +141,7 @@ describe("ProjectRuntimeRegistry", () => {
 
     try {
       await registry.open(1, project, {
+        attachmentsRoot: path.join(dataRoot, "attachments"),
         cacheRoot: path.join(dataRoot, "cache"),
         projectRoot: dataRoot,
         sessionsRoot: path.join(dataRoot, "sessions"),
@@ -177,6 +179,7 @@ describe("ProjectRuntimeRegistry", () => {
 
     try {
       await registry.open(7, project, {
+        attachmentsRoot: path.join(dataRoot, "attachments"),
         cacheRoot: path.join(dataRoot, "cache"),
         projectRoot: dataRoot,
         sessionsRoot: path.join(dataRoot, "sessions"),
@@ -213,6 +216,7 @@ describe("ProjectRuntimeRegistry", () => {
 
     try {
       await registry.open(2, project, {
+        attachmentsRoot: path.join(dataRoot, "attachments"),
         cacheRoot: path.join(dataRoot, "cache"),
         projectRoot: dataRoot,
         sessionsRoot: path.join(dataRoot, "sessions"),
@@ -239,6 +243,7 @@ describe("ProjectRuntimeRegistry", () => {
 
     try {
       await registry.open(3, project, {
+        attachmentsRoot: path.join(dataRoot, "attachments"),
         cacheRoot: path.join(dataRoot, "cache"),
         projectRoot: dataRoot,
         sessionsRoot: path.join(dataRoot, "sessions"),
@@ -287,6 +292,7 @@ describe("ProjectRuntimeRegistry", () => {
 
     try {
       await registry.open(8, project, {
+        attachmentsRoot: path.join(dataRoot, "attachments"),
         cacheRoot: path.join(dataRoot, "cache"),
         projectRoot: dataRoot,
         sessionsRoot: path.join(dataRoot, "sessions"),
@@ -328,6 +334,7 @@ describe("ProjectRuntimeRegistry", () => {
 
     try {
       await registry.open(5, project, {
+        attachmentsRoot: path.join(dataRoot, "attachments"),
         cacheRoot: path.join(dataRoot, "cache"),
         projectRoot: dataRoot,
         sessionsRoot: path.join(dataRoot, "sessions"),
@@ -365,6 +372,7 @@ describe("ProjectRuntimeRegistry", () => {
 
     try {
       await registry.open(6, project, {
+        attachmentsRoot: path.join(dataRoot, "attachments"),
         cacheRoot: path.join(dataRoot, "cache"),
         projectRoot: dataRoot,
         sessionsRoot: path.join(dataRoot, "sessions"),
@@ -401,6 +409,7 @@ describe("ProjectRuntimeRegistry", () => {
 
     try {
       await registry.open(9, project, {
+        attachmentsRoot: path.join(dataRoot, "attachments"),
         cacheRoot: path.join(dataRoot, "cache"),
         projectRoot: dataRoot,
         sessionsRoot: path.join(dataRoot, "sessions"),
@@ -435,6 +444,7 @@ describe("ProjectRuntimeRegistry", () => {
     const { dataRoot, project } = await createRuntimeFixture();
 
     await registry.open(4, project, {
+      attachmentsRoot: path.join(dataRoot, "attachments"),
       cacheRoot: path.join(dataRoot, "cache"),
       projectRoot: dataRoot,
       sessionsRoot: path.join(dataRoot, "sessions"),

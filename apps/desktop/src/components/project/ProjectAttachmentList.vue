@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { HTMLAttributes } from "vue";
 import { FileIcon, FolderIcon, XIcon } from "@lucide/vue";
+import { ref } from "vue";
 import { useI18n } from "vue-i18n";
 import {
   Attachment,
@@ -14,7 +15,11 @@ import {
   AttachmentTrigger,
 } from "@/components/ui/attachment";
 import { cn } from "@/lib/utils";
-import type { PineAttachment } from "@/shared/attachments";
+import {
+  attachmentImageUrl,
+  isImageAttachment,
+  type PineAttachment,
+} from "@/shared/attachments";
 
 const props = withDefaults(
   defineProps<{
@@ -32,6 +37,24 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
+
+/** Paths whose preview failed to load; they fall back to the icon variant. */
+const failedImagePaths = ref(new Set<string>());
+
+function markImageFailed(path: string): void {
+  failedImagePaths.value = new Set([...failedImagePaths.value, path]);
+}
+
+/**
+ * Image attachments render with the official image variant; anything that
+ * cannot be previewed (or failed to load) falls back to the icon variant.
+ */
+function isPreviewableImage(attachment: PineAttachment): boolean {
+  return (
+    isImageAttachment(attachment) &&
+    !failedImagePaths.value.has(attachment.path)
+  );
+}
 
 function formatFileSize(size: number): string {
   if (size < 1_000) return `${size} B`;
@@ -51,16 +74,29 @@ function formatFileSize(size: number): string {
       :key="attachment.path"
       :class="
         cn(
-          'project-attachment max-w-72',
+          'project-attachment max-w-36',
           surface === 'composer' &&
             'rounded-[var(--session-composer-attachment-radius)]',
           surface === 'message' && 'hover:bg-muted/50',
         )
       "
       size="sm"
+      :orientation="isPreviewableImage(attachment) ? 'vertical' : 'horizontal'"
       role="listitem"
     >
-      <AttachmentMedia>
+      <AttachmentMedia
+        v-if="isPreviewableImage(attachment)"
+        variant="image"
+        class="w-full! rounded-lg!"
+      >
+        <img
+          :alt="attachment.name"
+          :src="attachmentImageUrl(attachment.path)"
+          loading="lazy"
+          @error="markImageFailed(attachment.path)"
+        />
+      </AttachmentMedia>
+      <AttachmentMedia v-else>
         <FolderIcon v-if="attachment.kind === 'directory'" />
         <FileIcon v-else />
       </AttachmentMedia>
@@ -70,7 +106,9 @@ function formatFileSize(size: number): string {
           {{
             attachment.kind === "directory"
               ? t("project.composer.folderAttachment")
-              : formatFileSize(attachment.size)
+              : attachment.extension
+                ? `${attachment.extension.toUpperCase()} · ${formatFileSize(attachment.size)}`
+                : formatFileSize(attachment.size)
           }}
         </AttachmentDescription>
       </AttachmentContent>

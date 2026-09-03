@@ -13,6 +13,7 @@ import path from "node:path";
 import { z } from "zod";
 import {
   PROJECT_CACHE_DIRECTORY,
+  PROJECT_ATTACHMENTS_DIRECTORY,
   PROJECT_METADATA_FILE,
   PROJECT_SESSIONS_DIRECTORY,
   type PineProject,
@@ -43,6 +44,7 @@ const StoredProjectSchema = z.object({
 type StoredProject = z.infer<typeof StoredProjectSchema>;
 
 export interface ProjectDataPaths {
+  attachmentsRoot: string;
   cacheRoot: string;
   projectRoot: string;
   sessionsRoot: string;
@@ -210,6 +212,7 @@ export class ProjectRepository {
   dataPaths(id: string): ProjectDataPaths {
     const projectRoot = this.projectRoot(id);
     return {
+      attachmentsRoot: path.join(projectRoot, PROJECT_ATTACHMENTS_DIRECTORY),
       cacheRoot: path.join(projectRoot, PROJECT_CACHE_DIRECTORY),
       projectRoot,
       sessionsRoot: path.join(projectRoot, PROJECT_SESSIONS_DIRECTORY),

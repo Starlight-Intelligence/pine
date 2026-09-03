@@ -21,10 +21,13 @@ import {
   OPEN_ATTACHMENT_CHANNEL,
   PICK_ATTACHMENT_FOLDERS_CHANNEL,
   PICK_ATTACHMENTS_CHANNEL,
+  SAVE_PASTED_ATTACHMENT_CHANNEL,
   type InspectAttachmentsRequest,
   type OpenAttachmentRequest,
   type OpenAttachmentResult,
   type PickAttachmentsResult,
+  type SavePastedAttachmentRequest,
+  type SavePastedAttachmentResult,
 } from "./shared/attachments";
 import {
   CANCEL_PROVIDER_AUTH_CHANNEL,
@@ -124,6 +127,10 @@ const pineApi: PineDesktopApi = {
     request: OpenAttachmentRequest,
   ): Promise<OpenAttachmentResult> =>
     ipcRenderer.invoke(OPEN_ATTACHMENT_CHANNEL, request),
+  savePastedAttachment: (
+    request: SavePastedAttachmentRequest,
+  ): Promise<SavePastedAttachmentResult> =>
+    ipcRenderer.invoke(SAVE_PASTED_ATTACHMENT_CHANNEL, request),
   loginProvider: (
     request: LoginProviderRequest,
   ): Promise<ProviderLoginResult> =>

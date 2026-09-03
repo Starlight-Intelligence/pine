@@ -63,7 +63,9 @@ import { cn } from "@/lib/utils";
 import type { PineApprovalAction, PineApprovalMode } from "@/shared/agent";
 import {
   serializeAttachmentMessage,
+  isPastedImageMimeType,
   type PineAttachment,
+  type PastedImageMimeType,
 } from "@/shared/attachments";
 import type { PineThinkingLevel } from "@/shared/models";
 import type { PinePendingApproval } from "@/stores/session";
@@ -213,6 +215,63 @@ async function pickAttachments(kind: "directory" | "file"): Promise<void> {
   }
 }
 
+interface PastedImage {
+  bytes: Uint8Array;
+  mimeType: PastedImageMimeType;
+  name?: string;
+}
+
+/**
+ * Paste handling: clipboard files that map to a real filesystem path (files
+ * copied from the shell) reuse the existing inspect flow; pathless images
+ * (screenshots, copied bitmaps) are copied into the project's Pine-managed
+ * attachment storage by the main process.
+ */
+async function handlePaste(event: ClipboardEvent): Promise<void> {
+  const files = Array.from(event.clipboardData?.files ?? []);
+  if (files.length === 0) return;
+
+  const paths: string[] = [];
+  const pastedImages: PastedImage[] = [];
+  for (const file of files) {
+    let filePath = "";
+    try {
+      filePath = window.pine.getPathForFile(file);
+    } catch {
+      filePath = "";
+    }
+    if (filePath) {
+      paths.push(filePath);
+      continue;
+    }
+    if (isPastedImageMimeType(file.type)) {
+      pastedImages.push({
+        bytes: new Uint8Array(await file.arrayBuffer()),
+        mimeType: file.type,
+        name: file.name || undefined,
+      });
+    }
+  }
+  // Nothing we can handle — let the browser's default paste proceed.
+  if (paths.length === 0 && pastedImages.length === 0) return;
+  event.preventDefault();
+
+  try {
+    const merged: PineAttachment[] = [];
+    if (paths.length > 0) {
+      const result = await window.pine.inspectAttachments({ paths });
+      merged.push(...result.attachments);
+    }
+    for (const image of pastedImages) {
+      const result = await window.pine.savePastedAttachment(image);
+      merged.push(result.attachment);
+    }
+    mergeAttachments(merged);
+  } catch {
+    toast.error(t("project.composer.attachmentPasteFailed"));
+  }
+}
+
 function removeAttachment(path: string): void {
   attachments.value = attachments.value.filter(
     (attachment) => attachment.path !== path,
@@ -282,89 +341,85 @@ function openModelPicker(): void {
     />
     <InputGroup
       v-else
-      class="session-composer-control min-h-[var(--session-composer-control-height)] rounded-[var(--session-composer-control-radius)] has-[textarea]:rounded-[var(--session-composer-control-radius)]"
+      class="session-composer-control flex-col items-stretch min-h-[var(--session-composer-control-height)] rounded-[var(--session-composer-control-radius)] has-[textarea]:rounded-[var(--session-composer-control-radius)]"
     >
       <ProjectAttachmentList
         v-if="attachments.length > 0"
-        class="session-composer-attachments absolute inset-x-[var(--session-composer-control-inset)] top-[var(--session-composer-control-inset)] py-0"
+        class="session-composer-attachments shrink-0 w-full px-[var(--session-composer-control-inset)] pt-[var(--session-composer-control-inset)] pb-0"
         :attachments="attachments"
         removable
         surface="composer"
         @remove="removeAttachment"
       />
 
-      <InputGroupAddon class="self-end py-1.5 pl-2.5" align="inline-start">
-        <DropdownMenu>
-          <DropdownMenuTrigger as-child>
-            <InputGroupButton
-              data-slot="attachment-menu-trigger"
-              class="size-[var(--session-composer-action-size)] shrink-0 rounded-full"
-              size="icon-sm"
-              type="button"
-              variant="secondary"
-              :aria-label="t('project.composer.addAttachment')"
-            >
-              <PlusIcon />
-            </InputGroupButton>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" side="top">
-            <DropdownMenuGroup>
-              <DropdownMenuItem @select="pickAttachments('file')">
-                <FileIcon />
-                {{ t("project.composer.addFile") }}
-              </DropdownMenuItem>
-              <DropdownMenuItem @select="pickAttachments('directory')">
-                <FolderIcon />
-                {{ t("project.composer.addFolder") }}
-              </DropdownMenuItem>
-            </DropdownMenuGroup>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </InputGroupAddon>
+      <div class="flex w-full items-center">
+        <InputGroupAddon class="self-end py-1.5 pl-2.5" align="inline-start">
+          <DropdownMenu>
+            <DropdownMenuTrigger as-child>
+              <InputGroupButton
+                data-slot="attachment-menu-trigger"
+                class="size-[var(--session-composer-action-size)] shrink-0 rounded-full"
+                size="icon-sm"
+                type="button"
+                variant="secondary"
+                :aria-label="t('project.composer.addAttachment')"
+              >
+                <PlusIcon />
+              </InputGroupButton>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" side="top">
+              <DropdownMenuGroup>
+                <DropdownMenuItem @select="pickAttachments('file')">
+                  <FileIcon />
+                  {{ t("project.composer.addFile") }}
+                </DropdownMenuItem>
+                <DropdownMenuItem @select="pickAttachments('directory')">
+                  <FolderIcon />
+                  {{ t("project.composer.addFolder") }}
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </InputGroupAddon>
 
-      <InputGroupTextarea
-        :id="messageId"
-        v-model="message"
-        :class="
-          cn(
-            'session-composer-input max-h-48 min-h-[var(--session-composer-control-height)] pb-3.5 text-sm leading-5',
-            attachments.length > 0
-              ? 'session-composer-input-with-attachments'
-              : 'pt-3.5',
-          )
-        "
-        :placeholder="t('project.composer.placeholder')"
-        @keydown="handleKeydown"
-      />
+        <InputGroupTextarea
+          :id="messageId"
+          v-model="message"
+          class="session-composer-input max-h-48 min-h-[var(--session-composer-control-height)] pt-3.5 pb-3.5 text-sm leading-5"
+          :placeholder="t('project.composer.placeholder')"
+          @keydown="handleKeydown"
+          @paste="handlePaste"
+        />
 
-      <InputGroupAddon class="self-end py-1.5 pr-2.5" align="inline-end">
-        <Tooltip>
-          <TooltipTrigger as-child>
-            <InputGroupButton
-              class="size-[var(--session-composer-action-size)] shrink-0 rounded-full"
-              size="icon-sm"
-              variant="default"
-              :disabled="!canSubmit"
-              :aria-label="
+        <InputGroupAddon class="self-end py-1.5 pr-2.5" align="inline-end">
+          <Tooltip>
+            <TooltipTrigger as-child>
+              <InputGroupButton
+                class="size-[var(--session-composer-action-size)] shrink-0 rounded-full"
+                size="icon-sm"
+                variant="default"
+                :disabled="!canSubmit"
+                :aria-label="
+                  props.isRunning
+                    ? t('project.composer.stop')
+                    : t('project.composer.send')
+                "
+                @click="submitMessage"
+              >
+                <SquareIcon v-if="props.isRunning" />
+                <ArrowUpIcon v-else />
+              </InputGroupButton>
+            </TooltipTrigger>
+            <TooltipContent side="top">
+              {{
                 props.isRunning
-                  ? t('project.composer.stop')
-                  : t('project.composer.send')
-              "
-              @click="submitMessage"
-            >
-              <SquareIcon v-if="props.isRunning" />
-              <ArrowUpIcon v-else />
-            </InputGroupButton>
-          </TooltipTrigger>
-          <TooltipContent side="top">
-            {{
-              props.isRunning
-                ? t("project.composer.stop")
-                : t("project.composer.send")
-            }}
-          </TooltipContent>
-        </Tooltip>
-      </InputGroupAddon>
+                  ? t("project.composer.stop")
+                  : t("project.composer.send")
+              }}
+            </TooltipContent>
+          </Tooltip>
+        </InputGroupAddon>
+      </div>
     </InputGroup>
 
     <!-- While an approval is pending the card owns the whole composer area:
@@ -621,6 +676,11 @@ function openModelPicker(): void {
 
 <style scoped>
 .session-composer-control {
+  /* Override the InputGroup base `h-9` fixed height. The base auto-sizes via
+     `has-[>textarea]:h-auto`, but the composer's textarea is wrapped in a
+     sibling div, so that direct-child selector never fires and the fixed
+     height would flex-shrink the attachment row to nothing. */
+  height: auto;
   --session-composer-control-height: 3rem;
   --session-composer-control-radius: calc(
     var(--session-composer-control-height) / 2
@@ -630,8 +690,6 @@ function openModelPicker(): void {
     var(--session-composer-control-radius) -
       var(--session-composer-control-inset)
   );
-  --session-composer-attachment-height: 2.75rem;
-  --session-composer-attachment-gap: 0.875rem;
   --session-composer-action-size: calc(
     var(--session-composer-control-height) - 2 *
       var(--session-composer-control-inset)
@@ -641,13 +699,5 @@ function openModelPicker(): void {
 .session-composer-input {
   padding-inline-start: var(--session-composer-control-inset);
   padding-inline-end: var(--session-input-padding-inline, 1rem);
-}
-
-.session-composer-input-with-attachments {
-  padding-top: calc(
-    var(--session-composer-control-inset) +
-      var(--session-composer-attachment-height) +
-      var(--session-composer-attachment-gap)
-  );
 }
 </style>

@@ -157,6 +157,7 @@ export default {
       removeAttachment: "移除附件 {name}",
       attachmentPickerFailed: "无法打开或读取所选附件",
       attachmentDropFailed: "无法读取拖入的文件或文件夹",
+      attachmentPasteFailed: "无法读取粘贴的图片或文件",
       dropAttachmentsTitle: "松手以添加附件",
       dropAttachmentsDescription: "可以一次添加多个文件或文件夹",
       send: "发送消息",

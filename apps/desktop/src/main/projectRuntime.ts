@@ -25,6 +25,20 @@ import { ProjectSessionService } from "./sessions";
 import type { AgentHost } from "./agentProcessHost";
 import type { GateDecision } from "../agent/protocol";
 import { parseAttachmentMessage } from "../shared/attachments";
+import path from "node:path";
+
+function pathContains(parentPath: string, candidatePath: string): boolean {
+  const relativePath = path.relative(
+    path.resolve(parentPath),
+    path.resolve(candidatePath),
+  );
+  return (
+    relativePath === "" ||
+    (!relativePath.startsWith(`..${path.sep}`) &&
+      relativePath !== ".." &&
+      !path.isAbsolute(relativePath))
+  );
+}
 
 /** Maps the renderer's approval action to the worker-side gate decision. */
 function toGateDecision(request: RespondApprovalRequest): GateDecision {
@@ -99,6 +113,26 @@ export class ProjectRuntimeRegistry {
 
   isOpen(webContentsId: number, projectId: string): boolean {
     return this.runtimes.get(webContentsId)?.project.id === projectId;
+  }
+
+  /** Attachment storage root for the project open in this window. */
+  attachmentsRootFor(webContentsId: number): string | undefined {
+    return this.runtimes.get(webContentsId)?.dataPaths.attachmentsRoot;
+  }
+
+  /**
+   * Whether a filesystem path sits inside a folder the user granted to one
+   * of the currently open projects. Used to scope which attachment images
+   * the `pine-attachment://` protocol is allowed to serve.
+   */
+  isInsideGrantedFolder(candidatePath: string): boolean {
+    const resolvedPath = path.resolve(candidatePath);
+    for (const runtime of this.runtimes.values()) {
+      for (const folder of runtime.project.folders) {
+        if (pathContains(folder.path, resolvedPath)) return true;
+      }
+    }
+    return false;
   }
 
   async search(
