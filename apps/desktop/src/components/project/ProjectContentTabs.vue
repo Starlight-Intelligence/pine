@@ -134,7 +134,7 @@ watch(activeSession, (session) => {
         data-slot="project-content-tab-list"
         role="tablist"
         :aria-label="t('project.contentTabs.tabListLabel')"
-        class="window-drag pointer-events-auto flex min-w-0 flex-1 items-center justify-start gap-1 overflow-x-auto scrollbar-none"
+        class="window-drag scroll-fade-x pointer-events-auto flex min-w-0 flex-1 items-center justify-start gap-1 overflow-x-auto scrollbar-none"
       >
         <template v-for="(tab, index) in tabs" :key="tab.id">
           <Separator
