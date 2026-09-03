@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   build-macos-dmg:
-    name: Build universal DMG & publish snapshot
+    name: Build Apple Silicon DMG & publish snapshot
     runs-on: macos-latest
     steps:
       - name: Checkout
@@ -43,10 +43,10 @@ jobs:
           SNAPSHOT=$(bun -p "require('./package.json').version")
           echo "snapshot=$SNAPSHOT" >> "$GITHUB_OUTPUT"
 
-      - name: Build universal DMG
+      - name: Build Apple Silicon DMG
         working-directory: apps/desktop
         run: >-
-          bunx electron-forge make --platform=darwin --arch=universal
+          bunx electron-forge make --platform=darwin --arch=arm64
           --targets @electron-forge/maker-dmg
 
       - name: Publish snapshot release
@@ -55,7 +55,7 @@ jobs:
           tag_name: ${{ steps.version.outputs.snapshot }}
           name: Pine snapshot ${{ steps.version.outputs.snapshot }}
           body: |
-            Snapshot alpha build of Pine for macOS (universal).
+            Snapshot alpha build of Pine for macOS (Apple Silicon).
 
             Version: `${{ steps.version.outputs.snapshot }}`
 
