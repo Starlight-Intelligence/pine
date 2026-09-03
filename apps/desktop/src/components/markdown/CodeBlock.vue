@@ -92,7 +92,7 @@ async function copyCode(): Promise<void> {
       data-slot="code-block-toolbar"
       :class="
         cn(
-          'absolute right-2 top-2 flex items-center gap-1 rounded-md bg-muted focus-within:pointer-events-auto focus-within:opacity-100',
+          'absolute right-2 top-2 flex items-center gap-1 rounded-md bg-muted transition-opacity duration-150 ease-out focus-within:pointer-events-auto focus-within:opacity-100 motion-reduce:transition-none',
           hovered ? 'opacity-100' : 'pointer-events-none opacity-0',
         )
       "
