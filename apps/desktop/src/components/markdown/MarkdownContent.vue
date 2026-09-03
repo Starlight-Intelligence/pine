@@ -109,4 +109,13 @@ const isDark = computed(() => colorScheme.value === "dark");
 .markdown-content :deep(.node-slot:first-child .node-content > :first-child) {
   margin-top: 0;
 }
+
+/* MessageContent owns the gap to the next tool or text block. Keep paragraph
+   spacing inside Markdown, but do not add it again at the message boundary. */
+.markdown-content
+  > :deep(
+    .markdown-renderer > .node-slot:last-child > .node-content > :last-child
+  ) {
+  margin-bottom: 0;
+}
 </style>
