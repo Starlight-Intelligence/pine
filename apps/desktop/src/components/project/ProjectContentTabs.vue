@@ -367,7 +367,7 @@ watch(activeSession, (session) => {
         aria-hidden="true"
         :src="pineLogo"
         alt=""
-        class="pointer-events-none size-full max-h-72 max-w-72 object-contain opacity-10 select-none brightness-0 dark:invert"
+        class="pointer-events-none size-full max-h-72 max-w-72 scale-[1.2] object-contain opacity-10 select-none dark:invert"
       />
     </div>
   </div>

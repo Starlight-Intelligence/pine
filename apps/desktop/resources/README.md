@@ -1,10 +1,11 @@
 # App icons
 
 `icon.icon` is the native Icon Composer document. Its SVG layer comes from
-`src/assets/pine-logo.svg` without modifying the source artwork. Icon Composer
-applies a parchment-colored background and charcoal layer fill, with a 90%
-composition scale. The artwork has no custom enclosure mask; macOS supplies the
-rounded-square treatment.
+`src/assets/pine-logo.svg` with its charcoal foreground. Icon Composer applies
+the `#fbfbf9` near-white background and `#1d1d16` charcoal layer fill, with a
+120% composition scale to compensate for the source SVG's transparent padding.
+The artwork has no custom enclosure mask; macOS supplies the rounded-square
+treatment.
 
 Run `bun apps/desktop/resources/generate-icons.mjs` on macOS with Xcode 26+ to
 regenerate the compatibility assets. Apple's `actool` produces the legacy ICNS,

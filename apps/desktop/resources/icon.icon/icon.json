@@ -1,13 +1,13 @@
 {
-  "fill": { "solid": "srgb:0.96078,0.93725,0.86275,1.00000" },
+  "fill": { "solid": "srgb:0.98431,0.98431,0.97647,1.00000" },
   "groups": [
     {
       "layers": [
         {
-          "fill": { "solid": "srgb:0.14118,0.13725,0.12941,1.00000" },
+          "fill": { "solid": "srgb:0.11373,0.11373,0.08627,1.00000" },
           "image-name": "Logo.svg",
           "name": "Logo",
-          "position": { "scale": 0.9, "translation-in-points": [0, 0] }
+          "position": { "scale": 1.2, "translation-in-points": [0, 0] }
         }
       ],
       "specular": false,
