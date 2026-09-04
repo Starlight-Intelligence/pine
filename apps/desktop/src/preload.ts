@@ -93,6 +93,7 @@ import {
 import {
   SET_SIDEBAR_VIBRANCY_CHANNEL,
   CLOSE_TAB_REQUESTED_CHANNEL,
+  NEW_TAB_REQUESTED_CHANNEL,
   CLOSE_WINDOW_CHANNEL,
   type SetSidebarVibrancyRequest,
   type SetSidebarVibrancyResult,
@@ -107,6 +108,11 @@ const pineApi: PineDesktopApi = {
     ipcRenderer.on(CLOSE_TAB_REQUESTED_CHANNEL, handler);
     return () =>
       ipcRenderer.removeListener(CLOSE_TAB_REQUESTED_CHANNEL, handler);
+  },
+  onNewTabRequested: (listener) => {
+    const handler = () => listener();
+    ipcRenderer.on(NEW_TAB_REQUESTED_CHANNEL, handler);
+    return () => ipcRenderer.removeListener(NEW_TAB_REQUESTED_CHANNEL, handler);
   },
   platform: process.platform,
   setSidebarVibrancy: (

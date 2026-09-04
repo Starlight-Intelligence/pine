@@ -7,9 +7,9 @@ import { Toaster } from "@/components/ui/sonner";
 import { useAppearanceStore } from "@/stores/appearance";
 import { useSessionStore } from "@/stores/session";
 import { useProjectStore } from "@/stores/project";
-import { useWindowCloseShortcut } from "@/composables/useWindowCloseShortcut";
+import { useWindowTabShortcuts } from "@/composables/useWindowTabShortcuts";
 
-useWindowCloseShortcut();
+useWindowTabShortcuts();
 
 const appearanceStore = useAppearanceStore();
 const sessionStore = useSessionStore();

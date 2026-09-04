@@ -2,6 +2,7 @@ export const SET_SIDEBAR_VIBRANCY_CHANNEL =
   "window:set-sidebar-vibrancy" as const;
 export const CLOSE_TAB_REQUESTED_CHANNEL =
   "window:close-tab-requested" as const;
+export const NEW_TAB_REQUESTED_CHANNEL = "window:new-tab-requested" as const;
 export const CLOSE_WINDOW_CHANNEL = "window:close" as const;
 
 export const TRANSPARENT_WINDOW_BACKGROUND = "#00000000" as const;
@@ -24,6 +25,7 @@ export interface SetSidebarVibrancyResult {
  */
 export interface PineWindowApi {
   onCloseTabRequested: (listener: () => void) => () => void;
+  onNewTabRequested: (listener: () => void) => () => void;
   closeWindow: () => Promise<void>;
   platform: PinePlatform;
   setSidebarVibrancy: (
