@@ -33,24 +33,12 @@ function resize(size, output) {
   );
 }
 
-function createIconLayer() {
-  const source = readFileSync(
-    path.join(resources, "../src/assets/pine-logo.svg"),
-    "utf8",
-  );
-
-  // The shared workbench logo keeps the supplied dark/light palette. Icon
-  // Composer uses a near-black background, so derive a light foreground layer
-  // while preserving the source geometry and transparent canvas.
-  return source
-    .replaceAll('fill="#1a1a1a"', 'fill="#f4f4f4"')
-    .replaceAll('fill="#cccccc"', 'fill="#8f8f8f"')
-    .replaceAll('stroke="#cccccc"', 'stroke="#626262"');
-}
-
 try {
   const document = path.join(resources, "icon.icon");
-  writeFileSync(path.join(document, "Assets/Logo.svg"), createIconLayer());
+  cpSync(
+    path.join(resources, "../src/assets/pine-logo.svg"),
+    path.join(document, "Assets/Logo.svg"),
+  );
   execFileSync("actool", [
     document,
     "--compile",
