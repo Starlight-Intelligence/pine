@@ -1,5 +1,6 @@
 import { createPinia, setActivePinia } from "pinia";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { CONTENT_TABS_STORAGE_PREFIX } from "@/lib/contentTabStorage";
 import type { PineSessionSummary } from "@/shared/sessions";
 import { useContentTabsStore } from "../contentTabs";
 
@@ -12,7 +13,106 @@ const firstSession: PineSessionSummary = {
 };
 
 describe("content tabs store", () => {
-  beforeEach(() => setActivePinia(createPinia()));
+  beforeEach(() => {
+    localStorage.clear();
+    setActivePinia(createPinia());
+  });
+
+  it("restores file and session tabs in order with the selected tab", () => {
+    const store = useContentTabsStore();
+    store.restore("one");
+    store.bindSession("session-1", firstSession);
+    const file = store.openFile({
+      projectId: "one",
+      folderId: "root",
+      relativePath: "src/main.ts",
+    });
+    store.createSessionTab();
+    store.setActiveTab(file.id);
+    const expected = JSON.parse(JSON.stringify(store.tabs));
+    store.reset();
+    setActivePinia(createPinia());
+    const restored = useContentTabsStore();
+    restored.restore("one");
+    expect(restored.tabs).toEqual(expected);
+    expect(restored.fallbackActiveTabId).toBe(file.id);
+    restored.bindSession("session-2", { ...firstSession, id: "second" });
+    expect(restored.createSessionTab().id).toBe("session-3");
+  });
+
+  it("keeps empty lists and projects isolated across switches", () => {
+    const store = useContentTabsStore();
+    store.restore("one");
+    store.close("session-1", "session-1");
+    store.restore("two");
+    expect(store.tabs).toEqual([
+      { id: "session-1", kind: "session", state: "draft" },
+    ]);
+    store.bindSession("session-1", firstSession);
+    store.restore("one");
+    expect(store.tabs).toEqual([]);
+    expect(store.fallbackActiveTabId).toBeNull();
+    store.restore("two");
+    expect(store.tabs[0]).toMatchObject({ sessionId: firstSession.id });
+  });
+
+  it("does not resurrect closed or deleted tabs", () => {
+    const store = useContentTabsStore();
+    store.restore("one");
+    store.bindSession("session-1", firstSession);
+    const file = store.openFile({
+      projectId: "one",
+      folderId: "root",
+      relativePath: "image.png",
+    });
+    store.setActiveTab("session-1");
+    store.removeSession(firstSession.id, "session-1");
+    store.restore("one");
+    expect(store.tabs.map((tab) => tab.id)).toEqual([file.id]);
+    expect(store.fallbackActiveTabId).toBe(file.id);
+    store.close(file.id, file.id);
+    store.reset();
+    store.restore("one");
+    expect(store.tabs).toEqual([]);
+  });
+
+  it("restores interrupted creation as one usable draft", () => {
+    const store = useContentTabsStore();
+    store.restore("one");
+    store.beginPrompt("session-1", "pending");
+    store.createSessionTab();
+    store.restore("one");
+    expect(store.tabs).toEqual([
+      { id: "session-1", kind: "session", state: "draft" },
+    ]);
+    expect(store.beginPrompt("session-1", "retry")).toBe(true);
+  });
+
+  it.each([
+    "broken",
+    '{"tabs":{}}',
+    '{"tabs":[{"kind":"file"}],"activeTabId":null}',
+  ])("falls back to a draft for invalid storage: %s", (value) => {
+    localStorage.setItem(CONTENT_TABS_STORAGE_PREFIX + "one", value);
+    const store = useContentTabsStore();
+    store.restore("one");
+    expect(store.tabs).toEqual([
+      { id: "session-1", kind: "session", state: "draft" },
+    ]);
+  });
+
+  it("keeps navigation usable when storage is unavailable", () => {
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("unavailable");
+    });
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("full");
+    });
+    const store = useContentTabsStore();
+    expect(() => store.restore("one")).not.toThrow();
+    expect(() => store.close("session-1", "session-1")).not.toThrow();
+    expect(store.tabs).toEqual([]);
+  });
 
   it("creates a draft tab from a bound session", () => {
     const store = useContentTabsStore();

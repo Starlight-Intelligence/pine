@@ -1,5 +1,6 @@
 import { acceptHMRUpdate, defineStore } from "pinia";
-import { ref } from "vue";
+import { ref, watch } from "vue";
+import { readContentTabs, writeContentTabs } from "@/lib/contentTabStorage";
 import type { PineSessionSummary } from "@/shared/sessions";
 import type { ProjectFilePreviewRequest } from "@/shared/projectFiles";
 
@@ -46,9 +47,39 @@ export const useContentTabsStore = defineStore("content-tabs", () => {
   }
 
   const tabs = ref<ProjectContentTab[]>(initialTabs());
+  const projectId = ref<string | null>(null);
   // Router replacement is async. Keep the intended successor available while
   // the route still points to a tab that has just been removed.
   const fallbackActiveTabId = ref<string | null>(null);
+
+  function persist(): void {
+    if (!projectId.value) return;
+    writeContentTabs(projectId.value, {
+      tabs: tabs.value,
+      activeTabId: tabs.value.some(
+        (tab) => tab.id === fallbackActiveTabId.value,
+      )
+        ? fallbackActiveTabId.value
+        : (tabs.value[0]?.id ?? null),
+    });
+  }
+  watch([tabs, fallbackActiveTabId], persist, { deep: true, flush: "sync" });
+
+  function restore(id: string): void {
+    const saved = readContentTabs(id);
+    // Suspend writes while replacing one project's state with another's.
+    projectId.value = null;
+    nextSessionTabNumber = 2;
+    tabs.value = saved?.tabs ?? initialTabs();
+    fallbackActiveTabId.value = saved?.activeTabId ?? tabs.value[0]?.id ?? null;
+    projectId.value = id;
+    persist();
+  }
+
+  function setActiveTab(tabId: string): void {
+    if (tabs.value.some((tab) => tab.id === tabId))
+      fallbackActiveTabId.value = tabId;
+  }
 
   function openFile(file: ProjectFilePreviewRequest): FileContentTab {
     const existing = tabs.value.find(
@@ -70,6 +101,10 @@ export const useContentTabsStore = defineStore("content-tabs", () => {
   }
 
   function makeDraftTab(): DraftSessionTab {
+    while (
+      tabs.value.some((tab) => tab.id === `session-${nextSessionTabNumber}`)
+    )
+      nextSessionTabNumber += 1;
     const tab = {
       id: `session-${nextSessionTabNumber}`,
       kind: "session" as const,
@@ -256,6 +291,7 @@ export const useContentTabsStore = defineStore("content-tabs", () => {
   }
 
   function reset(): void {
+    projectId.value = null;
     nextSessionTabNumber = 2;
     fallbackActiveTabId.value = null;
     tabs.value = initialTabs();
@@ -270,8 +306,11 @@ export const useContentTabsStore = defineStore("content-tabs", () => {
     fallbackActiveTabId,
     openFile,
     openSession,
+    projectId,
     removeSession,
     reset,
+    restore,
+    setActiveTab,
     tabs,
     updateSession,
   };

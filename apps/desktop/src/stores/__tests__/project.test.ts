@@ -2,6 +2,7 @@ import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PineProject } from "@/shared/projects";
 import { useProjectStore } from "../project";
+import { useContentTabsStore } from "../contentTabs";
 
 const project: PineProject = {
   createdAt: "2026-08-19T12:00:00.000Z",
@@ -23,7 +24,37 @@ const project: PineProject = {
 
 describe("project store", () => {
   beforeEach(() => {
+    localStorage.clear();
     setActivePinia(createPinia());
+  });
+
+  it("restores tabs when reopening and updating a project without overwriting them on close", async () => {
+    Object.defineProperty(window, "pine", {
+      configurable: true,
+      value: {
+        openProject: vi.fn().mockResolvedValue({ project }),
+        closeProject: vi.fn().mockResolvedValue(undefined),
+        updateProject: vi
+          .fn()
+          .mockResolvedValue({ project: { ...project, name: "renamed" } }),
+      },
+    });
+    const store = useProjectStore();
+    await store.openProject(project.id);
+    const tabs = useContentTabsStore();
+    const file = tabs.openFile({
+      projectId: project.id,
+      folderId: project.defaultFolderId,
+      relativePath: "README.md",
+    });
+    tabs.setActiveTab(file.id);
+    await store.closeProject();
+    await store.openProject(project.id);
+    expect(tabs.tabs.map((tab) => tab.id)).toEqual(["session-1", file.id]);
+    expect(tabs.fallbackActiveTabId).toBe(file.id);
+    await store.updateProject({ ...project, name: "renamed" });
+    expect(tabs.tabs.map((tab) => tab.id)).toEqual(["session-1", file.id]);
+    expect(tabs.fallbackActiveTabId).toBe(file.id);
   });
 
   it("loads the Project Library", async () => {

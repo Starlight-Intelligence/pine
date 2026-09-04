@@ -1,5 +1,5 @@
 import { storeToRefs } from "pinia";
-import { computed } from "vue";
+import { computed, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import type { PineSessionSummary } from "@/shared/sessions";
 import type { ProjectFilePreviewRequest } from "@/shared/projectFiles";
@@ -16,15 +16,15 @@ export function useContentTabNavigation() {
   const activeTabId = computed(() => {
     const queryValue = route.query[CONTENT_TAB_QUERY];
     const requestedId = Array.isArray(queryValue) ? queryValue[0] : queryValue;
-    if (requestedId && tabs.value.some((tab) => tab.id === requestedId)) {
+    if (
+      requestedId &&
+      (!store.projectId || route.params.projectId === store.projectId) &&
+      tabs.value.some((tab) => tab.id === requestedId)
+    ) {
       return requestedId;
     }
     const fallbackId = store.fallbackActiveTabId;
-    if (
-      requestedId &&
-      fallbackId &&
-      tabs.value.some((tab) => tab.id === fallbackId)
-    ) {
+    if (fallbackId && tabs.value.some((tab) => tab.id === fallbackId)) {
       return fallbackId;
     }
     return (
@@ -41,8 +41,19 @@ export function useContentTabNavigation() {
     activeTab.value?.kind === "session" ? activeTab.value : null,
   );
 
+  watch(
+    () => [route.params.projectId, route.query[CONTENT_TAB_QUERY]] as const,
+    ([projectId, queryValue]) => {
+      if (projectId !== store.projectId) return;
+      const tabId = Array.isArray(queryValue) ? queryValue[0] : queryValue;
+      if (tabId) store.setActiveTab(tabId);
+    },
+    { immediate: true },
+  );
+
   function navigate(tabId: string, replace = false): void {
     if (tabId && !tabs.value.some((tab) => tab.id === tabId)) return;
+    store.setActiveTab(tabId);
     const location = {
       query: { ...route.query, [CONTENT_TAB_QUERY]: tabId || undefined },
     };

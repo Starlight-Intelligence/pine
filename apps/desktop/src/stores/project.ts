@@ -59,7 +59,7 @@ export const useProjectStore = defineStore("project", () => {
     try {
       const project = (await window.pine.openProject({ id })).project;
       sessionStore.reset();
-      contentTabsStore.reset();
+      contentTabsStore.restore(project.id);
       activeProject.value = project;
       upsertProject(project);
       return project;
@@ -78,7 +78,7 @@ export const useProjectStore = defineStore("project", () => {
       if (activeProject.value?.id === project.id) {
         activeProject.value = project;
         sessionStore.reset();
-        contentTabsStore.reset();
+        contentTabsStore.restore(project.id);
       }
       return project;
     } finally {
