@@ -27,6 +27,7 @@ import { Type } from "typebox";
 import type { Static } from "typebox";
 import type { AgentSessionLocation } from "./protocol";
 import type { AgentFolderGrant } from "./protocol";
+import { createMacOsBashSandboxProfile } from "./bash-sandbox";
 import { createBashEnvironment, resolveLoginPath } from "./bash-env";
 import type { ToolGate } from "./gate";
 import type { PineApprovalMode } from "../shared/agent";
@@ -224,10 +225,6 @@ async function detectImageMimeType(
   }
 }
 
-function escapeSandboxString(value: string): string {
-  return value.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
-}
-
 /**
  * Thrown when the macOS sandbox denied a command at runtime: an EPERM-class
  * failure, a blocked LaunchServices launch, or blocked Apple Events. Carries
@@ -264,98 +261,6 @@ function isAuthorizeDenial(error: unknown): boolean {
     message.includes("outside the folders shared with Pine") ||
     message.includes("Folder is read-only")
   );
-}
-
-// Runtime installation trees only. In particular, /System includes the Data
-// volume and must NOT be granted wholesale. Neither HOME nor arbitrary PATH
-// entries are implicit read grants. Other toolchains require shared folders or
-// privileged_bash instead of silently widening the filesystem boundary.
-const MACOS_RUNTIME_DIRECTORIES = [
-  "/bin",
-  "/sbin",
-  "/usr/bin",
-  "/usr/sbin",
-  "/usr/lib",
-  "/usr/libexec",
-  "/usr/share",
-  "/System/Library",
-  "/System/Cryptexes/OS",
-  "/System/Volumes/Preboot/Cryptexes/OS",
-  "/private/preboot/Cryptexes/OS",
-  "/Library/Apple",
-  "/Library/Developer/CommandLineTools",
-  "/Applications/Xcode.app/Contents/Developer",
-  "/opt/homebrew/Cellar",
-  "/usr/local/Cellar",
-  "/private/var/db/dyld",
-  "/private/var/db/com.apple.dyld",
-  "/private/var/db/timezone",
-  "/private/etc/ssl/certs",
-];
-
-const MACOS_RUNTIME_FILES = [
-  // dyld opens the root directory during startup. This grants only the root
-  // itself, not its descendants (unlike a subpath "/" rule).
-  "/",
-  "/dev/null",
-  "/dev/zero",
-  "/dev/tty",
-  "/dev/random",
-  "/dev/urandom",
-  "/private/etc/zshenv",
-  "/private/etc/passwd",
-  "/private/etc/group",
-  "/private/etc/hosts",
-  "/private/etc/resolv.conf",
-  "/private/etc/localtime",
-  "/private/etc/ssl/cert.pem",
-];
-
-export function createMacOsBashSandboxProfile({
-  readablePaths,
-  writableFolders,
-  temporaryDirectory,
-  runtimeFiles = [],
-}: {
-  readablePaths: string[];
-  writableFolders: string[];
-  temporaryDirectory: string;
-  runtimeFiles?: string[];
-}): string {
-  const writablePaths = new Set([...writableFolders, temporaryDirectory]);
-  const readRules = [
-    ...new Set([
-      ...MACOS_RUNTIME_DIRECTORIES,
-      ...readablePaths,
-      ...writablePaths,
-    ]),
-  ].map((target) => `  (subpath "${escapeSandboxString(target)}")`);
-  readRules.push(
-    ...[...MACOS_RUNTIME_FILES, ...runtimeFiles].map(
-      (target) => `  (literal "${escapeSandboxString(target)}")`,
-    ),
-  );
-  const writeRules = [...writablePaths]
-    .map((folderPath) => `  (subpath "${escapeSandboxString(folderPath)}")`)
-    .join("\n");
-  return `(version 1)
-(deny default)
-(allow process*)
-(allow network*)
-(allow mach-lookup)
-(allow sysctl-read)
-; Directory metadata permits path traversal, not listing directory contents.
-(allow file-read-metadata
-  (vnode-type DIRECTORY)
-  (literal "/etc")
-  (literal "/tmp")
-  (literal "/var"))
-(allow file-read* file-map-executable
-${readRules.join("\n")})
-(allow file-write*
-  (literal "/dev/null")
-  (literal "/dev/tty")
-${writeRules})`;
 }
 
 function terminateProcess(child: ChildProcess): void {
@@ -621,6 +526,14 @@ export async function createPineToolDefinitions(
   const canonicalBashTemporaryDirectory = await realpath(
     bashTemporaryDirectory,
   );
+  // macOS services may use confstr's per-user temporary directory regardless
+  // of TMPDIR. Share that runtime scratch space with both shell and file tools.
+  const systemTemporaryDirectory = await realpath(os.tmpdir());
+  const systemTemporaryGrants: AgentFolderGrant[] =
+    process.platform === "darwin" &&
+    pathContains("/private/var/folders", systemTemporaryDirectory)
+      ? [{ access: "read-write", path: systemTemporaryDirectory }]
+      : [];
   const policy = await PineToolAccessPolicy.create(
     location.cwd,
     [
@@ -628,6 +541,7 @@ export async function createPineToolDefinitions(
         access: "read-write",
         path: canonicalBashTemporaryDirectory,
       },
+      ...systemTemporaryGrants,
       ...location.folders,
     ],
     attachedPaths,
@@ -728,7 +642,7 @@ export async function createPineToolDefinitions(
     ),
   });
   const sandboxGuidance =
-    " Ordinary bash can read only shared project folders, user-attached files/directories, Pine's temporary directory, and an allowlist of system/toolchain runtime files. Reading or listing other external paths (including ~/Documents, ~/Downloads, private configs, and unrelated projects) is blocked even in Auto Approve mode. Use privileged_bash directly for those external reads and explain the required access; each call requires approval. Writes are limited to read-write shared folders and $TMPDIR; direct writes to /tmp are blocked.";
+    " Ordinary bash can read only shared project folders, user-attached files/directories, Pine's temporary directory, macOS user temporary storage, and installed system/application/toolchain runtime files. Ancestor directories can be listed for toolchain discovery without granting access to sibling file contents. Reading or listing other external paths (including ~/Documents, ~/Downloads, private configs, and unrelated projects) is blocked even in Auto Approve mode. Use privileged_bash directly for those external reads and explain the required access; each call requires approval. Writes are limited to read-write shared folders, $TMPDIR and macOS user temporary storage; direct writes to /tmp are blocked.";
   const pineBashTool = defineTool({
     ...bashTool,
     parameters: pineBashParams,
@@ -774,7 +688,7 @@ export async function createPineToolDefinitions(
         throw error;
       }
     },
-    description: `${bashTool.description}${sandboxGuidance} Explicitly describe what each command does in the description field, written first, in the same language as the user's messages.`,
+    description: `${bashTool.description}${sandboxGuidance} The shell is zsh (no user startup files); here-documents are supported. The scratch directory is ${JSON.stringify(canonicalBashTemporaryDirectory)} and is exported as TMPDIR to child processes. Keep diagnostic stderr visible. Explicitly describe what each command does in the description field, written first, in the same language as the user's messages.`,
     promptSnippet: `${bashTool.promptSnippet}. Reads are restricted to shared folders, attachments, $TMPDIR and runtime files; use privileged_bash directly to read or list other external paths, subject to approval. Use $TMPDIR for temporary files instead of /tmp; always write description before command, in the user's language`,
   });
 

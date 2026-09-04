@@ -12,9 +12,9 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentSessionLocation } from "../protocol";
+import { createMacOsBashSandboxProfile } from "../bash-sandbox";
 import type { ToolGate } from "../gate";
 import {
-  createMacOsBashSandboxProfile,
   createPineToolDefinitions,
   matchSandboxDenial,
   PineAttachedPathAccess,
@@ -65,7 +65,12 @@ async function createFixture(): Promise<{
   readOnly: string;
   readWrite: string;
 }> {
-  const root = await mkdtemp(path.join(os.tmpdir(), "pine-tools-"));
+  const root = await mkdtemp(
+    path.join(
+      process.platform === "darwin" ? "/private/tmp" : os.tmpdir(),
+      "pine-tools-",
+    ),
+  );
   temporaryDirectories.push(root);
   const readWrite = path.join(root, "workspace");
   const readOnly = path.join(root, "context");
@@ -74,7 +79,9 @@ async function createFixture(): Promise<{
     mkdir(readWrite),
     mkdir(readOnly),
     mkdir(outside),
-    mkdir(path.join(root, "data", "sessions"), { recursive: true }),
+    mkdir(path.join(root, "Application Support", "data", "sessions"), {
+      recursive: true,
+    }),
   ]);
   return {
     location: {
@@ -84,7 +91,7 @@ async function createFixture(): Promise<{
         { access: "read-write", path: readWrite },
         { access: "read-only", path: readOnly },
       ],
-      sessionsRoot: path.join(root, "data", "sessions"),
+      sessionsRoot: path.join(root, "Application Support", "data", "sessions"),
     },
     outside,
     readOnly,
@@ -399,6 +406,48 @@ describe("createPineToolDefinitions", () => {
               text: expect.stringContaining(
                 "local-contentshared-contenttemporary-content",
               ),
+            }),
+          ]),
+        );
+      });
+
+      it("preserves child environments and supports heredocs in paths with spaces", async () => {
+        const { run, location } = await setup();
+        const tmp = await realpath(
+          path.join(path.dirname(location.sessionsRoot), "tmp"),
+        );
+        await run(
+          `cat > "$TMPDIR/probe.js" <<'JS'\nawait Bun.write(process.env.TMPDIR + "/result.txt", process.env.HOME + "\\n" + process.env.TMPDIR);\nJS\nbun "$TMPDIR/probe.js"`,
+        );
+        expect(await readFile(path.join(tmp, "result.txt"), "utf8")).toBe(
+          `${process.env.HOME}\n${tmp}`,
+        );
+      });
+
+      it("allows ancestor discovery without reading sibling files", async () => {
+        const { run, readWrite } = await setup();
+        const parent = path.dirname(readWrite);
+        const sibling = path.join(parent, "private.txt");
+        await writeFile(sibling, "unshared-content");
+        await expect(run(`/bin/ls ${quote(parent)}`)).resolves.toBeDefined();
+        await expect(run(`/bin/cat ${quote(sibling)}`)).rejects.toThrow(
+          "Use privileged_bash",
+        );
+      });
+
+      it("runs the system developer-tool launcher with native temporary storage", async () => {
+        const selected = await realpath("/var/select/developer_dir").catch(
+          () => null,
+        );
+        if (!selected) return;
+        const { run } = await setup();
+        const result = await run(
+          `/usr/bin/python3 -c 'import os; print("python-ok"); print(os.environ["TMPDIR"])'`,
+        );
+        expect(result.content).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              text: expect.stringContaining("python-ok"),
             }),
           ]),
         );

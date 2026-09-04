@@ -62,6 +62,8 @@ export function createBashEnvironment(
     SHELL: source.SHELL ?? "/bin/zsh",
     TERM: source.TERM,
     TMPDIR: temporaryDirectory,
+    // zsh uses TMPPREFIX for here-docs independently of TMPDIR.
+    TMPPREFIX: path.join(temporaryDirectory, "zsh"),
     USER: source.USER,
     // Redirect tool caches into the sandbox-writable temporary directory so
     // package installs work without write access to the real HOME.

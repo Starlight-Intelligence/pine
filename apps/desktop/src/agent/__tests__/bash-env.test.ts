@@ -25,6 +25,7 @@ describe("createBashEnvironment", () => {
 
     expect(environment.HOME).toBe("/Users/dev");
     expect(environment.TMPDIR).toBe("/pine/tmp");
+    expect(environment.TMPPREFIX).toBe("/pine/tmp/zsh");
     expect(environment.npm_config_cache).toBe("/pine/tmp/npm-cache");
     expect(environment.BUN_INSTALL_CACHE_DIR).toBe("/pine/tmp/bun-cache");
     expect(environment.XDG_CACHE_HOME).toBe("/pine/tmp/xdg-cache");
