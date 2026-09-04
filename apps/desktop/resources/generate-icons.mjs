@@ -1,8 +1,8 @@
 // Run on macOS: bun apps/desktop/resources/generate-icons.mjs
-// Uses the project's Playwright Chromium to rasterize the shared vector artwork.
-import { chromium } from "@playwright/test";
+// Xcode 26+ compiles the native .icon and generates legacy artwork itself.
 import { execFileSync } from "node:child_process";
 import {
+  cpSync,
   mkdtempSync,
   mkdirSync,
   readFileSync,
@@ -15,8 +15,8 @@ import { fileURLToPath } from "node:url";
 
 const resources = path.dirname(fileURLToPath(import.meta.url));
 const temporary = mkdtempSync(path.join(tmpdir(), "pine-icons-"));
-const iconset = path.join(temporary, "Pine.iconset");
-mkdirSync(iconset);
+const output = path.join(temporary, "compiled");
+mkdirSync(output);
 
 function resize(size, output) {
   execFileSync(
@@ -34,44 +34,43 @@ function resize(size, output) {
 }
 
 try {
-  const logo = readFileSync(
+  const document = path.join(resources, "icon.icon");
+  cpSync(
     path.join(resources, "../src/assets/pine-logo.svg"),
-    "utf8",
+    path.join(document, "Assets/Logo.svg"),
   );
-  // Legacy Electron PNG/ICNS icons need their own transparent margin and contour.
-  // The 832 px tile sits inside a 1024 px canvas. The mark occupies ~76% of
-  // the tile, optically centered using the artwork's bounds, not its old canvas.
-  const icon = `<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
-    <path fill="#111111" d="M326 96H698C799 96 849 96 888.5 135.5C928 175 928 225 928 326V698C928 799 928 849 888.5 888.5C849 928 799 928 698 928H326C225 928 175 928 135.5 888.5C96 849 96 799 96 698V326C96 225 96 175 135.5 135.5C175 96 225 96 326 96Z"/>
-    ${logo.replace("<svg ", '<svg x="184" y="184" ').replace('width="1000" height="1000"', 'width="656" height="656"')}
-  </svg>`;
-  writeFileSync(path.join(resources, "icon.svg"), icon);
-  const browser = await chromium.launch();
-  try {
-    const page = await browser.newPage({
-      viewport: { width: 1024, height: 1024 },
-      deviceScaleFactor: 1,
-    });
-    await page.setContent(
-      `<style>html,body{margin:0;background:transparent}svg{display:block}</style>${icon}`,
-    );
-    await page.screenshot({
-      path: path.join(resources, "icon.png"),
-      omitBackground: true,
-    });
-  } finally {
-    await browser.close();
-  }
-  for (const size of [16, 32, 128, 256, 512]) {
-    resize(size, path.join(iconset, `icon_${size}x${size}.png`));
-    resize(size * 2, path.join(iconset, `icon_${size}x${size}@2x.png`));
-  }
-  execFileSync("iconutil", [
-    "-c",
-    "icns",
-    iconset,
-    "-o",
+  execFileSync("actool", [
+    document,
+    "--compile",
+    output,
+    "--output-format",
+    "human-readable-text",
+    "--output-partial-info-plist",
+    path.join(output, "partial.plist"),
+    "--app-icon",
+    "icon",
+    "--include-all-app-icons",
+    "--enable-on-demand-resources",
+    "NO",
+    "--development-region",
+    "en",
+    "--target-device",
+    "mac",
+    "--minimum-deployment-target",
+    "11.0",
+    "--platform",
+    "macosx",
+  ]);
+  cpSync(path.join(output, "icon.icns"), path.join(resources, "icon.icns"));
+  // Apple supplies the legacy mask, padding and highlight. Do not draw a contour
+  // or rasterize an unmasked source into the development Dock override.
+  execFileSync("sips", [
+    "-s",
+    "format",
+    "png",
     path.join(resources, "icon.icns"),
+    "--out",
+    path.join(resources, "icon.png"),
   ]);
 
   // ICO supports PNG payloads; include each common Windows display size.

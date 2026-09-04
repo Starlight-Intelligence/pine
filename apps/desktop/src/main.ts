@@ -1002,6 +1002,9 @@ ipcMain.handle(
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.on("ready", () => {
+  // Dev runs inside Electron.app, so it cannot use Pine's bundle asset catalog.
+  // Preview Apple's generated compatibility image here. Packaged apps retain
+  // the native Icon Composer resource; never override it with dock.setIcon().
   if (!app.isPackaged) app.dock?.setIcon(appIconPath);
   agentHost = AgentProcessHost.createDefault();
   projectsRootPath = path.join(app.getPath("userData"), PROJECTS_DIRECTORY);

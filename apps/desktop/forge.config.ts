@@ -92,6 +92,8 @@ function injectAgentRuntimeDeps(buildPath: string): void {
 
 const config: ForgeConfig = {
   packagerConfig: {
+    // Packager discovers icon.icon and compiles its native Assets.car on macOS;
+    // icon.icns is Apple's generated legacy fallback, icon.ico is for Windows.
     icon: path.join(__dirname, "resources/icon"),
     extraResource: [path.join(__dirname, "resources/icon.png")],
     afterPrune: [
