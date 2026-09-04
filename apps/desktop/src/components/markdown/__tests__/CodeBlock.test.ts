@@ -34,6 +34,27 @@ describe("CodeBlock", () => {
     wrapper.unmount();
   });
 
+  it("shows fixed line numbers in file preview layout", () => {
+    vi.mocked(codeToHtml).mockReturnValue(new Promise(() => {}));
+    const wrapper = mount(CodeBlock, {
+      props: {
+        layout: "preview",
+        node: { ...node, code: "first\n\nthird" },
+      },
+    });
+
+    expect(
+      wrapper.findAll(".code-preview-line-number").map((line) => line.text()),
+    ).toEqual(["1", "2", "3"]);
+    expect(wrapper.get(".code-preview-gutter").attributes("aria-hidden")).toBe(
+      "true",
+    );
+    expect(wrapper.get(".code-preview-scroll").classes()).toContain(
+      "code-preview-scroll",
+    );
+    wrapper.unmount();
+  });
+
   it("preserves indentation and blank lines when highlighting fails", async () => {
     vi.mocked(codeToHtml).mockRejectedValue(new Error("Unknown language"));
     const wrapper = mount(CodeBlock, { props: { node } });

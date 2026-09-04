@@ -65,6 +65,15 @@ describe("ProjectFilePreview", () => {
       false,
     );
     expect(wrapper.find("pre.shiki").exists()).toBe(true);
+    expect(wrapper.get('[data-slot="code-block"]').classes()).toContain(
+      "w-full",
+    );
+    expect(
+      Array.from(
+        wrapper.get('[data-slot="code-block"]').element.parentElement
+          ?.classList ?? [],
+      ),
+    ).toEqual(expect.arrayContaining(["min-w-0", "px-4", "pb-4"]));
   });
 
   it("lists only open session tabs and attaches the file through the footer menu", async () => {

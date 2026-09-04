@@ -29,7 +29,7 @@ import {
 import { useContentTabsStore } from "@/stores/contentTabs";
 import { useFileToSession } from "@/composables/useFileToSession";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { fileLanguage } from "@/lib/fileLanguage";
 import type {
   ProjectFilePreview,
@@ -182,7 +182,7 @@ onBeforeUnmount(() => video.value?.pause());
       v-else-if="preview.kind === 'text'"
       class="min-h-0 min-w-0 flex-1 [&_[data-slot=scroll-area-viewport]]:scroll-fade"
     >
-      <div class="w-max min-w-full p-4">
+      <div class="min-w-0 px-4 pb-4">
         <CodeBlock
           layout="preview"
           :node="{
@@ -195,7 +195,6 @@ onBeforeUnmount(() => video.value?.pause());
           }"
         />
       </div>
-      <ScrollBar orientation="horizontal" />
     </ScrollArea>
     <div
       v-else
