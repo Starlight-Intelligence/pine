@@ -176,8 +176,9 @@ async function loadChildren(node: ProjectTreeNode): Promise<void> {
     const children = await readDirectory(node.folderId, node.relativePath);
     if (currentGeneration !== generation) return;
     node.children = children;
+    // Recurse through Vue's proxies so nested loads update the rendered tree.
     await Promise.all(
-      children
+      node.children
         .filter((child) => expanded.value.includes(nodeKey(child)))
         .map(loadChildren),
     );
@@ -240,7 +241,7 @@ async function refresh(): Promise<void> {
     const children = await readDirectory(node.folderId, node.relativePath);
     if (currentGeneration !== generation) return;
     node.children = children;
-    await Promise.all(children.map(reload));
+    await Promise.all(node.children.map(reload));
   }
   await Promise.all(items.value.map(reload));
 }

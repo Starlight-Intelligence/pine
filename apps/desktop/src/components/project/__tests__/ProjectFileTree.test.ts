@@ -5,6 +5,11 @@ import { injectTreeRootContext } from "reka-ui";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createAppI18n } from "@/app/i18n";
 import { useProjectStore } from "@/stores/project";
+import { PROJECT_SIDEBAR_STORAGE_PREFIX } from "@/stores/projectSidebar";
+import type {
+  ListProjectDirectoryRequest,
+  ListProjectDirectoryResult,
+} from "@/shared/projectFiles";
 import { PROJECT_ENTRY_DRAG_TYPE } from "@/lib/projectFileDrag";
 import ProjectFileTree from "../ProjectFileTree.vue";
 
@@ -23,11 +28,16 @@ const virtualizer = defineComponent({
   },
 });
 const wrappers: ReturnType<typeof mount>[] = [];
+const folderId = "cde9a86c-7632-43ac-96d6-c41ddeddce0e";
 beforeEach(() => localStorage.clear());
-function mountTree(access: "read-only" | "read-write" = "read-write") {
+function mountTree(
+  access: "read-only" | "read-write" = "read-write",
+  readDirectory?: (
+    request: ListProjectDirectoryRequest,
+  ) => Promise<ListProjectDirectoryResult>,
+) {
   const pinia = createPinia();
   setActivePinia(pinia);
-  const folderId = "cde9a86c-7632-43ac-96d6-c41ddeddce0e";
   useProjectStore().activeProject = {
     id: "p1",
     name: "Project",
@@ -46,15 +56,16 @@ function mountTree(access: "read-only" | "read-write" = "read-write") {
     ],
   };
   const listProjectDirectory = vi.fn(
-    ({ relativePath }: { relativePath: string }) =>
-      Promise.resolve({
-        entries: relativePath
-          ? []
-          : [
-              { name: "docs", relativePath: "docs", kind: "directory" },
-              { name: "notes.md", relativePath: "notes.md", kind: "file" },
-            ],
-      }),
+    readDirectory ??
+      (({ relativePath }: ListProjectDirectoryRequest) =>
+        Promise.resolve({
+          entries: relativePath
+            ? []
+            : [
+                { name: "docs", relativePath: "docs", kind: "directory" },
+                { name: "notes.md", relativePath: "notes.md", kind: "file" },
+              ],
+        })),
   );
   const operateProjectFile = vi.fn(() => Promise.resolve());
   Object.defineProperty(window, "pine", {
@@ -111,7 +122,70 @@ describe("ProjectFileTree", () => {
       relativePath: "docs",
     });
     expect(restored.wrapper.find('[data-path="notes.md"]').exists()).toBe(true);
+    expect(restored.wrapper.find('[data-slot="skeleton"]').exists()).toBe(
+      false,
+    );
   });
+
+  it.each([true, false])(
+    "replaces nested skeletons after delayed reads with persisted root expansion %s",
+    async (rootExpanded) => {
+      localStorage.setItem(
+        PROJECT_SIDEBAR_STORAGE_PREFIX + "p1",
+        JSON.stringify({
+          tab: "files",
+          expanded: [
+            ...(rootExpanded ? [`${folderId}:`] : []),
+            `${folderId}:docs`,
+            `${folderId}:docs/nested`,
+          ],
+        }),
+      );
+      const pending = new Map<
+        string,
+        (result: ListProjectDirectoryResult) => void
+      >();
+      const { wrapper, listProjectDirectory } = mountTree(
+        "read-write",
+        ({ relativePath }) =>
+          new Promise((resolve) => pending.set(relativePath, resolve)),
+      );
+      if (!rootExpanded) await expandRoot(wrapper);
+      pending.get("")!({
+        entries: [{ name: "docs", relativePath: "docs", kind: "directory" }],
+      });
+      await flushPromises();
+      expect(
+        wrapper.get('[data-path="docs"]').attributes("aria-expanded"),
+      ).toBe("true");
+      expect(wrapper.find('[data-slot="skeleton"]').exists()).toBe(true);
+
+      pending.get("docs")!({
+        entries: [
+          { name: "nested", relativePath: "docs/nested", kind: "directory" },
+        ],
+      });
+      await flushPromises();
+      expect(wrapper.find('[data-path="docs/nested"]').exists()).toBe(true);
+      expect(wrapper.find('[data-slot="skeleton"]').exists()).toBe(true);
+
+      pending.get("docs/nested")!({
+        entries: [
+          {
+            name: "readme.md",
+            relativePath: "docs/nested/readme.md",
+            kind: "file",
+          },
+        ],
+      });
+      await flushPromises();
+      expect(wrapper.find('[data-path="docs/nested/readme.md"]').exists()).toBe(
+        true,
+      );
+      expect(wrapper.find('[data-slot="skeleton"]').exists()).toBe(false);
+      expect(listProjectDirectory).toHaveBeenCalledTimes(3);
+    },
+  );
 
   it("drags an internal reference and moves it onto a folder", async () => {
     const { wrapper, folderId, operateProjectFile, listProjectDirectory } =
