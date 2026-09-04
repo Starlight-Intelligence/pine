@@ -415,7 +415,7 @@ watch(activeProject, resetRoots, { immediate: true });
         v-if="isProjectTreeNode(item.value)"
         v-bind="item.bind"
         v-slot="{ isExpanded }"
-        class="flex h-7 w-full items-center gap-1 rounded-lg px-2 text-sm outline-none transition-colors duration-150 ease-out motion-reduce:transition-none hover:bg-sidebar-accent data-[context-open]:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-sidebar-ring data-[selected]:bg-sidebar-accent"
+        class="flex h-7 w-full items-center gap-1 rounded-lg px-2 text-sm outline-none hover:bg-sidebar-accent data-[context-open]:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-sidebar-ring data-[selected]:bg-sidebar-accent"
         :draggable="
           !item.value.isPlaceholder && !item.value.isUnavailable && !busy
         "
