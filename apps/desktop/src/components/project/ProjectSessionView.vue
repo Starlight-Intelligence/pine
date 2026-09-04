@@ -291,7 +291,7 @@ async function handleDrop(event: DragEvent): Promise<void> {
       <Empty
         v-if="isDraggingFiles"
         data-slot="attachment-drop-overlay"
-        class="pointer-events-none absolute inset-3 z-20 w-auto border bg-background/95 shadow-sm backdrop-blur-sm"
+        class="pointer-events-none absolute inset-x-3 bottom-3 top-0 z-20 w-auto border bg-background/95 shadow-sm backdrop-blur-sm"
         role="status"
       >
         <EmptyHeader>
