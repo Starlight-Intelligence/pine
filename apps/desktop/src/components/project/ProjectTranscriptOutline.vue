@@ -18,6 +18,7 @@ const props = defineProps<{
   messages: PineTranscriptMessage[];
 }>();
 
+const minimumTurnCount = 3;
 const maximumMarkerCount = 9;
 const { t } = useI18n();
 const { scrollToMessage } = useMessageScroller();
@@ -63,7 +64,7 @@ function scrollToTurn(messageId: string): void {
 
 <template>
   <div
-    v-if="turns.length"
+    v-if="turns.length >= minimumTurnCount"
     class="absolute right-0 top-1/2 z-10 hidden -translate-y-1/2 sm:block"
   >
     <HoverCard :open-delay="120" :close-delay="120">
