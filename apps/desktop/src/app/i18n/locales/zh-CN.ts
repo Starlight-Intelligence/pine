@@ -303,6 +303,7 @@ export default {
           reviewing: "自动审批中",
           awaitingApproval: "等待用户审批",
           autoApprovalDenied: "自动审批驳回",
+          userApprovalDenied: "用户已拒绝",
         },
         approvals: {
           awaitingApproval: "等待用户审批",
@@ -315,6 +316,7 @@ export default {
       tools: {
         operationSeparator: "：",
         reviewing: "正在审核 {tool}：",
+        denied: "已拒绝 {tool}：",
         awaitingApproval: "等待确认 {tool}：",
         bash: {
           complete: { before: "已执行 ", after: "" },

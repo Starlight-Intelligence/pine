@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ChevronRightIcon } from "@lucide/vue";
+import { ChevronRightIcon, ShieldBanIcon } from "@lucide/vue";
 import { computed, ref, useId, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { Marker, MarkerContent, MarkerIcon } from "@/components/ui/marker";
@@ -9,6 +9,7 @@ import type { PineTranscriptMessage } from "@/stores/session";
 import ProjectToolCallMarker from "./ProjectToolCallMarker.vue";
 import {
   countToolKinds,
+  isDeniedTool,
   isRunningTool,
   toolKind,
   TOOL_KIND_ICON,
@@ -90,10 +91,15 @@ function toggleExpanded(): void {
     >
       <span class="flex shrink-0 items-center gap-1" data-tool-icons>
         <component
-          :is="TOOL_KIND_ICON[iconByToolCall[index]]"
+          :is="
+            isDeniedTool(toolCalls[index])
+              ? ShieldBanIcon
+              : TOOL_KIND_ICON[iconByToolCall[index]]
+          "
           v-for="(_, index) in iconByToolCall"
           :key="index"
           class="size-4"
+          :class="isDeniedTool(toolCalls[index]) && 'text-warning'"
           :aria-hidden="true"
         />
       </span>

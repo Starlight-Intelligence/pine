@@ -316,6 +316,7 @@ export default {
           reviewing: "Automatic approval in progress",
           awaitingApproval: "Awaiting user approval",
           autoApprovalDenied: "Automatic approval denied",
+          userApprovalDenied: "Denied by user",
         },
         approvals: {
           awaitingApproval: "Awaiting user approval",
@@ -328,6 +329,7 @@ export default {
       tools: {
         operationSeparator: ": ",
         reviewing: "Reviewing {tool}: ",
+        denied: "Denied {tool}: ",
         awaitingApproval: "Awaiting your approval for this {tool}: ",
         bash: {
           complete: { before: "Ran ", after: "" },

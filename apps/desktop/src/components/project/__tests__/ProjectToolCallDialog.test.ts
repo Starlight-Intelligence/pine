@@ -1,9 +1,10 @@
 import { mount } from "@vue/test-utils";
+import { AlertCircleIcon, ShieldBanIcon } from "@lucide/vue";
 import { describe, expect, it } from "vitest";
 import { createAppI18n } from "@/app/i18n";
 import ProjectToolCallMarker from "../ProjectToolCallMarker.vue";
 
-function mountMarker() {
+function mountMarker(decidedBy: "judge" | "user" | null = "judge") {
   return mount(ProjectToolCallMarker, {
     attachTo: document.body,
     props: {
@@ -11,11 +12,13 @@ function mountMarker() {
         id: "call-bash-1",
         name: "bash",
         status: "error",
-        approval: {
-          state: "denied",
-          decidedBy: "judge",
-          reason: "请改用不会覆盖现有文件的命令。",
-        },
+        approval: decidedBy
+          ? {
+              state: "denied",
+              decidedBy,
+              reason: "请改用不会覆盖现有文件的命令。",
+            }
+          : undefined,
         input: {
           command: "dangerous-command",
           description: "覆盖现有文件",
@@ -36,6 +39,56 @@ function mountMarker() {
 }
 
 describe("ProjectToolCallDialog", () => {
+  it.each(["judge", "user"] as const)(
+    "distinguishes %s denials from execution failures",
+    async (decidedBy) => {
+      const wrapper = mountMarker(decidedBy);
+      expect(wrapper.findComponent(ShieldBanIcon).exists()).toBe(true);
+      expect(wrapper.findComponent(AlertCircleIcon).exists()).toBe(false);
+      expect(wrapper.text()).toContain("已拒绝");
+      expect(wrapper.get('[data-slot="marker-content"]').classes()).toContain(
+        "text-warning",
+      );
+      await wrapper.setProps({
+        reviewing: true,
+        toolCall: { ...wrapper.props("toolCall"), status: "running" },
+      });
+      expect(wrapper.text()).toContain("已拒绝");
+      expect(wrapper.text()).not.toContain("正在审核");
+      expect(
+        wrapper.get('[data-slot="marker-content"]').classes(),
+      ).not.toContain("shimmer");
+      await wrapper.get('button[data-slot="marker"]').trigger("click");
+      const badges = document.body.querySelectorAll(
+        '[data-slot="dialog-content"] [data-slot="badge"]',
+      );
+      expect(badges).toHaveLength(2);
+      for (const badge of badges) {
+        expect(badge.classList).toContain("text-warning");
+        expect(badge.classList).not.toContain("text-destructive");
+      }
+      expect(document.body.textContent).toContain(
+        decidedBy === "judge" ? "自动审批驳回" : "用户已拒绝",
+      );
+      wrapper.unmount();
+    },
+  );
+
+  it("keeps execution failures destructive", async () => {
+    const wrapper = mountMarker(null);
+    expect(wrapper.findComponent(AlertCircleIcon).exists()).toBe(true);
+    expect(wrapper.findComponent(ShieldBanIcon).exists()).toBe(false);
+    expect(wrapper.get('[data-slot="marker-content"]').classes()).toContain(
+      "text-destructive",
+    );
+    await wrapper.get('button[data-slot="marker"]').trigger("click");
+    const badge = document.body.querySelector(
+      '[data-slot="dialog-content"] [data-slot="badge"]',
+    );
+    expect(badge?.classList).toContain("text-destructive");
+    wrapper.unmount();
+  });
+
   it("makes every tool marker visibly interactive", () => {
     const wrapper = mountMarker();
     const trigger = wrapper.get('button[data-slot="marker"]');

@@ -50,7 +50,14 @@ export function toolKind(name: string): ToolKind {
 }
 
 export function isRunningTool(toolCall: PineToolCall): boolean {
-  return toolCall.status === "pending" || toolCall.status === "running";
+  return (
+    !isDeniedTool(toolCall) &&
+    (toolCall.status === "pending" || toolCall.status === "running")
+  );
+}
+
+export function isDeniedTool(toolCall: PineToolCall): boolean {
+  return toolCall.approval?.state === "denied";
 }
 
 /** Count tool calls grouped by kind, preserving only kinds that appear. */

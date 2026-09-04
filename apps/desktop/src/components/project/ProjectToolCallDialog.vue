@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
+import { ShieldBanIcon } from "@lucide/vue";
 import { useI18n } from "vue-i18n";
 import { Badge, type BadgeVariants } from "@/components/ui/badge";
 import {
@@ -13,6 +14,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import type { PineToolCall } from "@/shared/sessions";
 import ProjectToolValueTable from "./ProjectToolValueTable.vue";
+import { isDeniedTool } from "./toolKinds";
 
 const props = defineProps<{
   toolCall: PineToolCall;
@@ -22,6 +24,7 @@ const props = defineProps<{
 
 const { t } = useI18n();
 const isOpen = ref(false);
+const isDenied = computed(() => isDeniedTool(props.toolCall));
 
 type StatusKey =
   | "pending"
@@ -30,9 +33,15 @@ type StatusKey =
   | "error"
   | "reviewing"
   | "awaitingApproval"
-  | "autoApprovalDenied";
+  | "autoApprovalDenied"
+  | "userApprovalDenied";
 
 const statusKey = computed<StatusKey>(() => {
+  if (isDenied.value) {
+    return props.toolCall.approval?.decidedBy === "judge"
+      ? "autoApprovalDenied"
+      : "userApprovalDenied";
+  }
   if (props.reviewing || props.toolCall.approval?.state === "reviewing") {
     return "reviewing";
   }
@@ -42,17 +51,11 @@ const statusKey = computed<StatusKey>(() => {
   ) {
     return "awaitingApproval";
   }
-  if (
-    props.toolCall.approval?.state === "denied" &&
-    props.toolCall.approval.decidedBy === "judge"
-  ) {
-    return "autoApprovalDenied";
-  }
   return props.toolCall.status;
 });
 
 const statusVariant = computed<BadgeVariants["variant"]>(() =>
-  statusKey.value === "error" || statusKey.value === "autoApprovalDenied"
+  statusKey.value === "error"
     ? "destructive"
     : statusKey.value === "complete"
       ? "outline"
@@ -70,7 +73,7 @@ const approvalKey = computed(() => {
 });
 
 const approvalVariant = computed<BadgeVariants["variant"]>(() =>
-  props.toolCall.approval?.state === "denied" ? "destructive" : "secondary",
+  isDenied.value ? "outline" : "secondary",
 );
 
 function formatDuration(durationMs: number): string {
@@ -111,7 +114,13 @@ function openDialog(): void {
               {{ t("project.transcript.toolDetails.status") }}
             </dt>
             <dd>
-              <Badge :variant="statusVariant">
+              <Badge
+                :variant="statusVariant"
+                :class="
+                  isDenied && 'border-transparent bg-warning/10 text-warning'
+                "
+              >
+                <ShieldBanIcon v-if="isDenied" data-icon="inline-start" />
                 {{ t(`project.transcript.toolDetails.statuses.${statusKey}`) }}
               </Badge>
             </dd>
@@ -121,7 +130,13 @@ function openDialog(): void {
                 {{ t("project.transcript.toolDetails.approval") }}
               </dt>
               <dd>
-                <Badge :variant="approvalVariant">
+                <Badge
+                  :variant="approvalVariant"
+                  :class="
+                    isDenied && 'border-transparent bg-warning/10 text-warning'
+                  "
+                >
+                  <ShieldBanIcon v-if="isDenied" data-icon="inline-start" />
                   {{
                     t(`project.transcript.toolDetails.approvals.${approvalKey}`)
                   }}

@@ -1,4 +1,5 @@
 import { mount } from "@vue/test-utils";
+import { ShieldBanIcon } from "@lucide/vue";
 import { describe, expect, it } from "vitest";
 import { createAppI18n } from "@/app/i18n";
 import type { PineToolCall } from "@/shared/sessions";
@@ -49,6 +50,22 @@ function mountGroup(
 }
 
 describe("ProjectToolCallGroup", () => {
+  it("marks denied calls in the folded header and does not leave them running", () => {
+    const wrapper = mountGroup({
+      toolCalls: [
+        {
+          ...toolCalls[0],
+          status: "running",
+          approval: { state: "denied", decidedBy: "user" },
+        },
+      ],
+    });
+    const icon = wrapper.get("[data-tool-icons]").findComponent(ShieldBanIcon);
+    expect(icon.classes()).toContain("text-warning");
+    expect(wrapper.find('[data-slot="spinner"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
   it("collapses by default and expands on click", async () => {
     const wrapper = mountGroup();
 

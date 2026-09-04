@@ -1,11 +1,16 @@
 <script setup lang="ts">
-import { AlertCircleIcon, CheckIcon } from "@lucide/vue";
+import { AlertCircleIcon, CheckIcon, ShieldBanIcon } from "@lucide/vue";
 import { computed, type Component } from "vue";
 import { useI18n } from "vue-i18n";
 import { Marker, MarkerContent, MarkerIcon } from "@/components/ui/marker";
 import type { PineToolCall } from "@/shared/sessions";
 import ProjectToolCallDialog from "./ProjectToolCallDialog.vue";
-import { isRunningTool, TOOL_KIND_ICON, toolKind } from "./toolKinds";
+import {
+  isDeniedTool,
+  isRunningTool,
+  TOOL_KIND_ICON,
+  toolKind,
+} from "./toolKinds";
 
 const props = defineProps<{
   toolCall: PineToolCall;
@@ -22,6 +27,7 @@ const { t } = useI18n();
 const kindIcon: Component = TOOL_KIND_ICON[toolKind(props.toolCall.name)];
 
 const isRunning = computed(() => isRunningTool(props.toolCall));
+const isDenied = computed(() => isDeniedTool(props.toolCall));
 
 function inputRecord(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -127,19 +133,21 @@ const presentation = computed(() => {
           : props.toolCall.name;
   // Review holds replace the tense label entirely: the reader must see that
   // the call is gated, not that it is running.
-  const state = props.reviewing
-    ? "reviewing"
-    : props.awaitingApproval
-      ? "awaiting"
-      : isRunning.value
-        ? "running"
-        : props.toolCall.status === "error"
-          ? "error"
-          : "complete";
-  if (state === "reviewing" || state === "awaiting") {
+  const state = isDenied.value
+    ? "denied"
+    : props.reviewing
+      ? "reviewing"
+      : props.awaitingApproval
+        ? "awaiting"
+        : isRunning.value
+          ? "running"
+          : props.toolCall.status === "error"
+            ? "error"
+            : "complete";
+  if (state === "reviewing" || state === "awaiting" || state === "denied") {
     // The state name differs from its i18n key ("awaiting" →
     // "awaitingApproval"), so map it explicitly.
-    const stateKey = state === "awaiting" ? "awaitingApproval" : "reviewing";
+    const stateKey = state === "awaiting" ? "awaitingApproval" : state;
     return {
       // The gate label carries its own trailing separator so the target
       // reads as one sentence, e.g. "正在审核Bash操作：osascript …".
@@ -166,7 +174,9 @@ const presentation = computed(() => {
 });
 
 const isActive = computed(
-  () => props.reviewing || props.awaitingApproval || isRunning.value,
+  () =>
+    !isDenied.value &&
+    (props.reviewing || props.awaitingApproval || isRunning.value),
 );
 
 // Gate calls get distinct shimmer tones: amber while waiting on the user
@@ -212,8 +222,9 @@ const fullText = computed(() => {
          header, and failures stay recognizable through the destructive alert
          tint. -->
       <MarkerIcon>
+        <ShieldBanIcon v-if="isDenied" class="text-warning" />
         <AlertCircleIcon
-          v-if="toolCall.status === 'error'"
+          v-else-if="toolCall.status === 'error'"
           class="text-destructive"
         />
         <CheckIcon v-else-if="props.nested" />
@@ -222,9 +233,11 @@ const fullText = computed(() => {
       <MarkerContent
         class="truncate"
         :class="
-          isActive
-            ? shimmerClass
-            : toolCall.status === 'error' && 'text-destructive'
+          isDenied
+            ? 'text-warning'
+            : isActive
+              ? shimmerClass
+              : toolCall.status === 'error' && 'text-destructive'
         "
         :title="fullText"
       >
@@ -236,7 +249,7 @@ const fullText = computed(() => {
           presentation.target
         }}</code
         ><span
-          v-if="editDiffCount"
+          v-if="editDiffCount && !isDenied"
           data-edit-diff
           class="ml-1 inline-flex gap-1"
           ><span
