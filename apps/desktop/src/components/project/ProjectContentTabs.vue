@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {
   FileCode2Icon,
+  PanelsTopLeft,
   PlusIcon,
   SquareTerminalIcon,
   XIcon,
@@ -12,6 +13,13 @@ import { useI18n } from "vue-i18n";
 import { handleError } from "@/app/errors/errorHandler";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
 import { useSidebar } from "@/components/ui/sidebar";
 import { useContentTabNavigation } from "@/composables/useContentTabNavigation";
 import { cn } from "@/lib/utils";
@@ -19,6 +27,7 @@ import type { ProjectContentTab } from "@/stores/contentTabs";
 import { useContentTabsStore } from "@/stores/contentTabs";
 import { useSessionStore } from "@/stores/session";
 import ProjectSessionView from "./ProjectSessionView.vue";
+import ProjectFilePreview from "./ProjectFilePreview.vue";
 
 const { t } = useI18n();
 const { state: sidebarState, isMobile } = useSidebar();
@@ -29,6 +38,9 @@ const { activeTab: activeContentTab, activeTabId, tabs } = tabNavigation;
 const { activeSession } = storeToRefs(sessionStore);
 const sessionTabs = computed(() =>
   tabs.value.filter((tab) => tab.kind === "session"),
+);
+const fileTabs = computed(() =>
+  tabs.value.filter((tab) => tab.kind === "file"),
 );
 watch(
   () =>
@@ -259,7 +271,19 @@ watch(activeSession, (session) => {
           :session-id="tab.state === 'bound' ? tab.sessionId : undefined"
         />
       </KeepAlive>
+      <KeepAlive v-for="tab in fileTabs" :key="tab.id">
+        <ProjectFilePreview v-if="activeTabId === tab.id" :file="tab" />
+      </KeepAlive>
     </div>
+    <Empty v-else class="flex-1">
+      <EmptyHeader>
+        <EmptyMedia variant="icon"><PanelsTopLeft /></EmptyMedia>
+        <EmptyTitle>{{ t("project.contentTabs.emptyTitle") }}</EmptyTitle>
+        <EmptyDescription>{{
+          t("project.contentTabs.emptyDescription")
+        }}</EmptyDescription>
+      </EmptyHeader>
+    </Empty>
   </div>
 </template>
 

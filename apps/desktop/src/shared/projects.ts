@@ -26,6 +26,8 @@ import type {
 } from "./models";
 import type {
   ProjectEntryReference,
+  ProjectFilePreview,
+  ProjectFilePreviewRequest,
   ProjectFileOperation,
   ListProjectDirectoryRequest,
   ListProjectDirectoryResult,
@@ -120,6 +122,9 @@ export interface PickProjectFoldersRequest {
 }
 
 export interface PineDesktopApi extends PineWindowApi {
+  readProjectFilePreview: (
+    request: ProjectFilePreviewRequest,
+  ) => Promise<ProjectFilePreview>;
   abortSession: () => Promise<AbortSessionResult>;
   closeProject: () => Promise<void>;
   createProject: (request: CreateProjectRequest) => Promise<ProjectResult>;

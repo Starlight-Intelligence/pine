@@ -22,7 +22,7 @@ describe("content tabs store", () => {
 
     expect(draft.state).toBe("draft");
     expect(store.tabs).toContainEqual(draft);
-    expect(store.tabs).toHaveLength(3);
+    expect(store.tabs).toHaveLength(2);
   });
 
   it("does not duplicate an already active draft tab", () => {
@@ -31,7 +31,7 @@ describe("content tabs store", () => {
     const draft = store.createSessionTab();
 
     expect(draft.id).toBe("session-1");
-    expect(store.tabs).toHaveLength(2);
+    expect(store.tabs).toHaveLength(1);
   });
 
   it("binds a prompt result to the tab that sent it", () => {
@@ -75,15 +75,33 @@ describe("content tabs store", () => {
     );
   });
 
-  it("replaces the final closed session tab with a usable draft", () => {
+  it("leaves no tabs after closing the last one", () => {
     const store = useContentTabsStore();
+    expect(store.close("session-1", "session-1")).toBe("");
+    expect(store.tabs).toEqual([]);
+    expect(store.createSessionTab().state).toBe("draft");
+  });
 
-    const replacementId = store.close("session-1", "session-1");
-
-    expect(store.tabs.find((tab) => tab.id === replacementId)).toEqual(
-      expect.objectContaining({ state: "draft" }),
-    );
-    expect(store.tabs.filter((tab) => tab.kind === "session")).toHaveLength(1);
+  it("opens distinct files without replacing existing tabs and reuses the same file", () => {
+    const store = useContentTabsStore();
+    const file = {
+      projectId: "p1",
+      folderId: "f1",
+      relativePath: "src/main.ts",
+    };
+    const first = store.openFile(file);
+    const second = store.openFile({ ...file, relativePath: "image.png" });
+    const otherRoot = store.openFile({ ...file, folderId: "f2" });
+    expect(store.openFile(file).id).toBe(first.id);
+    expect(new Set([first.id, second.id, otherRoot.id]).size).toBe(3);
+    expect(store.tabs).toHaveLength(4);
+    expect(store.close("session-1", first.id)).toBe(first.id);
+    expect(store.tabs.every((tab) => tab.kind === "file")).toBe(true);
+    expect(store.close(first.id, first.id)).toBe(second.id);
+    store.reset();
+    expect(store.tabs).toEqual([
+      { id: "session-1", kind: "session", state: "draft" },
+    ]);
   });
 
   it("opens an existing session tab instead of duplicating it", () => {

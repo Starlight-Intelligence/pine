@@ -1,8 +1,9 @@
 import { acceptHMRUpdate, defineStore } from "pinia";
 import { ref } from "vue";
 import type { PineSessionSummary } from "@/shared/sessions";
+import type { ProjectFilePreviewRequest } from "@/shared/projectFiles";
 
-export interface FileContentTab {
+export interface FileContentTab extends ProjectFilePreviewRequest {
   id: string;
   kind: "file";
   label: string;
@@ -41,20 +42,32 @@ export const useContentTabsStore = defineStore("content-tabs", () => {
   let nextSessionTabNumber = 2;
 
   function initialTabs(): ProjectContentTab[] {
-    return [
-      { id: "session-1", kind: "session", state: "draft" },
-      {
-        id: "file-project-view",
-        kind: "file",
-        label: "ProjectView.vue",
-      },
-    ];
+    return [{ id: "session-1", kind: "session", state: "draft" }];
   }
 
   const tabs = ref<ProjectContentTab[]>(initialTabs());
   // Router replacement is async. Keep the intended successor available while
   // the route still points to a tab that has just been removed.
   const fallbackActiveTabId = ref<string | null>(null);
+
+  function openFile(file: ProjectFilePreviewRequest): FileContentTab {
+    const existing = tabs.value.find(
+      (tab): tab is FileContentTab =>
+        tab.kind === "file" &&
+        tab.projectId === file.projectId &&
+        tab.folderId === file.folderId &&
+        tab.relativePath === file.relativePath,
+    );
+    if (existing) return existing;
+    const tab: FileContentTab = {
+      ...file,
+      id: `file-${crypto.randomUUID()}`,
+      kind: "file",
+      label: file.relativePath.split("/").at(-1) ?? file.relativePath,
+    };
+    tabs.value = [...tabs.value, tab];
+    return tab;
+  }
 
   function makeDraftTab(): DraftSessionTab {
     const tab = {
@@ -209,23 +222,10 @@ export const useContentTabsStore = defineStore("content-tabs", () => {
     if (closingIndex < 0) return activeTabId;
 
     const wasActive = activeTabId === tabId;
-    const closingTab = tabs.value[closingIndex];
     const nextTabs = tabs.value.filter((tab) => tab.id !== tabId);
-    let replacement: DraftSessionTab | null = null;
-
-    if (
-      nextTabs.length === 0 ||
-      (closingTab.kind === "session" &&
-        !nextTabs.some((tab) => tab.kind === "session"))
-    ) {
-      replacement = makeDraftTab();
-      nextTabs.splice(Math.min(closingIndex, nextTabs.length), 0, replacement);
-    }
 
     const nextActiveTabId = wasActive
-      ? (replacement?.id ??
-        nextTabs[Math.min(closingIndex, nextTabs.length - 1)]?.id ??
-        activeTabId)
+      ? (nextTabs[Math.min(closingIndex, nextTabs.length - 1)]?.id ?? "")
       : activeTabId;
     if (wasActive) fallbackActiveTabId.value = nextActiveTabId;
     tabs.value = nextTabs;
@@ -247,17 +247,8 @@ export const useContentTabsStore = defineStore("content-tabs", () => {
 
     const activeWasRemoved = removedIds.has(activeTabId);
     tabs.value = tabs.value.filter((tab) => !removedIds.has(tab.id));
-    if (!tabs.value.some((tab) => tab.kind === "session")) {
-      const replacement = makeDraftTab();
-      tabs.value = [replacement, ...tabs.value];
-      if (activeWasRemoved) {
-        fallbackActiveTabId.value = replacement.id;
-        return replacement.id;
-      }
-    } else if (activeWasRemoved) {
-      const nextActiveTabId =
-        tabs.value.find((tab) => tab.kind === "session")?.id ??
-        tabs.value[0].id;
+    if (activeWasRemoved) {
+      const nextActiveTabId = tabs.value[0]?.id ?? "";
       fallbackActiveTabId.value = nextActiveTabId;
       return nextActiveTabId;
     }
@@ -277,6 +268,7 @@ export const useContentTabsStore = defineStore("content-tabs", () => {
     createSessionTab,
     failPrompt,
     fallbackActiveTabId,
+    openFile,
     openSession,
     removeSession,
     reset,

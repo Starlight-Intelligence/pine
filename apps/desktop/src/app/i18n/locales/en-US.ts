@@ -105,7 +105,11 @@ export default {
     searchLabel: "Search projects",
     searchPlaceholder: "Search projects…",
     access: {
-      readOnly: "Read only",
+      metadata: "File metadata",
+      file: "File",
+      text: "Text",
+      lines: "{count} lines",
+      modified: "Modified {time}",
       readWrite: "Read and write",
     },
     editor: {
@@ -144,7 +148,25 @@ export default {
   },
   project: {
     preferences: "Project settings",
+    preview: {
+      metadata: "File metadata",
+      file: "File",
+      text: "Text",
+      lines: "{count} lines",
+      modified: "Modified {time}",
+      failedTitle: "Unable to preview file",
+      failedDescription:
+        "The file may have moved, been deleted, or use an unsupported encoding or media format.",
+      retry: "Retry",
+      unsupportedTitle: "Preview unavailable",
+      unsupportedDescription:
+        "Text, images, and videos are currently supported.",
+      tooLarge: "Text files larger than 2 MB cannot be previewed yet.",
+    },
     contentTabs: {
+      emptyTitle: "No tabs open",
+      emptyDescription:
+        "Select a file in the sidebar to preview it, or start a new session.",
       newSession: "New session",
       addTab: "Add session tab",
       closeTab: "Close {name}",

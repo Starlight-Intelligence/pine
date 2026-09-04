@@ -20,6 +20,11 @@ import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import { ProjectRuntimeRegistry } from "./main/projectRuntime";
+import {
+  readProjectFilePreview,
+  serveProjectMedia,
+} from "./main/projectFilePreview";
+import { installWindowShortcuts } from "./main/windowShortcuts";
 import { AgentProcessHost } from "./main/agentProcessHost";
 import { ModelRecommendationService } from "./main/modelRecommendations";
 import { ProjectRepository } from "./main/projects/projectRepository";
@@ -94,11 +99,14 @@ import {
   PROJECT_FILE_OPERATION_CHANNEL,
   PROJECT_FILE_ATTACHMENTS_CHANNEL,
   LIST_PROJECT_DIRECTORY_CHANNEL,
+  READ_PROJECT_FILE_PREVIEW_CHANNEL,
+  PROJECT_MEDIA_PROTOCOL,
   type ListProjectDirectoryResult,
 } from "./shared/projectFiles";
 import {
   OPAQUE_WINDOW_BACKGROUND,
   SET_SIDEBAR_VIBRANCY_CHANNEL,
+  CLOSE_WINDOW_CHANNEL,
   TRANSPARENT_WINDOW_BACKGROUND,
   type SetSidebarVibrancyResult,
 } from "./shared/window";
@@ -116,6 +124,15 @@ if (started) {
 // Must run before app ready. The attachment image protocol lets the renderer
 // display local images without granting it general filesystem access.
 protocol.registerSchemesAsPrivileged([
+  {
+    privileges: {
+      standard: true,
+      secure: true,
+      stream: true,
+      supportFetchAPI: true,
+    },
+    scheme: PROJECT_MEDIA_PROTOCOL,
+  },
   {
     privileges: { standard: true, stream: true, supportFetchAPI: true },
     scheme: ATTACHMENT_IMAGE_PROTOCOL,
@@ -265,6 +282,43 @@ const PickProjectFoldersRequestSchema = z.object({
   mode: z.enum(["context", "default"]),
 });
 const ProjectIdRequestSchema = z.object({ id: z.uuid() });
+const ProjectFilePreviewRequestSchema = ProjectEntryReferenceSchema.extend({
+  projectId: z.uuid(),
+});
+
+async function previewPath(ownerId: number, request: unknown): Promise<string> {
+  const entry = ProjectFilePreviewRequestSchema.parse(request);
+  if (!getProjectRuntimes().isOpen(ownerId, entry.projectId))
+    throw new Error("Project is no longer open.");
+  const [filePath] = await getProjectRuntimes().projectEntryPaths(ownerId, [
+    entry,
+  ]);
+  if (!getProjectRuntimes().isOpen(ownerId, entry.projectId))
+    throw new Error("Project is no longer open.");
+  return filePath;
+}
+
+function registerProjectMediaProtocol(): void {
+  protocol.handle(PROJECT_MEDIA_PROTOCOL, async (request) => {
+    try {
+      const url = new URL(request.url);
+      if (url.hostname !== "preview")
+        return new Response(null, { status: 400 });
+      const ownerId = z.coerce
+        .number()
+        .int()
+        .positive()
+        .parse(url.searchParams.get("owner"));
+      const filePath = await previewPath(
+        ownerId,
+        Object.fromEntries(url.searchParams),
+      );
+      return await serveProjectMedia(request, filePath);
+    } catch {
+      return new Response(null, { status: 404 });
+    }
+  });
+}
 const UpdateProjectRequestSchema = ProjectMutationSchema.safeExtend({
   id: z.uuid(),
 });
@@ -445,6 +499,7 @@ const createWindow = () => {
     },
   });
   const webContentsId = mainWindow.webContents.id;
+  installWindowShortcuts(mainWindow.webContents);
 
   // Focus stops the approval attention request (Windows flashes until the
   // window is focused; macOS bounces until the app activates).
@@ -472,6 +527,24 @@ const createWindow = () => {
     mainWindow.webContents.openDevTools();
   }
 };
+
+ipcMain.handle(CLOSE_WINDOW_CHANNEL, (event): void => {
+  BrowserWindow.fromWebContents(event.sender)?.close();
+});
+
+ipcMain.handle(
+  READ_PROJECT_FILE_PREVIEW_CHANNEL,
+  async (event, request: unknown) => {
+    const entry = ProjectFilePreviewRequestSchema.parse(request);
+    const filePath = await previewPath(event.sender.id, entry);
+    const url = new URL(`${PROJECT_MEDIA_PROTOCOL}://preview/`);
+    url.search = new URLSearchParams({
+      ...entry,
+      owner: String(event.sender.id),
+    }).toString();
+    return readProjectFilePreview(filePath, url.href);
+  },
+);
 
 ipcMain.handle(
   LIST_PROJECTS_CHANNEL,
@@ -928,6 +1001,7 @@ app.on("ready", () => {
   projectsRootPath = path.join(app.getPath("userData"), PROJECTS_DIRECTORY);
   projectRepository = new ProjectRepository(projectsRootPath);
   registerAttachmentImageProtocol();
+  registerProjectMediaProtocol();
   projectRuntimes = new ProjectRuntimeRegistry(
     agentHost,
     path.join(app.getPath("userData"), "agent"),

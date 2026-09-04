@@ -53,6 +53,7 @@ import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { useProjectSidebarStore } from "@/stores/projectSidebar";
 import { useProjectStore } from "@/stores/project";
+import { useContentTabNavigation } from "@/composables/useContentTabNavigation";
 
 interface ProjectTreeNode extends ProjectEntry {
   children?: ProjectTreeNode[];
@@ -64,6 +65,7 @@ interface ProjectTreeNode extends ProjectEntry {
 
 const { t } = useI18n();
 const projectStore = useProjectStore();
+const tabNavigation = useContentTabNavigation();
 const { activeProject } = storeToRefs(projectStore);
 const items = ref<ProjectTreeNode[]>([]);
 const loadingDirectories = new Set<string>();
@@ -206,6 +208,20 @@ function isProjectTreeNode(node: unknown): node is ProjectTreeNode {
 
 function loadTreeNode(node: unknown): void {
   if (isProjectTreeNode(node)) void loadChildren(node);
+}
+
+function previewFile(node: ProjectTreeNode): void {
+  if (
+    node.kind !== "file" ||
+    node.isPlaceholder ||
+    node.isUnavailable ||
+    !activeProject.value
+  )
+    return;
+  tabNavigation.openFile({
+    projectId: activeProject.value.id,
+    ...reference(node),
+  });
 }
 
 function reference(node: unknown): ProjectEntryReference {
@@ -435,6 +451,7 @@ watch(activeProject, resetRoots, { immediate: true });
         @drop="drop($event, item.value)"
         :style="{ paddingInlineStart: `${(item.level - 1) * 12 + 8}px` }"
         @toggle="loadTreeNode(item.value)"
+        @click="previewFile(item.value)"
       >
         <ContextMenu
           @update:open="

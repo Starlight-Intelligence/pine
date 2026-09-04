@@ -1,6 +1,8 @@
 import { DOMWrapper, flushPromises, mount } from "@vue/test-utils";
 import { defineComponent, h } from "vue";
 import { createPinia, setActivePinia } from "pinia";
+import { createMemoryHistory, createRouter } from "vue-router";
+import { useContentTabsStore } from "@/stores/contentTabs";
 import { injectTreeRootContext } from "reka-ui";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createAppI18n } from "@/app/i18n";
@@ -36,6 +38,10 @@ function mountTree(
     request: ListProjectDirectoryRequest,
   ) => Promise<ListProjectDirectoryResult>,
 ) {
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [{ path: "/", component: { template: "<div />" } }],
+  });
   const pinia = createPinia();
   setActivePinia(pinia);
   useProjectStore().activeProject = {
@@ -79,12 +85,18 @@ function mountTree(
   const wrapper = mount(ProjectFileTree, {
     attachTo: document.body,
     global: {
-      plugins: [pinia, createAppI18n("zh-CN")],
+      plugins: [pinia, router, createAppI18n("zh-CN")],
       stubs: { TreeVirtualizer: virtualizer },
     },
   });
   wrappers.push(wrapper);
-  return { wrapper, folderId, listProjectDirectory, operateProjectFile };
+  return {
+    router,
+    wrapper,
+    folderId,
+    listProjectDirectory,
+    operateProjectFile,
+  };
 }
 afterEach(() => {
   wrappers.splice(0).forEach((wrapper) => wrapper.unmount());
@@ -105,6 +117,24 @@ async function expandRoot(wrapper: ReturnType<typeof mount>) {
 }
 
 describe("ProjectFileTree", () => {
+  it("opens a file on left click and reuses its tab without invoking an external app", async () => {
+    const { wrapper, router, operateProjectFile } = mountTree();
+    await expandRoot(wrapper);
+    expect(useContentTabsStore().tabs).toHaveLength(1);
+    await wrapper.get('[data-path="notes.md"]').trigger("click");
+    await flushPromises();
+    const tab = useContentTabsStore().tabs.find((tab) => tab.kind === "file");
+    expect(tab).toMatchObject({
+      projectId: "p1",
+      folderId,
+      relativePath: "notes.md",
+    });
+    expect(router.currentRoute.value.query.tab).toBe(tab?.id);
+    await wrapper.get('[data-path="notes.md"]').trigger("click");
+    await flushPromises();
+    expect(useContentTabsStore().tabs).toHaveLength(2);
+    expect(operateProjectFile).not.toHaveBeenCalled();
+  });
   it("restores expanded folders after remounting with a fresh store", async () => {
     const first = mountTree();
     await expandRoot(first.wrapper);

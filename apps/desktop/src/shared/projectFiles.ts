@@ -23,6 +23,23 @@ export const PROJECT_FILE_ATTACHMENTS_CHANNEL =
   "project-files:attachments" as const;
 export type ProjectEntryReference = ListProjectDirectoryRequest;
 
+export const READ_PROJECT_FILE_PREVIEW_CHANNEL =
+  "project-files:preview" as const;
+export const PROJECT_MEDIA_PROTOCOL = "pine-project-media" as const;
+export interface ProjectFilePreviewRequest extends ProjectEntryReference {
+  projectId: string;
+}
+export interface ProjectFileMetadata {
+  size: number;
+  modifiedAt: string;
+}
+export type ProjectFilePreview = ProjectFileMetadata &
+  (
+    | { kind: "text"; text: string; encoding: string }
+    | { kind: "image" | "video"; url: string }
+    | { kind: "unsupported"; reason: "binary" | "too-large" }
+  );
+
 export type ProjectFileOperation =
   | {
       action: "create";

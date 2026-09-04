@@ -86,16 +86,28 @@ import {
   PROJECT_FILE_OPERATION_CHANNEL,
   PROJECT_FILE_ATTACHMENTS_CHANNEL,
   LIST_PROJECT_DIRECTORY_CHANNEL,
+  READ_PROJECT_FILE_PREVIEW_CHANNEL,
   type ListProjectDirectoryRequest,
   type ListProjectDirectoryResult,
 } from "./shared/projectFiles";
 import {
   SET_SIDEBAR_VIBRANCY_CHANNEL,
+  CLOSE_TAB_REQUESTED_CHANNEL,
+  CLOSE_WINDOW_CHANNEL,
   type SetSidebarVibrancyRequest,
   type SetSidebarVibrancyResult,
 } from "./shared/window";
 
 const pineApi: PineDesktopApi = {
+  readProjectFilePreview: (request) =>
+    ipcRenderer.invoke(READ_PROJECT_FILE_PREVIEW_CHANNEL, request),
+  closeWindow: () => ipcRenderer.invoke(CLOSE_WINDOW_CHANNEL),
+  onCloseTabRequested: (listener) => {
+    const handler = () => listener();
+    ipcRenderer.on(CLOSE_TAB_REQUESTED_CHANNEL, handler);
+    return () =>
+      ipcRenderer.removeListener(CLOSE_TAB_REQUESTED_CHANNEL, handler);
+  },
   platform: process.platform,
   setSidebarVibrancy: (
     request: SetSidebarVibrancyRequest,

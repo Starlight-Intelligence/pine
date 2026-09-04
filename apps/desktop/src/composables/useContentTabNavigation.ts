@@ -2,6 +2,7 @@ import { storeToRefs } from "pinia";
 import { computed } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import type { PineSessionSummary } from "@/shared/sessions";
+import type { ProjectFilePreviewRequest } from "@/shared/projectFiles";
 import { useContentTabsStore } from "@/stores/contentTabs";
 
 const CONTENT_TAB_QUERY = "tab";
@@ -41,9 +42,9 @@ export function useContentTabNavigation() {
   );
 
   function navigate(tabId: string, replace = false): void {
-    if (!tabs.value.some((tab) => tab.id === tabId)) return;
+    if (tabId && !tabs.value.some((tab) => tab.id === tabId)) return;
     const location = {
-      query: { ...route.query, [CONTENT_TAB_QUERY]: tabId },
+      query: { ...route.query, [CONTENT_TAB_QUERY]: tabId || undefined },
     };
     void (replace ? router.replace(location) : router.push(location));
   }
@@ -54,6 +55,10 @@ export function useContentTabNavigation() {
 
   function openSession(session: PineSessionSummary): void {
     navigate(store.openSession(session, activeTabId.value).id);
+  }
+
+  function openFile(file: ProjectFilePreviewRequest): void {
+    navigate(store.openFile(file).id);
   }
 
   function bindSession(tabId: string, session: PineSessionSummary): void {
@@ -95,6 +100,7 @@ export function useContentTabNavigation() {
     close,
     createSessionTab,
     failPrompt,
+    openFile,
     openSession,
     removeSession,
     tabs,

@@ -102,7 +102,11 @@ export default {
     searchLabel: "搜索项目",
     searchPlaceholder: "搜索项目…",
     access: {
-      readOnly: "只读",
+      metadata: "文件元数据",
+      file: "文件",
+      text: "文本",
+      lines: "{count} 行",
+      modified: "修改于 {time}",
       readWrite: "读写",
     },
     editor: {
@@ -139,7 +143,22 @@ export default {
   },
   project: {
     preferences: "项目设置",
+    preview: {
+      metadata: "文件元数据",
+      file: "文件",
+      text: "文本",
+      lines: "{count} 行",
+      modified: "修改于 {time}",
+      failedTitle: "无法预览文件",
+      failedDescription: "文件可能已被移动或删除，或当前格式无法解码。",
+      retry: "重试",
+      unsupportedTitle: "暂不支持预览此文件",
+      unsupportedDescription: "目前支持纯文本、图片和视频。",
+      tooLarge: "文本文件超过 2 MB，暂不支持预览。",
+    },
     contentTabs: {
+      emptyTitle: "无选项卡",
+      emptyDescription: "从左侧选择文件进行预览，或新建会话。",
       newSession: "新会话",
       addTab: "新建会话标签页",
       closeTab: "关闭 {name}",

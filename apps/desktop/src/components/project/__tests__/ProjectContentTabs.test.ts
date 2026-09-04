@@ -39,7 +39,7 @@ const windowControlsPaddingClass =
 const preferencesPaddingClass =
   "pr-[calc(var(--window-titlebar-control-height)+1.25rem)]";
 
-async function mountTabs() {
+async function mountTabs(withFile = false) {
   const pinia = createPinia();
   setActivePinia(pinia);
   const router = createRouter({
@@ -53,6 +53,13 @@ async function mountTabs() {
   Object.defineProperty(window, "pine", {
     configurable: true,
     value: {
+      readProjectFilePreview: vi.fn().mockResolvedValue({
+        kind: "text",
+        text: "const n = 1;",
+        size: 12,
+        modifiedAt: "2026-09-04T12:00:00Z",
+        encoding: "UTF-8",
+      }),
       loadSessionMessages: vi.fn().mockResolvedValue({
         hasMore: false,
         messages: [],
@@ -64,12 +71,19 @@ async function mountTabs() {
       ),
     },
   });
+  const file = withFile
+    ? useContentTabsStore().openFile({
+        projectId: "p1",
+        folderId: "f1",
+        relativePath: "example.ts",
+      })
+    : null;
   const wrapper = mount(ProjectContentTabs, {
     global: {
       plugins: [pinia, router, createAppI18n("en-US")],
     },
   });
-  return { router, wrapper };
+  return { router, wrapper, file };
 }
 
 const firstSession: PineSessionSummary = {
@@ -91,15 +105,45 @@ describe("ProjectContentTabs", () => {
     vi.restoreAllMocks();
   });
 
+  it("keeps separate file previews cached when switching between tabs", async () => {
+    const { router, wrapper, file } = await mountTabs(true);
+    const store = useContentTabsStore();
+    const second = store.openFile({
+      projectId: "p1",
+      folderId: "f1",
+      relativePath: "second.txt",
+    });
+    await router.push({ query: { tab: file!.id } });
+    await flushPromises();
+    expect(
+      wrapper.get('[role="tabpanel"] section').attributes("aria-label"),
+    ).toBe("example.ts");
+    await router.push({ query: { tab: second.id } });
+    await flushPromises();
+    expect(
+      wrapper.get('[role="tabpanel"] section').attributes("aria-label"),
+    ).toBe("second.txt");
+    await router.push({ query: { tab: file!.id } });
+    await flushPromises();
+    expect(window.pine.readProjectFilePreview).toHaveBeenCalledTimes(2);
+    await wrapper.get('button[aria-label="Close example.ts"]').trigger("click");
+    await flushPromises();
+    expect(router.currentRoute.value.query.tab).toBe(second.id);
+    expect(
+      wrapper.get('[role="tabpanel"] section').attributes("aria-label"),
+    ).toBe("second.txt");
+    wrapper.unmount();
+  });
+
   it.each([
     { name: "right-clipped", left: 500, target: 520 },
     { name: "left-clipped", left: 20, target: 40 },
     { name: "visible", left: 120, target: null },
   ])("reveals a $name tab on route activation", async ({ left, target }) => {
-    const { router, wrapper } = await mountTabs();
+    const { router, wrapper, file } = await mountTabs(true);
     const viewport = wrapper.get<HTMLDivElement>('[role="tablist"]').element;
     const button = wrapper.get<HTMLButtonElement>(
-      "#project-content-tab-file-project-view",
+      `#project-content-tab-${file!.id}`,
     ).element;
     Object.defineProperties(viewport, {
       clientWidth: { value: 320 },
@@ -114,7 +158,7 @@ describe("ProjectContentTabs", () => {
     );
     const scroll = vi.spyOn(viewport, "scrollTo").mockImplementation(() => {});
 
-    await router.push({ query: { tab: "file-project-view" } });
+    await router.push({ query: { tab: file!.id } });
     await flushPromises();
 
     if (target === null) {
@@ -129,10 +173,10 @@ describe("ProjectContentTabs", () => {
   });
 
   it("reveals keyboard-selected tabs without focus scrolling and respects reduced motion", async () => {
-    const { wrapper } = await mountTabs();
+    const { wrapper, file } = await mountTabs(true);
     const viewport = wrapper.get<HTMLDivElement>('[role="tablist"]').element;
     const button = wrapper.get<HTMLButtonElement>(
-      "#project-content-tab-file-project-view",
+      `#project-content-tab-${file!.id}`,
     ).element;
     Object.defineProperties(viewport, {
       clientWidth: { value: 200 },
@@ -225,7 +269,7 @@ describe("ProjectContentTabs", () => {
   });
 
   it("optically aligns tab separators with the tab hover treatment", async () => {
-    const { wrapper } = await mountTabs();
+    const { wrapper } = await mountTabs(true);
 
     await wrapper.get('button[aria-label="Add session tab"]').trigger("click");
     await flushPromises();
@@ -352,26 +396,28 @@ describe("ProjectContentTabs", () => {
         .get('button[aria-label="Close New session"]')
         .trigger("click");
       await flushPromises();
-      expect(sessionView.mounts - sessionView.unmounts).toBe(1);
+      expect(sessionView.mounts - sessionView.unmounts).toBe(0);
+      await wrapper
+        .get('button[aria-label="Add session tab"]')
+        .trigger("click");
+      await flushPromises();
     }
     wrapper.unmount();
   });
 
-  it("replaces the final closed session tab with a new draft", async () => {
+  it("shows an empty placeholder after closing the final tab and can open a new one", async () => {
     const { router, wrapper } = await mountTabs();
-    const tabsStore = useContentTabsStore();
-
     await wrapper
       .get('button[aria-label="Close New session"]')
       .trigger("click");
     await flushPromises();
-
-    const activeTabId = String(router.currentRoute.value.query.tab);
-    expect(tabsStore.tabs.find((tab) => tab.id === activeTabId)).toEqual(
-      expect.objectContaining({ state: "draft" }),
-    );
-    expect(tabsStore.tabs.filter((tab) => tab.kind === "session")).toHaveLength(
-      1,
-    );
+    expect(router.currentRoute.value.query.tab).toBeUndefined();
+    expect(useContentTabsStore().tabs).toEqual([]);
+    expect(wrapper.text()).toContain("No tabs open");
+    expect(wrapper.find('[role="tabpanel"]').exists()).toBe(false);
+    await wrapper.get('button[aria-label="Add session tab"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[role="tabpanel"]').exists()).toBe(true);
+    wrapper.unmount();
   });
 });
