@@ -1,4 +1,4 @@
-import { flushPromises, mount } from "@vue/test-utils";
+import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { computed, nextTick, onUnmounted } from "vue";
 import { createMemoryHistory, createRouter } from "vue-router";
@@ -18,6 +18,7 @@ const sidebar = vi.hoisted(() => ({
   isMobile: false,
 }));
 const sessionView = vi.hoisted(() => ({ mounts: 0, unmounts: 0 }));
+enableAutoUnmount(afterEach);
 
 vi.mock("@/components/ui/sidebar", () => ({
   useSidebar: () => ({
@@ -28,13 +29,15 @@ vi.mock("@/components/ui/sidebar", () => ({
 
 vi.mock("../ProjectSessionView.vue", () => ({
   default: {
+    props: ["tabId"],
     setup() {
       sessionView.mounts += 1;
       onUnmounted(() => {
         sessionView.unmounts += 1;
       });
     },
-    template: "<div />",
+    template:
+      '<div :data-session-view="tabId"><textarea /><div data-scroll /></div>',
   },
 }));
 
@@ -83,6 +86,7 @@ async function mountTabs(withFile = false) {
       })
     : null;
   const wrapper = mount(ProjectContentTabs, {
+    attachTo: document.body,
     global: {
       plugins: [pinia, router, createAppI18n("en-US")],
     },
@@ -105,6 +109,58 @@ const secondSession: PineSessionSummary = {
 };
 
 describe("ProjectContentTabs", () => {
+  it("retains connected session and file scrollports and drafts across activation and reorder", async () => {
+    const { wrapper, router, file } = await mountTabs(true);
+    const store = useContentTabsStore();
+    const first = wrapper.get<HTMLElement>(
+      '[data-session-view="session-1"] [data-scroll]',
+    ).element;
+    first.scrollTop = 310;
+    await wrapper
+      .get('[data-session-view="session-1"] textarea')
+      .setValue("draft one");
+    const second = store.createSessionTab({ reuseDraft: false });
+    await router.push({ query: { tab: second.id } });
+    await flushPromises();
+    const secondScroll = wrapper.get<HTMLElement>(
+      `[data-session-view="${second.id}"] [data-scroll]`,
+    ).element;
+    secondScroll.scrollTop = 640;
+
+    await router.push({ query: { tab: file!.id } });
+    await flushPromises();
+    const fileScroll = wrapper.get<HTMLElement>(
+      '[data-slot="scroll-area-viewport"]',
+    ).element;
+    fileScroll.scrollTop = 480;
+    fileScroll.scrollLeft = 120;
+    await router.push({ query: { tab: "session-1" } });
+    await flushPromises();
+    store.moveTab("session-1", file!.id, "after");
+    await nextTick();
+    expect(first.isConnected).toBe(true);
+    expect(secondScroll.isConnected).toBe(true);
+    expect(fileScroll.isConnected).toBe(true);
+    expect(first.scrollTop).toBe(310);
+    expect(
+      wrapper.get<HTMLTextAreaElement>(
+        '[data-session-view="session-1"] textarea',
+      ).element.value,
+    ).toBe("draft one");
+    expect(
+      wrapper.findAll('[role="tabpanel"]:not([aria-hidden])'),
+    ).toHaveLength(1);
+
+    await router.push({ query: { tab: second.id } });
+    await flushPromises();
+    expect(secondScroll.scrollTop).toBe(640);
+    await router.push({ query: { tab: file!.id } });
+    await flushPromises();
+    expect(fileScroll.scrollTop).toBe(480);
+    expect(fileScroll.scrollLeft).toBe(120);
+    expect(window.pine.readProjectFilePreview).toHaveBeenCalledTimes(1);
+  });
+
   it("reorders dragged tabs without switching selection and marks files for attachment drops", async () => {
     const { router, wrapper, file } = await mountTabs(true);
     const data = new Map<string, string>();
@@ -149,12 +205,16 @@ describe("ProjectContentTabs", () => {
     await router.push({ query: { tab: file!.id } });
     await flushPromises();
     expect(
-      wrapper.get('[role="tabpanel"] section').attributes("aria-label"),
+      wrapper
+        .get('[role="tabpanel"]:not([aria-hidden]) section')
+        .attributes("aria-label"),
     ).toBe("example.ts");
     await router.push({ query: { tab: second.id } });
     await flushPromises();
     expect(
-      wrapper.get('[role="tabpanel"] section').attributes("aria-label"),
+      wrapper
+        .get('[role="tabpanel"]:not([aria-hidden]) section')
+        .attributes("aria-label"),
     ).toBe("second.txt");
     await router.push({ query: { tab: file!.id } });
     await flushPromises();
@@ -163,7 +223,9 @@ describe("ProjectContentTabs", () => {
     await flushPromises();
     expect(router.currentRoute.value.query.tab).toBe(second.id);
     expect(
-      wrapper.get('[role="tabpanel"] section').attributes("aria-label"),
+      wrapper
+        .get('[role="tabpanel"]:not([aria-hidden]) section')
+        .attributes("aria-label"),
     ).toBe("second.txt");
     wrapper.unmount();
   });
@@ -365,9 +427,9 @@ describe("ProjectContentTabs", () => {
       `project-content-tab-${selectedId}`,
     );
     expect(selectedId).not.toBe("session-1");
-    expect(wrapper.get('[role="tabpanel"]').attributes("id")).toBe(
-      `project-content-panel-${selectedId}`,
-    );
+    expect(
+      wrapper.get('[role="tabpanel"]:not([aria-hidden])').attributes("id"),
+    ).toBe(`project-content-panel-${selectedId}`);
   });
 
   it("closes directly to the next draft without briefly resuming the first tab", async () => {
@@ -422,7 +484,7 @@ describe("ProjectContentTabs", () => {
     wrapper.unmount();
   });
 
-  it("releases closed views instead of accumulating them in KeepAlive", async () => {
+  it("releases closed views instead of accumulating retained panels", async () => {
     const { wrapper } = await mountTabs();
     for (let index = 0; index < 5; index += 1) {
       await wrapper

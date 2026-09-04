@@ -197,6 +197,28 @@ describe("ProjectFilePreview", () => {
     expect(wrapper.text()).toContain("Unable to preview file");
   });
 
+  it("pauses background video without resetting its playback position", async () => {
+    const wrapper = render(
+      vi.fn().mockResolvedValue({
+        ...info,
+        kind: "video",
+        url: "pine-project-media://preview/video",
+      }),
+    );
+    await flushPromises();
+    const video = wrapper.get("video").element;
+    const pause = vi.spyOn(video, "pause");
+    video.currentTime = 42;
+    await wrapper.setProps({ active: false });
+    expect(pause).toHaveBeenCalledTimes(1);
+    await wrapper.setProps({ active: true });
+    expect(wrapper.get("video").element).toBe(video);
+    expect(video.currentTime).toBe(42);
+    expect(pause).toHaveBeenCalledTimes(1);
+    wrapper.unmount();
+    expect(pause).toHaveBeenCalledTimes(2);
+  });
+
   it("shows unsupported and error states and allows retrying", async () => {
     const read = vi
       .fn()

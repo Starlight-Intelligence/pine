@@ -22,6 +22,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useProjectStore } from "@/stores/project";
 import ProjectFileTree from "./ProjectFileTree.vue";
 import ProjectSessionList from "./ProjectSessionList.vue";
+import RetainedPanel from "./RetainedPanel.vue";
 
 const { t } = useI18n();
 const emit = defineEmits<{
@@ -82,12 +83,22 @@ watch(
         </TabsList>
       </SidebarHeader>
 
-      <SidebarContent class="overflow-hidden">
-        <TabsContent value="files" class="mt-0 min-h-0 overflow-hidden">
-          <ProjectFileTree />
+      <SidebarContent class="relative overflow-hidden">
+        <TabsContent value="files" force-mount as-child>
+          <RetainedPanel
+            :key="activeProject?.id"
+            :active="activeTab === 'files'"
+          >
+            <ProjectFileTree />
+          </RetainedPanel>
         </TabsContent>
-        <TabsContent value="sessions" class="mt-0 min-h-0 overflow-hidden">
-          <ProjectSessionList @search="emit('searchSessions')" />
+        <TabsContent value="sessions" force-mount as-child>
+          <RetainedPanel
+            :key="activeProject?.id"
+            :active="activeTab === 'sessions'"
+          >
+            <ProjectSessionList @search="emit('searchSessions')" />
+          </RetainedPanel>
         </TabsContent>
       </SidebarContent>
     </Tabs>

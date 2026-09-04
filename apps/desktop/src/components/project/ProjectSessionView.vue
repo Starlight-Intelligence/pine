@@ -50,9 +50,9 @@ const tabNavigation = useContentTabNavigation();
 const sessionStore = useSessionStore();
 const liveState = storeToRefs(sessionStore);
 
-// KeepAlive preserves DOM, but does not stop reactive updates. A hidden tab
+// Retaining a panel does not stop reactive updates. A hidden tab
 // must retain its own projection instead of rendering every newly active
-// session's transcript (and reparsing its Markdown) in the detached DOM.
+// session's transcript (and reparsing its Markdown) in the hidden DOM.
 function tabValue<T>(source: Ref<T>) {
   return computed<T>((previous) =>
     tabNavigation.activeTabId.value === props.tabId || previous === undefined

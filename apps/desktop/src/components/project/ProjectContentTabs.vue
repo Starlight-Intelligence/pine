@@ -25,6 +25,7 @@ import { useContentTabsStore } from "@/stores/contentTabs";
 import { useSessionStore } from "@/stores/session";
 import ProjectSessionView from "./ProjectSessionView.vue";
 import ProjectFilePreview from "./ProjectFilePreview.vue";
+import RetainedPanel from "./RetainedPanel.vue";
 
 const { t } = useI18n();
 const workbenchLogoStyle = {
@@ -38,9 +39,6 @@ const { activeTab: activeContentTab, activeTabId, tabs } = tabNavigation;
 const { activeSession } = storeToRefs(sessionStore);
 const sessionTabs = computed(() =>
   tabs.value.filter((tab) => tab.kind === "session"),
-);
-const fileTabs = computed(() =>
-  tabs.value.filter((tab) => tab.kind === "file"),
 );
 watch(
   () =>
@@ -333,23 +331,27 @@ watch(activeSession, (session) => {
 
     <div
       v-if="activeContentTab"
-      :id="`project-content-panel-${activeContentTab.id}`"
-      role="tabpanel"
-      :aria-labelledby="`project-content-tab-${activeContentTab.id}`"
-      class="min-h-0 flex-1 overflow-hidden"
+      class="relative min-h-0 flex-1 overflow-hidden"
     >
-      <!-- Each open tab owns its cache. Removing the tab also unmounts its
-           cached view; switching tabs still preserves drafts and scroll state. -->
-      <KeepAlive v-for="tab in sessionTabs" :key="tab.id">
+      <RetainedPanel
+        v-for="tab in tabs"
+        :id="`project-content-panel-${tab.id}`"
+        :key="`${contentTabsStore.projectId}:${tab.id}`"
+        role="tabpanel"
+        :aria-labelledby="`project-content-tab-${tab.id}`"
+        :active="activeTabId === tab.id"
+      >
         <ProjectSessionView
-          v-if="activeTabId === tab.id"
+          v-if="tab.kind === 'session'"
           :tab-id="tab.id"
           :session-id="tab.state === 'bound' ? tab.sessionId : undefined"
         />
-      </KeepAlive>
-      <KeepAlive v-for="tab in fileTabs" :key="tab.id">
-        <ProjectFilePreview v-if="activeTabId === tab.id" :file="tab" />
-      </KeepAlive>
+        <ProjectFilePreview
+          v-else
+          :file="tab"
+          :active="activeTabId === tab.id"
+        />
+      </RetainedPanel>
     </div>
     <div
       v-else

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onDeactivated, ref, useTemplateRef, watch } from "vue";
+import { computed, onBeforeUnmount, ref, useTemplateRef, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import {
   FileQuestion,
@@ -36,7 +36,10 @@ import type {
   ProjectFilePreviewRequest,
 } from "@/shared/projectFiles";
 
-const props = defineProps<{ file: ProjectFilePreviewRequest }>();
+const props = withDefaults(
+  defineProps<{ file: ProjectFilePreviewRequest; active?: boolean }>(),
+  { active: true },
+);
 const { t, locale } = useI18n();
 const preview = ref<ProjectFilePreview>();
 const tabsStore = useContentTabsStore();
@@ -127,7 +130,13 @@ watch(
   { immediate: true },
 );
 
-onDeactivated(() => video.value?.pause());
+watch(
+  () => props.active,
+  (active) => {
+    if (!active) video.value?.pause();
+  },
+);
+onBeforeUnmount(() => video.value?.pause());
 </script>
 
 <template>

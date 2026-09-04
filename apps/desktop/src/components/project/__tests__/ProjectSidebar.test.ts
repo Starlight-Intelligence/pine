@@ -44,12 +44,15 @@ it("restores the project tab and persists navigation without changing the active
         SidebarMenuButton: slot,
         SidebarMenuItem: slot,
         SidebarRail: true,
-        ProjectFileTree: true,
-        ProjectSessionList: true,
+        ProjectFileTree: { template: "<div data-files-scroll />" },
+        ProjectSessionList: { template: "<div data-sessions-scroll />" },
       },
     },
   });
   const tabs = wrapper.findAll('[role="tab"]');
+  const files = wrapper.get<HTMLElement>("[data-files-scroll]").element;
+  files.scrollTop = 340;
+  expect(wrapper.find("[data-sessions-scroll]").exists()).toBe(false);
   expect(tabs[0].attributes("data-state")).toBe("active");
   await tabs[1].trigger("mousedown", { button: 0 });
   await flushPromises();
@@ -58,10 +61,25 @@ it("restores the project tab and persists navigation without changing the active
     sidebar: "sessions",
   });
   expect(sidebarStore.stateFor("one").tab).toBe("sessions");
+  const sessions = wrapper.get<HTMLElement>("[data-sessions-scroll]").element;
+  sessions.scrollTop = 720;
+  expect(wrapper.get("[data-files-scroll]").element).toBe(files);
+  const hiddenPanel = wrapper.get('[role="tabpanel"][data-state="inactive"]');
+  expect(hiddenPanel.attributes("hidden")).toBeUndefined();
+  expect(hiddenPanel.attributes("inert")).toBeDefined();
+  expect(hiddenPanel.attributes("aria-hidden")).toBe("true");
+  await tabs[0].trigger("mousedown", { button: 0 });
+  await flushPromises();
+  expect(files.scrollTop).toBe(340);
+  await tabs[1].trigger("mousedown", { button: 0 });
+  await flushPromises();
+  expect(wrapper.get("[data-sessions-scroll]").element).toBe(sessions);
+  expect(sessions.scrollTop).toBe(720);
   projectStore.activeProject = { ...projectStore.activeProject, id: "two" };
   await router.push("/projects/two");
   await flushPromises();
   expect(tabs[0].attributes("data-state")).toBe("active");
   expect(sidebarStore.stateFor("two").tab).toBe("files");
+  expect(wrapper.get("[data-files-scroll]").element).not.toBe(files);
   wrapper.unmount();
 });
