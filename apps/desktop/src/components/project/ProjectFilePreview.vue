@@ -56,7 +56,7 @@ const props = withDefaults(
 );
 const { t, locale } = useI18n();
 const preview = ref<ProjectFilePreview>();
-const viewMode = ref<"code" | "rendered">("code");
+const viewMode = ref<"code" | "rendered">("rendered");
 const renderSwitchId = useId();
 const isMarkdown = computed(
   () =>
@@ -181,7 +181,7 @@ watch(
       active = false;
     });
     preview.value = undefined;
-    viewMode.value = "code";
+    viewMode.value = "rendered";
     selectedRange.value = undefined;
     menuSelection.value = undefined;
     mediaDetails.value = undefined;
@@ -261,7 +261,7 @@ onBeforeUnmount(() => video.value?.pause());
       >
         <MarkdownContent
           v-if="rendered"
-          class="py-4"
+          class="mx-auto w-full max-w-[var(--session-content-max-width)] py-4"
           :source="preview.text"
           :nodes="markdownNodes"
           final

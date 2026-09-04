@@ -71,10 +71,8 @@ describe("ProjectFilePreview", () => {
     await wrapper.setProps({ file: { ...file, relativePath: "notes.md" } });
     await flushPromises();
     const mode = wrapper.get('[role="switch"]');
-    expect(mode.attributes("aria-checked")).toBe("false");
-    expect(wrapper.find('[data-slot="markdown-content"]').exists()).toBe(false);
-    await mode.trigger("click");
-    await flushPromises();
+    expect(mode.attributes("aria-checked")).toBe("true");
+    expect(wrapper.find('[data-slot="markdown-content"]').exists()).toBe(true);
     expect(wrapper.find("pre").exists()).toBe(false);
     const headings = wrapper.findAll("h1");
     expect(headings).toHaveLength(2);

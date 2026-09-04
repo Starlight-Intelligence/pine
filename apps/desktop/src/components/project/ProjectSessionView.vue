@@ -311,21 +311,11 @@ async function handleDrop(event: DragEvent): Promise<void> {
 </template>
 
 <style scoped>
-.session-layout {
-  --session-composer-max-width: 48rem;
-  --session-composer-gutter: 1rem;
-  --session-input-padding-inline: 0.75rem;
-}
-
 .session-transcript-content {
   width: calc(
     100% - var(--session-composer-gutter) - var(--session-composer-gutter) -
       var(--session-input-padding-inline) - var(--session-input-padding-inline)
   );
-  max-width: calc(
-    var(--session-composer-max-width) - var(--session-composer-gutter) -
-      var(--session-composer-gutter) - var(--session-input-padding-inline) -
-      var(--session-input-padding-inline)
-  );
+  max-width: var(--session-content-max-width);
 }
 </style>

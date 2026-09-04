@@ -24,6 +24,14 @@
 }
 
 :root {
+  --session-composer-max-width: 48rem;
+  --session-composer-gutter: 1rem;
+  --session-input-padding-inline: 0.75rem;
+  --session-content-max-width: calc(
+    var(--session-composer-max-width) - var(--session-composer-gutter) -
+      var(--session-composer-gutter) - var(--session-input-padding-inline) -
+      var(--session-input-padding-inline)
+  );
   --window-titlebar-control-height: 2rem;
   --window-titlebar-padding-block: 0.75rem;
   --window-titlebar-leading-offset: 5.5625rem;
