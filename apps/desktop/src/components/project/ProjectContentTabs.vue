@@ -8,7 +8,7 @@ import {
 } from "@lucide/vue";
 import { storeToRefs } from "pinia";
 import type { ComponentPublicInstance } from "vue";
-import { computed, nextTick, useTemplateRef, watch } from "vue";
+import { computed, nextTick, ref, useTemplateRef, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { handleError } from "@/app/errors/errorHandler";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,10 @@ import {
 import { useSidebar } from "@/components/ui/sidebar";
 import { useContentTabNavigation } from "@/composables/useContentTabNavigation";
 import { cn } from "@/lib/utils";
+import {
+  CONTENT_TAB_DRAG_TYPE,
+  writeContentTabDrag,
+} from "@/lib/contentTabDrag";
 import type { ProjectContentTab } from "@/stores/contentTabs";
 import { useContentTabsStore } from "@/stores/contentTabs";
 import { useSessionStore } from "@/stores/session";
@@ -62,6 +66,66 @@ const shouldReserveWindowControlsSpace = computed(
 
 const tabButtons = new Map<string, HTMLButtonElement>();
 const tabList = useTemplateRef<HTMLDivElement>("tabList");
+const draggingTabId = ref<string | null>(null);
+const dropPosition = ref<{ tabId: string; side: "before" | "after" } | null>(
+  null,
+);
+
+function startTabDrag(event: DragEvent, tab: ProjectContentTab): void {
+  if (!event.dataTransfer) return;
+  writeContentTabDrag(event.dataTransfer, tab);
+  draggingTabId.value = tab.id;
+}
+
+function endTabDrag(): void {
+  draggingTabId.value = null;
+  dropPosition.value = null;
+}
+
+function leaveTabList(event: DragEvent): void {
+  if (
+    !(event.relatedTarget instanceof Node) ||
+    !tabList.value?.contains(event.relatedTarget)
+  )
+    dropPosition.value = null;
+}
+
+function dragOverTab(event: DragEvent, tabId?: string): void {
+  if (!draggingTabId.value || !event.dataTransfer) return;
+  event.preventDefault();
+  event.stopPropagation();
+  event.dataTransfer.dropEffect = "move";
+  const bounds = (event.currentTarget as HTMLElement).getBoundingClientRect();
+  const targetId = tabId ?? tabs.value.at(-1)?.id;
+  if (targetId)
+    dropPosition.value = {
+      tabId: targetId,
+      side:
+        !tabId || event.clientX >= bounds.left + bounds.width / 2
+          ? "after"
+          : "before",
+    };
+  const viewport = tabList.value;
+  if (viewport) {
+    const rect = viewport.getBoundingClientRect();
+    if (event.clientX < rect.left + 24) viewport.scrollLeft -= 20;
+    else if (event.clientX > rect.right - 24) viewport.scrollLeft += 20;
+  }
+}
+
+function dropTab(event: DragEvent): void {
+  const tabId = event.dataTransfer?.getData(CONTENT_TAB_DRAG_TYPE);
+  if (!tabId || tabId !== draggingTabId.value || !dropPosition.value) return;
+  event.preventDefault();
+  event.stopPropagation();
+  contentTabsStore.moveTab(
+    tabId,
+    dropPosition.value.tabId,
+    dropPosition.value.side,
+  );
+  endTabDrag();
+  void nextTick(revealActiveTab);
+}
 
 function revealActiveTab(): void {
   const viewport = tabList.value;
@@ -194,7 +258,11 @@ watch(activeSession, (session) => {
         data-slot="project-content-tab-list"
         role="tablist"
         :aria-label="t('project.contentTabs.tabListLabel')"
-        class="window-drag scroll-fade-x pointer-events-auto flex min-w-0 flex-1 items-center justify-start gap-1 overflow-x-auto scrollbar-none"
+        class="scroll-fade-x pointer-events-auto flex min-w-0 flex-1 items-center justify-start gap-1 overflow-x-auto scrollbar-none"
+        :class="draggingTabId ? 'window-no-drag' : 'window-drag'"
+        @dragover="dragOverTab($event)"
+        @drop="dropTab"
+        @dragleave="leaveTabList"
       >
         <template v-for="(tab, index) in tabs" :key="tab.id">
           <Separator
@@ -211,7 +279,19 @@ watch(activeSession, (session) => {
           <div
             data-slot="project-content-tab"
             class="window-no-drag group relative flex h-8 w-40 min-w-40 items-center rounded-2xl"
+            :data-tab-id="tab.id"
+            :draggable="true"
+            @dragstart="startTabDrag($event, tab)"
+            @dragend="endTabDrag"
+            @dragover="dragOverTab($event, tab.id)"
+            @drop="dropTab"
           >
+            <span
+              v-if="dropPosition?.tabId === tab.id && draggingTabId !== tab.id"
+              aria-hidden="true"
+              class="pointer-events-none absolute inset-y-1 w-0.5 rounded-full bg-primary"
+              :class="dropPosition.side === 'before' ? '-left-1' : '-right-1'"
+            />
             <Button
               :id="`project-content-tab-${tab.id}`"
               :ref="(element) => setTabButton(tab.id, element)"

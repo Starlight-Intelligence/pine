@@ -109,7 +109,9 @@ export default {
       file: "File",
       text: "Text",
       lines: "{count} lines",
-      modified: "Modified {time}",
+      sendToTab: "Send to tab…",
+      noSessionTabs: "No session tabs open",
+      sendFailed: "Could not attach file to session",
       readWrite: "Read and write",
     },
     editor: {
@@ -153,7 +155,9 @@ export default {
       file: "File",
       text: "Text",
       lines: "{count} lines",
-      modified: "Modified {time}",
+      sendToTab: "Send to tab…",
+      noSessionTabs: "No session tabs open",
+      sendFailed: "Could not attach file to session",
       failedTitle: "Unable to preview file",
       failedDescription:
         "The file may have moved, been deleted, or use an unsupported encoding or media format.",

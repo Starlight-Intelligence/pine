@@ -1,0 +1,48 @@
+import { computed, ref } from "vue";
+import { useI18n } from "vue-i18n";
+import { handleError } from "@/app/errors/errorHandler";
+import type { ProjectFilePreviewRequest } from "@/shared/projectFiles";
+import type { PineSessionSummary } from "@/shared/sessions";
+import { useContentTabsStore } from "@/stores/contentTabs";
+import { useProjectStore } from "@/stores/project";
+import { useContentTabNavigation } from "./useContentTabNavigation";
+
+export function useFileToSession() {
+  const { t } = useI18n();
+  const tabs = useContentTabsStore();
+  const project = useProjectStore();
+  const navigation = useContentTabNavigation();
+  const pending = ref(0);
+  const isSending = computed(() => pending.value > 0);
+
+  async function sendFile(
+    file: ProjectFilePreviewRequest,
+    target: string | PineSessionSummary,
+  ): Promise<void> {
+    const origin = project.activeProject;
+    if (!origin || origin.id !== file.projectId) return;
+    pending.value += 1;
+    try {
+      const result = await window.pine.inspectProjectAttachments([
+        { folderId: file.folderId, relativePath: file.relativePath },
+      ]);
+      // Do not deliver late inspection results into another project or a closed tab.
+      if (project.activeProject !== origin) return;
+      const tab =
+        typeof target === "string"
+          ? tabs.tabs.find((tab) => tab.id === target && tab.kind === "session")
+          : tabs.openSession(target);
+      if (!tab || !tabs.addAttachments(tab.id, result.attachments)) return;
+      navigation.activate(tab.id);
+    } catch (error) {
+      handleError(error, {
+        id: "project.preview.send",
+        title: t("project.preview.sendFailed"),
+      });
+    } finally {
+      pending.value -= 1;
+    }
+  }
+
+  return { isSending, sendFile };
+}

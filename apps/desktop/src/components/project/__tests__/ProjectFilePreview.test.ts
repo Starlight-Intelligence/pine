@@ -1,5 +1,8 @@
-import { flushPromises, mount } from "@vue/test-utils";
-import { createPinia } from "pinia";
+import { DOMWrapper, flushPromises, mount } from "@vue/test-utils";
+import { createPinia, setActivePinia } from "pinia";
+import { createMemoryHistory, createRouter } from "vue-router";
+import { useContentTabsStore } from "@/stores/contentTabs";
+import { useProjectStore } from "@/stores/project";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createAppI18n } from "@/app/i18n";
 import { codeToHtml } from "@/lib/codeHighlight";
@@ -15,13 +18,20 @@ const info = { size: 2048, modifiedAt: "2026-09-04T12:00:00Z" };
 const file = { projectId: "p1", folderId: "f1", relativePath: "src/main.py" };
 const wrappers: ReturnType<typeof mount>[] = [];
 function render(read: (request: unknown) => Promise<Preview>) {
+  const pinia = createPinia();
+  setActivePinia(pinia);
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [{ path: "/", component: {} }],
+  });
   Object.defineProperty(window, "pine", {
     configurable: true,
     value: { readProjectFilePreview: read },
   });
   const wrapper = mount(ProjectFilePreview, {
     props: { file },
-    global: { plugins: [createPinia(), createAppI18n("en-US")] },
+    attachTo: document.body,
+    global: { plugins: [pinia, router, createAppI18n("en-US")] },
   });
   wrappers.push(wrapper);
   return wrapper;
@@ -48,12 +58,67 @@ describe("ProjectFilePreview", () => {
     expect(metadata.text()).toContain("2 KB");
     expect(metadata.text()).toContain("UTF-8");
     expect(metadata.text()).toContain("2 lines");
-    expect(metadata.text()).toContain("Modified");
+    expect(metadata.text()).not.toContain("Modified");
+    expect(wrapper.element.lastElementChild).toBe(metadata.element);
     expect(metadata.text()).not.toContain("Read only");
     expect(wrapper.find("textarea, [contenteditable=true]").exists()).toBe(
       false,
     );
     expect(wrapper.find("pre.shiki").exists()).toBe(true);
+  });
+
+  it("lists only open session tabs and attaches the file through the footer menu", async () => {
+    const wrapper = render(
+      vi.fn().mockResolvedValue({
+        ...info,
+        kind: "text",
+        text: "hi",
+        encoding: "UTF-8",
+      }),
+    );
+    const store = useContentTabsStore();
+    const session = {
+      id: "s1",
+      name: "Review",
+      createdAt: "",
+      updatedAt: "",
+      messageCount: 0,
+    };
+    store.bindSession("session-1", session);
+    const draft = store.createSessionTab();
+    store.openFile(file);
+    useProjectStore().activeProject = {
+      id: "p1",
+      name: "Project",
+      schemaVersion: 1,
+      createdAt: "",
+      updatedAt: "",
+      defaultFolderId: "f1",
+      folders: [],
+    };
+    const attachment = {
+      name: "main.py",
+      path: "/project/src/main.py",
+      extension: "py",
+      size: 2,
+      modifiedAt: "",
+    };
+    window.pine.inspectProjectAttachments = vi
+      .fn()
+      .mockResolvedValue({ attachments: [attachment] });
+    await flushPromises();
+    await wrapper.get("footer button").trigger("click");
+    await flushPromises();
+    const choices = Array.from(document.querySelectorAll('[role="menuitem"]'));
+    expect(choices.map((item) => item.textContent?.trim())).toEqual([
+      "Review",
+      "New session",
+    ]);
+    await new DOMWrapper(choices[1]).trigger("click");
+    await flushPromises();
+    expect(store.attachmentsFor(draft.id)).toEqual([attachment]);
+    expect(store.attachmentsFor("session-1")).toEqual([]);
+    expect(store.fallbackActiveTabId).toBe(draft.id);
   });
 
   it("ignores stale reads when switching files", async () => {

@@ -68,7 +68,12 @@ const messages = tabValue(liveState.messages);
 const pendingApprovals = tabValue(liveState.pendingApprovals);
 const reviewingToolCallIds = tabValue(liveState.reviewingToolCallIds);
 const draft = ref("");
-const attachments = ref<PineAttachment[]>([]);
+const attachments = computed<PineAttachment[]>({
+  get: () => contentTabsStore.attachmentsFor(props.tabId),
+  set: (value) => {
+    contentTabsStore.setAttachments(props.tabId, value);
+  },
+});
 const approvalMode = ref<PineApprovalMode>("auto-approve");
 const isDraggingFiles = ref(false);
 let fileDragDepth = 0;

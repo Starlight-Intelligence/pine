@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Pencil, Plus, Search, Trash2 } from "@lucide/vue";
 import { useVirtualizer } from "@tanstack/vue-virtual";
+import { useEventListener } from "@vueuse/core";
 import { storeToRefs } from "pinia";
 import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
@@ -44,6 +45,8 @@ import {
   SidebarMenuSkeleton,
 } from "@/components/ui/sidebar";
 import { useContentTabNavigation } from "@/composables/useContentTabNavigation";
+import { useFileToSession } from "@/composables/useFileToSession";
+import { FILE_TAB_DRAG_TYPE, hasFileTabDrag } from "@/lib/contentTabDrag";
 import type { PineSessionSummary } from "@/shared/sessions";
 import { useContentTabsStore } from "@/stores/contentTabs";
 import { useProjectStore } from "@/stores/project";
@@ -57,6 +60,40 @@ const tabNavigation = useContentTabNavigation();
 const projectStore = useProjectStore();
 const sessionStore = useSessionStore();
 const contentTabsStore = useContentTabsStore();
+const { sendFile } = useFileToSession();
+const dropSessionId = ref<string | null>(null);
+useEventListener(window, "dragend", () => {
+  dropSessionId.value = null;
+});
+
+function dragOverSession(event: DragEvent, session: PineSessionSummary): void {
+  if (!hasFileTabDrag(event.dataTransfer)) return;
+  event.preventDefault();
+  event.stopPropagation();
+  if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+  dropSessionId.value = session.id;
+}
+
+function leaveSession(event: DragEvent): void {
+  if (
+    event.relatedTarget instanceof Node &&
+    (event.currentTarget as HTMLElement).contains(event.relatedTarget)
+  )
+    return;
+  dropSessionId.value = null;
+}
+
+function dropOnSession(event: DragEvent, session: PineSessionSummary): void {
+  if (!hasFileTabDrag(event.dataTransfer)) return;
+  event.preventDefault();
+  event.stopPropagation();
+  dropSessionId.value = null;
+  const tabId = event.dataTransfer?.getData(FILE_TAB_DRAG_TYPE);
+  const file = contentTabsStore.tabs.find(
+    (tab) => tab.id === tabId && tab.kind === "file",
+  );
+  if (file?.kind === "file") void sendFile(file, session);
+}
 const { activeSessionTab } = tabNavigation;
 const { activeProject } = storeToRefs(projectStore);
 const { isLoadingRecent, recentSessions } = storeToRefs(sessionStore);
@@ -255,6 +292,18 @@ watch(
               <ContextMenuTrigger as-child>
                 <SidebarMenuButton
                   class="min-w-0"
+                  :data-session-id="recentSessions[virtualRow.index].id"
+                  :class="{
+                    'bg-sidebar-accent ring-1 ring-sidebar-ring':
+                      dropSessionId === recentSessions[virtualRow.index].id,
+                  }"
+                  @dragover="
+                    dragOverSession($event, recentSessions[virtualRow.index])
+                  "
+                  @dragleave="leaveSession"
+                  @drop="
+                    dropOnSession($event, recentSessions[virtualRow.index])
+                  "
                   :is-active="
                     activeSessionTab?.state === 'bound' &&
                     recentSessions[virtualRow.index].id ===

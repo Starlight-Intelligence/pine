@@ -2,6 +2,7 @@ import { PROJECT_ENTRY_DRAG_TYPE } from "@/lib/projectFileDrag";
 import { flushPromises, mount } from "@vue/test-utils";
 import { computed, ref } from "vue";
 import { useSessionStore } from "@/stores/session";
+import { useContentTabsStore } from "@/stores/contentTabs";
 import { createPinia, setActivePinia } from "pinia";
 import { describe, expect, it, vi } from "vitest";
 import { createAppI18n } from "@/app/i18n";
@@ -75,6 +76,26 @@ function mountView() {
 }
 
 describe("ProjectSessionView file drop", () => {
+  it("receives attachments for its own composer while in the background", async () => {
+    const { wrapper } = mountView();
+    const store = useContentTabsStore();
+    activeTabId.value = "file-tab";
+    const attachment = {
+      name: "notes.md",
+      path: "/project/notes.md",
+      extension: "md",
+      size: 12,
+      modifiedAt: "",
+    };
+    store.addAttachments("session-1", [attachment]);
+    await flushPromises();
+    expect(
+      wrapper
+        .get('[data-slot="composer-stub"]')
+        .attributes("data-attachment-count"),
+    ).toBe("1");
+    wrapper.unmount();
+  });
   it("keeps a hidden view on its own transcript while the active session changes", async () => {
     const { wrapper } = mountView();
     const store = useSessionStore();

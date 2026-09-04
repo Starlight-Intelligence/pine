@@ -13,6 +13,63 @@ const firstSession: PineSessionSummary = {
 };
 
 describe("content tabs store", () => {
+  it("keeps pending composer attachments separate, deduplicates them, and releases closed tabs", () => {
+    const store = useContentTabsStore();
+    store.bindSession("session-1", firstSession);
+    const draft = store.createSessionTab();
+    const attachment = {
+      name: "notes.md",
+      path: "/notes.md",
+      extension: "md",
+      size: 12,
+      modifiedAt: "",
+    };
+    store.addAttachments("session-1", [attachment]);
+    store.addAttachments("session-1", [attachment]);
+    store.addAttachments(draft.id, [{ ...attachment, path: "/other.md" }]);
+    expect(store.attachmentsFor("session-1")).toEqual([attachment]);
+    expect(store.attachmentsFor(draft.id)).toHaveLength(1);
+    store.setAttachments("session-1", []);
+    expect(store.attachmentsFor("session-1")).toEqual([]);
+    store.close(draft.id, draft.id);
+    expect(store.attachmentsFor(draft.id)).toEqual([]);
+    expect(store.addAttachments(draft.id, [attachment])).toBe(false);
+  });
+
+  it("persists reordered tabs without changing selection or losing composer attachments", () => {
+    const store = useContentTabsStore();
+    store.restore("one");
+    const file = store.openFile({
+      projectId: "one",
+      folderId: "root",
+      relativePath: "notes.txt",
+    });
+    const other = store.openFile({
+      projectId: "one",
+      folderId: "root",
+      relativePath: "image.png",
+    });
+    store.setActiveTab(file.id);
+    store.moveTab(other.id, "session-1", "before");
+    expect(store.tabs.map((tab) => tab.id)).toEqual([
+      other.id,
+      "session-1",
+      file.id,
+    ]);
+    store.moveTab("session-1", file.id, "after");
+    expect(store.tabs.map((tab) => tab.id)).toEqual([
+      other.id,
+      file.id,
+      "session-1",
+    ]);
+    store.restore("one");
+    expect(store.tabs.map((tab) => tab.id)).toEqual([
+      other.id,
+      file.id,
+      "session-1",
+    ]);
+    expect(store.fallbackActiveTabId).toBe(file.id);
+  });
   beforeEach(() => {
     localStorage.clear();
     setActivePinia(createPinia());

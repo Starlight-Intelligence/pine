@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onDeactivated, ref, useTemplateRef, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import { FileQuestion, FileWarning } from "@lucide/vue";
+import { FileQuestion, FileWarning, Send, SquareTerminal } from "@lucide/vue";
 import CodeBlock from "@/components/markdown/CodeBlock.vue";
 import { Button } from "@/components/ui/button";
 import {
@@ -12,6 +12,15 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
+import { useContentTabsStore } from "@/stores/contentTabs";
+import { useFileToSession } from "@/composables/useFileToSession";
 import { Skeleton } from "@/components/ui/skeleton";
 import { fileLanguage } from "@/lib/fileLanguage";
 import type {
@@ -22,6 +31,11 @@ import type {
 const props = defineProps<{ file: ProjectFilePreviewRequest }>();
 const { t, locale } = useI18n();
 const preview = ref<ProjectFilePreview>();
+const tabsStore = useContentTabsStore();
+const sessionTabs = computed(() =>
+  tabsStore.tabs.filter((tab) => tab.kind === "session"),
+);
+const { isSending, sendFile } = useFileToSession();
 const failed = ref(false);
 const revision = ref(0);
 const video = useTemplateRef<HTMLVideoElement>("video");
@@ -47,14 +61,6 @@ const fileSize = computed(() => {
     size >= 1024 ** 3 ? 3 : size >= 1024 ** 2 ? 2 : size >= 1024 ? 1 : 0;
   return `${new Intl.NumberFormat(locale.value, { maximumFractionDigits: unit ? 1 : 0 }).format(size / 1024 ** unit)} ${["B", "KB", "MB", "GB"][unit]}`;
 });
-const modifiedTime = computed(() =>
-  preview.value
-    ? new Intl.DateTimeFormat(locale.value, {
-        dateStyle: "medium",
-        timeStyle: "short",
-      }).format(new Date(preview.value.modifiedAt))
-    : "",
-);
 const lineCount = computed(() =>
   preview.value?.kind === "text"
     ? preview.value.text.split(/\r\n|\r|\n/).length
@@ -118,28 +124,6 @@ onDeactivated(() => video.value?.pause());
 
 <template>
   <section class="flex h-full min-h-0 flex-col" :aria-label="fileName">
-    <div
-      class="flex min-h-10 flex-wrap items-center gap-x-4 gap-y-1 border-b px-5 py-2 text-xs text-muted-foreground"
-      :title="file.relativePath"
-      :aria-label="t('project.preview.metadata')"
-    >
-      <template v-if="preview">
-        <span>{{ fileType }}</span>
-        <span>{{ fileSize }}</span>
-        <template v-if="preview.kind === 'text'">
-          <span>{{ preview.encoding }}</span>
-          <span>{{ t("project.preview.lines", { count: lineCount }) }}</span>
-        </template>
-        <span v-if="mediaDetails"
-          >{{ mediaDetails.width }} × {{ mediaDetails.height }}</span
-        >
-        <span v-if="duration">{{ duration }}</span>
-        <span class="ml-auto">{{
-          t("project.preview.modified", { time: modifiedTime })
-        }}</span>
-      </template>
-      <Skeleton v-else-if="!failed" class="h-3 w-40" />
-    </div>
     <Empty v-if="failed" class="flex-1" role="alert">
       <EmptyHeader>
         <EmptyMedia variant="icon"><FileWarning /></EmptyMedia>
@@ -156,7 +140,7 @@ onDeactivated(() => video.value?.pause());
     </Empty>
     <div
       v-else-if="!preview"
-      class="flex flex-col gap-3 p-6"
+      class="flex flex-1 flex-col gap-3 p-6"
       role="status"
       :aria-label="t('project.files.loading')"
     >
@@ -179,7 +163,7 @@ onDeactivated(() => video.value?.pause());
     </Empty>
     <div
       v-else-if="preview.kind === 'text'"
-      class="min-h-0 flex-1 overflow-auto px-5"
+      class="scroll-fade min-h-0 flex-1 overflow-auto px-5"
     >
       <CodeBlock
         :node="{
@@ -194,7 +178,7 @@ onDeactivated(() => video.value?.pause());
     </div>
     <div
       v-else
-      class="flex min-h-0 flex-1 items-center justify-center overflow-auto p-6"
+      class="scroll-fade flex min-h-0 flex-1 items-center justify-center overflow-auto p-6"
     >
       <img
         v-if="preview.kind === 'image'"
@@ -216,5 +200,57 @@ onDeactivated(() => video.value?.pause());
         @error="failed = true"
       />
     </div>
+    <footer
+      class="mt-auto flex min-h-12 shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-t pl-5 pr-2 py-2 text-xs text-muted-foreground"
+      :title="file.relativePath"
+      :aria-label="t('project.preview.metadata')"
+    >
+      <template v-if="preview">
+        <span>{{ fileType }}</span>
+        <span>{{ fileSize }}</span>
+        <template v-if="preview.kind === 'text'">
+          <span>{{ preview.encoding }}</span>
+          <span>{{ t("project.preview.lines", { count: lineCount }) }}</span>
+        </template>
+        <span v-if="mediaDetails"
+          >{{ mediaDetails.width }} × {{ mediaDetails.height }}</span
+        >
+        <span v-if="duration">{{ duration }}</span>
+      </template>
+      <Skeleton v-else-if="!failed" class="h-3 w-40" />
+      <DropdownMenu>
+        <DropdownMenuTrigger as-child>
+          <Button class="ml-auto" variant="ghost" :disabled="isSending">
+            <Send data-icon="inline-start" />{{
+              t("project.preview.sendToTab")
+            }}
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          side="top"
+          align="end"
+          class="w-64"
+          @close-auto-focus.prevent
+        >
+          <DropdownMenuGroup>
+            <DropdownMenuItem
+              v-for="tab in sessionTabs"
+              :key="tab.id"
+              @select="sendFile(file, tab.id)"
+            >
+              <SquareTerminal />
+              <span class="truncate">{{
+                "label" in tab && tab.label
+                  ? tab.label
+                  : t("project.contentTabs.newSession")
+              }}</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem v-if="!sessionTabs.length" disabled>{{
+              t("project.preview.noSessionTabs")
+            }}</DropdownMenuItem>
+          </DropdownMenuGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </footer>
   </section>
 </template>

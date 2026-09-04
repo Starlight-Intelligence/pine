@@ -1,3 +1,4 @@
+import { FILE_TAB_DRAG_TYPE } from "@/lib/contentTabDrag";
 import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { createMemoryHistory, createRouter } from "vue-router";
@@ -48,6 +49,74 @@ const project: PineProject = {
 };
 
 describe("ProjectSessionList", () => {
+  it("accepts a file tab drop, opens the target session, and adds its attachment", async () => {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [{ path: "/", component: {} }],
+    });
+    await router.push("/");
+    const attachment = {
+      name: "notes.md",
+      path: "/project/notes.md",
+      extension: "md",
+      size: 12,
+      modifiedAt: "",
+    };
+    const inspectProjectAttachments = vi
+      .fn()
+      .mockResolvedValue({ attachments: [attachment] });
+    Object.defineProperty(window, "pine", {
+      configurable: true,
+      value: {
+        searchSessions: vi.fn().mockResolvedValue({ sessions: [session] }),
+        inspectProjectAttachments,
+      },
+    });
+    useProjectStore().activeProject = project;
+    const store = useContentTabsStore();
+    const file = store.openFile({
+      projectId: project.id,
+      folderId: project.defaultFolderId,
+      relativePath: "notes.md",
+    });
+    const slotStub = { template: "<div><slot /></div>" };
+    const wrapper = mount(ProjectSessionList, {
+      global: {
+        plugins: [pinia, router, createAppI18n("en-US")],
+        stubs: {
+          SidebarGroup: slotStub,
+          SidebarGroupContent: slotStub,
+          SidebarMenu: slotStub,
+          SidebarMenuItem: slotStub,
+          SidebarMenuButton: { template: "<button><slot /></button>" },
+          SidebarMenuSkeleton: true,
+        },
+      },
+    });
+    await flushPromises();
+    const target = wrapper.get(`[data-session-id="${session.id}"]`);
+    const transfer = {
+      types: [FILE_TAB_DRAG_TYPE],
+      getData: () => file.id,
+      dropEffect: "none",
+    };
+    await target.trigger("dragover", { dataTransfer: transfer });
+    expect(transfer.dropEffect).toBe("copy");
+    expect(target.classes()).toContain("ring-sidebar-ring");
+    await target.trigger("drop", { dataTransfer: transfer });
+    await flushPromises();
+    const tab = store.tabs.find(
+      (tab) => tab.kind === "session" && tab.state === "bound",
+    );
+    expect(tab).toMatchObject({ sessionId: session.id });
+    expect(router.currentRoute.value.query.tab).toBe(tab?.id);
+    expect(store.attachmentsFor(tab!.id)).toEqual([attachment]);
+    expect(store.tabs.find((tab) => tab.id === file.id)).toBeDefined();
+    wrapper.unmount();
+  });
+
   it("opens a new draft tab from the new-session action", async () => {
     const pinia = createPinia();
     setActivePinia(pinia);

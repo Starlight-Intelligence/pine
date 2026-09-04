@@ -7,6 +7,10 @@ import { createAppI18n } from "@/app/i18n";
 import type { PineSessionSummary } from "@/shared/sessions";
 import { useSessionStore } from "@/stores/session";
 import { useContentTabsStore } from "@/stores/contentTabs";
+import {
+  CONTENT_TAB_DRAG_TYPE,
+  FILE_TAB_DRAG_TYPE,
+} from "@/lib/contentTabDrag";
 import ProjectContentTabs from "../ProjectContentTabs.vue";
 
 const sidebar = vi.hoisted(() => ({
@@ -101,6 +105,35 @@ const secondSession: PineSessionSummary = {
 };
 
 describe("ProjectContentTabs", () => {
+  it("reorders dragged tabs without switching selection and marks files for attachment drops", async () => {
+    const { router, wrapper, file } = await mountTabs(true);
+    const data = new Map<string, string>();
+    const transfer = {
+      setData: (type: string, value: string) => data.set(type, value),
+      getData: (type: string) => data.get(type) ?? "",
+      effectAllowed: "none",
+      dropEffect: "none",
+    };
+    const source = wrapper.get(`[data-tab-id="${file!.id}"]`);
+    const target = wrapper.get('[data-tab-id="session-1"]');
+    vi.spyOn(target.element, "getBoundingClientRect").mockReturnValue(
+      new DOMRect(0, 0, 160, 32),
+    );
+    await source.trigger("dragstart", { dataTransfer: transfer });
+    expect(data.get(CONTENT_TAB_DRAG_TYPE)).toBe(file!.id);
+    expect(data.get(FILE_TAB_DRAG_TYPE)).toBe(file!.id);
+    expect(transfer.effectAllowed).toBe("copyMove");
+    await target.trigger("dragover", { dataTransfer: transfer, clientX: 10 });
+    await target.trigger("drop", { dataTransfer: transfer });
+    await flushPromises();
+    expect(useContentTabsStore().tabs.map((tab) => tab.id)).toEqual([
+      file!.id,
+      "session-1",
+    ]);
+    expect(router.currentRoute.value.query.tab).toBe("session-1");
+    expect(wrapper.get('[role="tablist"]').classes()).toContain("window-drag");
+    wrapper.unmount();
+  });
   afterEach(() => {
     vi.restoreAllMocks();
   });

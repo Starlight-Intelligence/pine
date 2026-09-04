@@ -3,6 +3,7 @@ import { ref, watch } from "vue";
 import { readContentTabs, writeContentTabs } from "@/lib/contentTabStorage";
 import type { PineSessionSummary } from "@/shared/sessions";
 import type { ProjectFilePreviewRequest } from "@/shared/projectFiles";
+import type { PineAttachment } from "@/shared/attachments";
 
 export interface FileContentTab extends ProjectFilePreviewRequest {
   id: string;
@@ -48,6 +49,56 @@ export const useContentTabsStore = defineStore("content-tabs", () => {
 
   const tabs = ref<ProjectContentTab[]>(initialTabs());
   const projectId = ref<string | null>(null);
+  const composerAttachments = ref<Record<string, PineAttachment[]>>({});
+  watch(
+    () => tabs.value.map((tab) => tab.id),
+    (ids) => {
+      for (const id of Object.keys(composerAttachments.value)) {
+        if (!ids.includes(id)) delete composerAttachments.value[id];
+      }
+    },
+    { flush: "sync" },
+  );
+
+  function attachmentsFor(tabId: string): PineAttachment[] {
+    return composerAttachments.value[tabId] ?? [];
+  }
+
+  function setAttachments(
+    tabId: string,
+    attachments: PineAttachment[],
+  ): boolean {
+    if (!tabs.value.some((tab) => tab.id === tabId && tab.kind === "session"))
+      return false;
+    composerAttachments.value[tabId] = [
+      ...new Map(attachments.map((file) => [file.path, file])).values(),
+    ];
+    return true;
+  }
+
+  function addAttachments(
+    tabId: string,
+    attachments: PineAttachment[],
+  ): boolean {
+    return setAttachments(tabId, [...attachmentsFor(tabId), ...attachments]);
+  }
+
+  function moveTab(
+    tabId: string,
+    targetId: string,
+    side: "before" | "after",
+  ): void {
+    if (tabId === targetId) return;
+    const tab = tabs.value.find((candidate) => candidate.id === tabId);
+    if (!tab || !tabs.value.some((candidate) => candidate.id === targetId))
+      return;
+    const ordered = tabs.value.filter((candidate) => candidate.id !== tabId);
+    const targetIndex = ordered.findIndex(
+      (candidate) => candidate.id === targetId,
+    );
+    ordered.splice(targetIndex + (side === "after" ? 1 : 0), 0, tab);
+    tabs.value = ordered;
+  }
   // Router replacement is async. Keep the intended successor available while
   // the route still points to a tab that has just been removed.
   const fallbackActiveTabId = ref<string | null>(null);
@@ -69,6 +120,7 @@ export const useContentTabsStore = defineStore("content-tabs", () => {
     const saved = readContentTabs(id);
     // Suspend writes while replacing one project's state with another's.
     projectId.value = null;
+    composerAttachments.value = {};
     nextSessionTabNumber = 2;
     tabs.value = saved?.tabs ?? initialTabs();
     fallbackActiveTabId.value = saved?.activeTabId ?? tabs.value[0]?.id ?? null;
@@ -153,6 +205,7 @@ export const useContentTabsStore = defineStore("content-tabs", () => {
         tab.kind === "session" && tab.state === "draft" && tab.id !== tabId,
     );
     if (existingDraft) {
+      addAttachments(existingDraft.id, attachmentsFor(tabId));
       tabs.value = tabs.value.filter((tab) => tab.id !== tabId);
       return existingDraft.id;
     }
@@ -219,6 +272,7 @@ export const useContentTabsStore = defineStore("content-tabs", () => {
         tab.id !== tabId,
     );
     if (existing) {
+      addAttachments(existing.id, attachmentsFor(tabId));
       tabs.value = tabs.value.filter((tab) => tab.id !== tabId);
       updateSession(session);
       return existing;
@@ -292,18 +346,23 @@ export const useContentTabsStore = defineStore("content-tabs", () => {
 
   function reset(): void {
     projectId.value = null;
+    composerAttachments.value = {};
     nextSessionTabNumber = 2;
     fallbackActiveTabId.value = null;
     tabs.value = initialTabs();
   }
 
   return {
+    addAttachments,
+    attachmentsFor,
     beginPrompt,
     bindSession,
     close,
+    composerAttachments,
     createSessionTab,
     failPrompt,
     fallbackActiveTabId,
+    moveTab,
     openFile,
     openSession,
     projectId,
@@ -311,6 +370,7 @@ export const useContentTabsStore = defineStore("content-tabs", () => {
     reset,
     restore,
     setActiveTab,
+    setAttachments,
     tabs,
     updateSession,
   };
