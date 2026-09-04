@@ -476,9 +476,14 @@ function clearApprovalAttention(): void {
   }
 }
 
+const appIconPath = app.isPackaged
+  ? path.join(process.resourcesPath, "icon.png")
+  : path.join(app.getAppPath(), "resources/icon.png");
+
 const createWindow = () => {
   const mainWindow = new BrowserWindow({
     title: "Pine",
+    icon: appIconPath,
     titleBarStyle: "hidden",
     ...(process.platform === "darwin"
       ? { trafficLightPosition: { x: 21, y: 21 } }
@@ -997,6 +1002,7 @@ ipcMain.handle(
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.on("ready", () => {
+  if (!app.isPackaged) app.dock?.setIcon(appIconPath);
   agentHost = AgentProcessHost.createDefault();
   projectsRootPath = path.join(app.getPath("userData"), PROJECTS_DIRECTORY);
   projectRepository = new ProjectRepository(projectsRootPath);

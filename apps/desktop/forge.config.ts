@@ -92,6 +92,8 @@ function injectAgentRuntimeDeps(buildPath: string): void {
 
 const config: ForgeConfig = {
   packagerConfig: {
+    icon: path.join(__dirname, "resources/icon"),
+    extraResource: [path.join(__dirname, "resources/icon.png")],
     afterPrune: [
       (
         buildPath: string,
@@ -107,11 +109,17 @@ const config: ForgeConfig = {
   },
   rebuildConfig: {},
   makers: [
-    new MakerSquirrel({}),
+    new MakerSquirrel({
+      setupIcon: path.join(__dirname, "resources/icon.ico"),
+    }),
     new MakerZIP({}, ["darwin"]),
     new MakerDMG({ format: "ULFO" }, ["darwin"]),
-    new MakerRpm({}),
-    new MakerDeb({}),
+    new MakerRpm({
+      options: { icon: path.join(__dirname, "resources/icon.png") },
+    }),
+    new MakerDeb({
+      options: { icon: path.join(__dirname, "resources/icon.png") },
+    }),
   ],
   plugins: [
     new VitePlugin({

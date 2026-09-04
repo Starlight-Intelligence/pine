@@ -446,7 +446,10 @@ describe("ProjectContentTabs", () => {
     await flushPromises();
     expect(router.currentRoute.value.query.tab).toBeUndefined();
     expect(useContentTabsStore().tabs).toEqual([]);
-    expect(wrapper.text()).toContain("No tabs open");
+    expect(
+      wrapper.find('[role="region"][aria-label="No tabs open"]').exists(),
+    ).toBe(true);
+    expect(wrapper.find('[data-slot="empty"]').exists()).toBe(false);
     expect(wrapper.find('[role="tabpanel"]').exists()).toBe(false);
     await wrapper.get('button[aria-label="Add session tab"]').trigger("click");
     await flushPromises();

@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import {
   FileCode2Icon,
-  PanelsTopLeft,
   PlusIcon,
   SquareTerminalIcon,
   XIcon,
@@ -13,13 +12,7 @@ import { useI18n } from "vue-i18n";
 import { handleError } from "@/app/errors/errorHandler";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import {
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from "@/components/ui/empty";
+import pineLogo from "@/assets/pine-logo.svg";
 import { useSidebar } from "@/components/ui/sidebar";
 import { useContentTabNavigation } from "@/composables/useContentTabNavigation";
 import { cn } from "@/lib/utils";
@@ -34,6 +27,9 @@ import ProjectSessionView from "./ProjectSessionView.vue";
 import ProjectFilePreview from "./ProjectFilePreview.vue";
 
 const { t } = useI18n();
+const workbenchLogoStyle = {
+  mask: `url("${pineLogo}") center / contain no-repeat`,
+};
 const { state: sidebarState, isMobile } = useSidebar();
 const contentTabsStore = useContentTabsStore();
 const tabNavigation = useContentTabNavigation();
@@ -355,15 +351,18 @@ watch(activeSession, (session) => {
         <ProjectFilePreview v-if="activeTabId === tab.id" :file="tab" />
       </KeepAlive>
     </div>
-    <Empty v-else class="flex-1">
-      <EmptyHeader>
-        <EmptyMedia variant="icon"><PanelsTopLeft /></EmptyMedia>
-        <EmptyTitle>{{ t("project.contentTabs.emptyTitle") }}</EmptyTitle>
-        <EmptyDescription>{{
-          t("project.contentTabs.emptyDescription")
-        }}</EmptyDescription>
-      </EmptyHeader>
-    </Empty>
+    <div
+      v-else
+      role="region"
+      :aria-label="t('project.contentTabs.emptyTitle')"
+      class="flex min-h-0 flex-1 items-center justify-center overflow-hidden p-8"
+    >
+      <div
+        aria-hidden="true"
+        class="pointer-events-none size-full max-h-[36rem] max-w-[36rem] bg-primary/10 select-none"
+        :style="workbenchLogoStyle"
+      />
+    </div>
   </div>
 </template>
 
