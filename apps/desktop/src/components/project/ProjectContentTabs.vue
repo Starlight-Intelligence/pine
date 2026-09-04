@@ -252,70 +252,77 @@ watch(activeSession, (session) => {
         data-slot="project-content-tab-list"
         role="tablist"
         :aria-label="t('project.contentTabs.tabListLabel')"
-        class="scroll-fade-x pointer-events-auto flex min-w-0 flex-1 items-center justify-start gap-1 overflow-x-auto scrollbar-none"
+        class="scroll-fade-x pointer-events-auto flex min-w-0 flex-1 justify-start overflow-x-auto no-scrollbar"
         :class="draggingTabId ? 'window-no-drag' : 'window-drag'"
         @dragover="dragOverTab($event)"
         @drop="dropTab"
         @dragleave="leaveTabList"
       >
-        <template v-for="(tab, index) in tabs" :key="tab.id">
-          <Separator
-            v-if="index > 0"
-            orientation="vertical"
-            :class="
-              cn(
-                'project-content-tab-separator h-7 self-center transition-opacity',
-                shouldShowSeparator(index) ? 'opacity-100' : 'opacity-0',
-              )
-            "
-          />
-
-          <div
-            data-slot="project-content-tab"
-            class="window-no-drag group/tab relative flex h-8 w-40 min-w-40 items-center rounded-2xl"
-            :data-tab-id="tab.id"
-            :draggable="true"
-            @dragstart="startTabDrag($event, tab)"
-            @dragend="endTabDrag"
-            @dragover="dragOverTab($event, tab.id)"
-            @drop="dropTab"
-          >
-            <span
-              v-if="dropPosition?.tabId === tab.id && draggingTabId !== tab.id"
-              aria-hidden="true"
-              class="pointer-events-none absolute inset-y-1 w-0.5 rounded-full bg-primary"
-              :class="dropPosition.side === 'before' ? '-left-1' : '-right-1'"
-            />
-            <Button
-              :id="`project-content-tab-${tab.id}`"
-              :ref="(element) => setTabButton(tab.id, element)"
-              role="tab"
-              :aria-controls="`project-content-panel-${tab.id}`"
-              :aria-selected="activeTabId === tab.id"
-              :tabindex="activeTabId === tab.id ? 0 : -1"
-              :variant="activeTabId === tab.id ? 'secondary' : 'ghost'"
-              size="sm"
-              class="h-8 w-full min-w-0 justify-start group-hover/tab:pr-10 group-has-[:focus-visible]/tab:pr-10"
-              @click="activateTab(tab.id)"
-              @keydown="moveTabFocus(index, $event)"
-            >
-              <component :is="tabIcon(tab)" data-icon="inline-start" />
-              <span class="truncate">{{ getTabLabel(tab) }}</span>
-            </Button>
-
-            <Button
-              class="pointer-events-none absolute inset-y-0 right-2 my-auto opacity-0 transition-opacity group-hover/tab:pointer-events-auto group-hover/tab:opacity-100 group-has-[:focus-visible]/tab:pointer-events-auto group-has-[:focus-visible]/tab:opacity-100"
-              variant="ghost"
-              size="icon-xs"
-              :aria-label="
-                t('project.contentTabs.closeTab', { name: getTabLabel(tab) })
+        <div
+          data-slot="project-content-tab-items"
+          class="flex min-w-max shrink-0 items-center gap-1 py-1"
+        >
+          <template v-for="(tab, index) in tabs" :key="tab.id">
+            <Separator
+              v-if="index > 0"
+              orientation="vertical"
+              :class="
+                cn(
+                  'project-content-tab-separator h-7 self-center transition-opacity',
+                  shouldShowSeparator(index) ? 'opacity-100' : 'opacity-0',
+                )
               "
-              @click.stop="tabNavigation.close(tab.id)"
+            />
+
+            <div
+              data-slot="project-content-tab"
+              class="window-no-drag group/tab relative flex h-8 w-40 min-w-40 items-center rounded-2xl"
+              :data-tab-id="tab.id"
+              :draggable="true"
+              @dragstart="startTabDrag($event, tab)"
+              @dragend="endTabDrag"
+              @dragover="dragOverTab($event, tab.id)"
+              @drop="dropTab"
             >
-              <XIcon />
-            </Button>
-          </div>
-        </template>
+              <span
+                v-if="
+                  dropPosition?.tabId === tab.id && draggingTabId !== tab.id
+                "
+                aria-hidden="true"
+                class="pointer-events-none absolute inset-y-1 w-0.5 rounded-full bg-primary"
+                :class="dropPosition.side === 'before' ? '-left-1' : '-right-1'"
+              />
+              <Button
+                :id="`project-content-tab-${tab.id}`"
+                :ref="(element) => setTabButton(tab.id, element)"
+                role="tab"
+                :aria-controls="`project-content-panel-${tab.id}`"
+                :aria-selected="activeTabId === tab.id"
+                :tabindex="activeTabId === tab.id ? 0 : -1"
+                :variant="activeTabId === tab.id ? 'secondary' : 'ghost'"
+                size="sm"
+                class="h-8 w-full min-w-0 justify-start group-hover/tab:pr-10 group-has-[:focus-visible]/tab:pr-10"
+                @click="activateTab(tab.id)"
+                @keydown="moveTabFocus(index, $event)"
+              >
+                <component :is="tabIcon(tab)" data-icon="inline-start" />
+                <span class="truncate">{{ getTabLabel(tab) }}</span>
+              </Button>
+
+              <Button
+                class="pointer-events-none absolute inset-y-0 right-2 my-auto opacity-0 transition-opacity group-hover/tab:pointer-events-auto group-hover/tab:opacity-100 group-has-[:focus-visible]/tab:pointer-events-auto group-has-[:focus-visible]/tab:opacity-100"
+                variant="ghost"
+                size="icon-xs"
+                :aria-label="
+                  t('project.contentTabs.closeTab', { name: getTabLabel(tab) })
+                "
+                @click.stop="tabNavigation.close(tab.id)"
+              >
+                <XIcon />
+              </Button>
+            </div>
+          </template>
+        </div>
       </div>
 
       <Button

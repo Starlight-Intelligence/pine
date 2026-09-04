@@ -346,9 +346,11 @@ describe("ProjectContentTabs", () => {
     const { wrapper } = await mountTabs();
     const titlebar = wrapper.get('[data-slot="project-content-tabs-titlebar"]');
     const tabList = wrapper.get('[data-slot="project-content-tab-list"]');
+    const tabItems = wrapper.get('[data-slot="project-content-tab-items"]');
 
     expect(titlebar.classes()).toContain(preferencesPaddingClass);
     expect(tabList.classes()).toContain("flex-1");
+    expect(tabItems.classes()).toContain("py-1");
   });
 
   it("keeps the tab list blank area draggable and tabs interactive", async () => {

@@ -117,6 +117,12 @@ async function expandRoot(wrapper: ReturnType<typeof mount>) {
 }
 
 describe("ProjectFileTree", () => {
+  it("keeps the file tree scrollable without showing the native scrollbar", () => {
+    const { wrapper } = mountTree();
+
+    expect(wrapper.get('[role="tree"]').classes()).toContain("no-scrollbar");
+  });
+
   it("opens a file on left click and reuses its tab without invoking an external app", async () => {
     const { wrapper, router, operateProjectFile } = mountTree();
     await expandRoot(wrapper);

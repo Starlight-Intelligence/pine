@@ -402,7 +402,7 @@ watch(activeProject, resetRoots, { immediate: true });
     :items="items"
     :get-key="nodeKey"
     :get-children="(item) => item.children"
-    class="scroll-fade h-full overflow-y-auto p-2 outline-none"
+    class="scroll-fade no-scrollbar h-full overflow-y-auto p-2 outline-none"
     @dragover="
       (event: DragEvent) => {
         const root = items.find(
