@@ -3,7 +3,7 @@
 `icon.icon` is the native Icon Composer document. Its SVG layer comes from
 `src/assets/pine-logo.svg` with its charcoal foreground. Icon Composer applies
 the `#fbfbf9` near-white background and `#1d1d16` charcoal layer fill, with a
-120% composition scale to compensate for the source SVG's transparent padding.
+135% composition scale to compensate for the source SVG's transparent padding.
 The artwork has no custom enclosure mask; macOS supplies the rounded-square
 treatment.
 

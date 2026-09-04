@@ -7,7 +7,7 @@
           "fill": { "solid": "srgb:0.11373,0.11373,0.08627,1.00000" },
           "image-name": "Logo.svg",
           "name": "Logo",
-          "position": { "scale": 1.2, "translation-in-points": [0, 0] }
+          "position": { "scale": 1.35, "translation-in-points": [0, 0] }
         }
       ],
       "specular": false,
