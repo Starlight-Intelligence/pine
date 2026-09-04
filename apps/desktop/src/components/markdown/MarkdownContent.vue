@@ -15,6 +15,7 @@ setCustomComponents("pine-chat", {
 import { computed } from "vue";
 import { storeToRefs } from "pinia";
 import MarkdownRender from "markstream-vue";
+import type { BaseNode } from "markstream-vue";
 import "markstream-vue/index.css";
 import { useAppearanceStore } from "@/stores/appearance";
 
@@ -23,6 +24,8 @@ defineProps<{
   source: string;
   /** True once the stream has completed (message finished). */
   final?: boolean;
+  /** Preparsed file preview nodes carrying source line metadata. */
+  nodes?: BaseNode[];
 }>();
 
 // markstream themes its code block via the `is-dark` prop (its inline style vars
@@ -46,6 +49,7 @@ const isDark = computed(() => colorScheme.value === "dark");
     <MarkdownRender
       mode="chat"
       :content="source"
+      :nodes="nodes"
       :final="final"
       html-policy="escape"
       custom-id="pine-chat"

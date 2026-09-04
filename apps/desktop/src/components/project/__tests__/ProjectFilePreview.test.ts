@@ -36,9 +36,159 @@ function render(read: (request: unknown) => Promise<Preview>) {
   wrappers.push(wrapper);
   return wrapper;
 }
-afterEach(() => wrappers.splice(0).forEach((wrapper) => wrapper.unmount()));
+afterEach(() => {
+  wrappers.splice(0).forEach((wrapper) => wrapper.unmount());
+  window.getSelection()?.removeAllRanges();
+  vi.mocked(codeToHtml).mockResolvedValue(
+    '<pre class="shiki"><code>highlighted</code></pre>',
+  );
+});
+
+function selectText(
+  start: Node,
+  startOffset: number,
+  end: Node,
+  endOffset: number,
+) {
+  const range = document.createRange();
+  range.setStart(start, startOffset);
+  range.setEnd(end, endOffset);
+  window.getSelection()?.removeAllRanges();
+  window.getSelection()?.addRange(range);
+  document.dispatchEvent(new Event("selectionchange"));
+}
 
 describe("ProjectFilePreview", () => {
+  it("switches Markdown between source and rendered content and locates rendered selections", async () => {
+    const wrapper = render(
+      vi.fn().mockResolvedValue({
+        ...info,
+        kind: "text",
+        text: "# Heading\n\nFirst **bold** line.\nSecond line.\n\n# Heading",
+        encoding: "UTF-8",
+      }),
+    );
+    await wrapper.setProps({ file: { ...file, relativePath: "notes.md" } });
+    await flushPromises();
+    const mode = wrapper.get('[role="switch"]');
+    expect(mode.attributes("aria-checked")).toBe("false");
+    expect(wrapper.find('[data-slot="markdown-content"]').exists()).toBe(false);
+    await mode.trigger("click");
+    await flushPromises();
+    expect(wrapper.find("pre").exists()).toBe(false);
+    const headings = wrapper.findAll("h1");
+    expect(headings).toHaveLength(2);
+    expect(wrapper.get("strong").text()).toBe("bold");
+    const walker = document.createTreeWalker(
+      headings[1].element,
+      NodeFilter.SHOW_TEXT,
+    );
+    let text = walker.nextNode()!;
+    while (text.textContent !== "Heading") text = walker.nextNode()!;
+    selectText(text, 0, text, 7);
+    await flushPromises();
+    expect(wrapper.get('button[aria-haspopup="menu"]').text()).toBe(
+      "Send selection to tab…",
+    );
+
+    useProjectStore().activeProject = {
+      id: "p1",
+      name: "Project",
+      schemaVersion: 1,
+      createdAt: "",
+      updatedAt: "",
+      defaultFolderId: "f1",
+      folders: [],
+    };
+    window.pine.inspectProjectAttachments = vi.fn().mockResolvedValue({
+      attachments: [
+        {
+          name: "notes.md",
+          path: "/notes.md",
+          extension: "md",
+          size: 10,
+          modifiedAt: "",
+        },
+      ],
+    });
+    await wrapper.get('button[aria-haspopup="menu"]').trigger("click");
+    await flushPromises();
+    await new DOMWrapper(
+      document.querySelector('[data-action="new-session"]'),
+    ).trigger("click");
+    await flushPromises();
+    const store = useContentTabsStore();
+    expect(
+      store.attachmentsFor(store.fallbackActiveTabId!)[0].selection,
+    ).toEqual({ startLine: 6, endLine: 6, text: "Heading" });
+    await mode.trigger("click");
+    await flushPromises();
+    expect(wrapper.find("pre").exists()).toBe(true);
+    expect(wrapper.get('button[aria-haspopup="menu"]').text()).toBe(
+      "Send to tab…",
+    );
+    await wrapper.setProps({ file });
+    await flushPromises();
+    expect(wrapper.find('[role="switch"]').exists()).toBe(false);
+  });
+
+  it("snapshots source selections when the menu opens, including an exclusive next-line boundary", async () => {
+    vi.mocked(codeToHtml).mockResolvedValue(
+      "<pre><code><span>first</span>\n<span>second</span>\n<span>third</span></code></pre>",
+    );
+    const wrapper = render(
+      vi.fn().mockResolvedValue({
+        ...info,
+        kind: "text",
+        text: "first\nsecond\nthird",
+        encoding: "UTF-8",
+      }),
+    );
+    await flushPromises();
+    const spans = wrapper.findAll("pre code span");
+    selectText(
+      spans[1].element.firstChild!,
+      1,
+      spans[2].element.firstChild!,
+      0,
+    );
+    await flushPromises();
+    const trigger = wrapper.get('button[aria-haspopup="menu"]');
+    expect(trigger.text()).toBe("Send selection to tab…");
+    useProjectStore().activeProject = {
+      id: "p1",
+      name: "Project",
+      schemaVersion: 1,
+      createdAt: "",
+      updatedAt: "",
+      defaultFolderId: "f1",
+      folders: [],
+    };
+    window.pine.inspectProjectAttachments = vi.fn().mockResolvedValue({
+      attachments: [
+        {
+          name: "main.py",
+          path: "/main.py",
+          extension: "py",
+          size: 18,
+          modifiedAt: "",
+        },
+      ],
+    });
+    await trigger.trigger("click");
+    await flushPromises();
+    window.getSelection()?.removeAllRanges();
+    document.dispatchEvent(new Event("selectionchange"));
+    await new DOMWrapper(document.querySelector('[role="menuitem"]')).trigger(
+      "click",
+    );
+    await flushPromises();
+    expect(
+      useContentTabsStore().attachmentsFor("session-1")[0].selection,
+    ).toEqual({ startLine: 2, endLine: 2, text: "econd\n" });
+    expect(trigger.text()).toBe("Send to tab…");
+  });
+
   it("shows file metadata and highlights read-only text", async () => {
     const read = vi.fn().mockResolvedValue({
       ...info,

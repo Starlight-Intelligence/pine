@@ -2,6 +2,7 @@ import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { handleError } from "@/app/errors/errorHandler";
 import type { ProjectFilePreviewRequest } from "@/shared/projectFiles";
+import type { AttachmentSelection } from "@/shared/attachments";
 import type { PineSessionSummary } from "@/shared/sessions";
 import { useContentTabsStore } from "@/stores/contentTabs";
 import { useProjectStore } from "@/stores/project";
@@ -18,6 +19,7 @@ export function useFileToSession() {
   async function sendFile(
     file: ProjectFilePreviewRequest,
     target: string | PineSessionSummary | null,
+    selection?: AttachmentSelection,
   ): Promise<void> {
     const origin = project.activeProject;
     if (!origin || origin.id !== file.projectId) return;
@@ -36,7 +38,10 @@ export function useFileToSession() {
                 (tab) => tab.id === target && tab.kind === "session",
               )
             : tabs.openSession(target);
-      if (!tab || !tabs.addAttachments(tab.id, result.attachments)) return;
+      const attachments = selection
+        ? result.attachments.map((attachment) => ({ ...attachment, selection }))
+        : result.attachments;
+      if (!tab || !tabs.addAttachments(tab.id, attachments)) return;
       navigation.activate(tab.id);
     } catch (error) {
       handleError(error, {
@@ -50,8 +55,9 @@ export function useFileToSession() {
 
   function sendFileToNewSession(
     file: ProjectFilePreviewRequest,
+    selection?: AttachmentSelection,
   ): Promise<void> {
-    return sendFile(file, null);
+    return sendFile(file, null, selection);
   }
 
   return { isSending, sendFile, sendFileToNewSession };

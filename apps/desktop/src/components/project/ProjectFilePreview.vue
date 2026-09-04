@@ -1,6 +1,15 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, useTemplateRef, watch } from "vue";
+import {
+  computed,
+  onBeforeUnmount,
+  ref,
+  useId,
+  useTemplateRef,
+  watch,
+} from "vue";
 import { useI18n } from "vue-i18n";
+import { useEventListener } from "@vueuse/core";
+import { getMarkdown, parseMarkdownToStructure } from "markstream-vue";
 import {
   FileQuestion,
   FileWarning,
@@ -9,6 +18,9 @@ import {
   SquareTerminal,
 } from "@lucide/vue";
 import CodeBlock from "@/components/markdown/CodeBlock.vue";
+import MarkdownContent from "@/components/markdown/MarkdownContent.vue";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import {
   Empty,
@@ -31,6 +43,8 @@ import { useFileToSession } from "@/composables/useFileToSession";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { fileLanguage } from "@/lib/fileLanguage";
+import { filePreviewSelection } from "@/lib/filePreviewSelection";
+import type { AttachmentSelection } from "@/shared/attachments";
 import type {
   ProjectFilePreview,
   ProjectFilePreviewRequest,
@@ -42,6 +56,59 @@ const props = withDefaults(
 );
 const { t, locale } = useI18n();
 const preview = ref<ProjectFilePreview>();
+const viewMode = ref<"code" | "rendered">("code");
+const renderSwitchId = useId();
+const isMarkdown = computed(
+  () =>
+    preview.value?.kind === "text" &&
+    fileLanguage(props.file.relativePath) === "markdown",
+);
+const rendered = computed(
+  () => isMarkdown.value && viewMode.value === "rendered",
+);
+const markdownNodes = computed(() =>
+  rendered.value && preview.value?.kind === "text"
+    ? parseMarkdownToStructure(
+        preview.value.text,
+        getMarkdown("pine-preview"),
+        {
+          final: true,
+          includeSourceMap: true,
+        },
+      )
+    : undefined,
+);
+const content = useTemplateRef<HTMLDivElement>("content");
+const selectedRange = ref<AttachmentSelection>();
+const menuOpen = ref(false);
+const menuSelection = ref<AttachmentSelection>();
+
+function updateSelection(): void {
+  if (menuOpen.value) return;
+  selectedRange.value =
+    props.active && content.value && preview.value?.kind === "text"
+      ? filePreviewSelection(
+          content.value,
+          preview.value.text,
+          markdownNodes.value,
+        )
+      : undefined;
+}
+
+function updateMenu(open: boolean): void {
+  if (open) {
+    updateSelection();
+    menuSelection.value = selectedRange.value;
+  }
+  menuOpen.value = open;
+  if (!open) updateSelection();
+}
+
+useEventListener(document, "selectionchange", updateSelection);
+watch(viewMode, () => {
+  selectedRange.value = undefined;
+  menuSelection.value = undefined;
+});
 const tabsStore = useContentTabsStore();
 const sessionTabs = computed(() =>
   tabsStore.tabs.filter((tab) => tab.kind === "session"),
@@ -114,6 +181,9 @@ watch(
       active = false;
     });
     preview.value = undefined;
+    viewMode.value = "code";
+    selectedRange.value = undefined;
+    menuSelection.value = undefined;
     mediaDetails.value = undefined;
     failed.value = false;
     try {
@@ -134,6 +204,7 @@ watch(
   () => props.active,
   (active) => {
     if (!active) video.value?.pause();
+    if (!active) selectedRange.value = undefined;
   },
 );
 onBeforeUnmount(() => video.value?.pause());
@@ -182,8 +253,21 @@ onBeforeUnmount(() => video.value?.pause());
       v-else-if="preview.kind === 'text'"
       class="min-h-0 min-w-0 flex-1 [&_[data-slot=scroll-area-viewport]]:scroll-fade"
     >
-      <div class="min-w-0 px-4 pb-4">
+      <div
+        ref="content"
+        class="min-w-0 px-4 pb-4"
+        @pointerup="updateSelection"
+        @keyup="updateSelection"
+      >
+        <MarkdownContent
+          v-if="rendered"
+          class="py-4"
+          :source="preview.text"
+          :nodes="markdownNodes"
+          final
+        />
         <CodeBlock
+          v-else
           layout="preview"
           :node="{
             type: 'code_block',
@@ -238,48 +322,69 @@ onBeforeUnmount(() => video.value?.pause());
         <span v-if="duration">{{ duration }}</span>
       </template>
       <Skeleton v-else-if="!failed" class="h-3 w-40" />
-      <DropdownMenu>
-        <DropdownMenuTrigger as-child>
-          <Button class="ml-auto" variant="ghost" :disabled="isSending">
-            <Send data-icon="inline-start" />{{
-              t("project.preview.sendToTab")
-            }}
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent
-          side="top"
-          align="end"
-          class="w-64"
-          @close-auto-focus.prevent
-        >
-          <DropdownMenuGroup>
-            <DropdownMenuItem
-              v-for="tab in sessionTabs"
-              :key="tab.id"
-              @select="sendFile(file, tab.id)"
+      <div class="ml-auto flex items-center gap-3">
+        <div v-if="isMarkdown" class="flex items-center gap-2">
+          <Switch
+            :id="renderSwitchId"
+            size="sm"
+            :model-value="rendered"
+            @update:model-value="viewMode = $event ? 'rendered' : 'code'"
+          />
+          <Label :for="renderSwitchId">{{
+            t("project.preview.rendered")
+          }}</Label>
+        </div>
+        <DropdownMenu :open="menuOpen" @update:open="updateMenu">
+          <DropdownMenuTrigger as-child>
+            <Button
+              variant="ghost"
+              :disabled="isSending"
+              @pointerdown.prevent="updateSelection"
             >
-              <SquareTerminal />
-              <span class="truncate">{{
-                "label" in tab && tab.label
-                  ? tab.label
-                  : t("project.contentTabs.newSession")
-              }}</span>
-            </DropdownMenuItem>
-            <DropdownMenuItem v-if="!sessionTabs.length" disabled>{{
-              t("project.preview.noSessionTabs")
-            }}</DropdownMenuItem>
-          </DropdownMenuGroup>
-          <DropdownMenuSeparator />
-          <DropdownMenuGroup>
-            <DropdownMenuItem
-              data-action="new-session"
-              @select="sendFileToNewSession(file)"
-            >
-              <Plus />{{ t("project.preview.newSession") }}
-            </DropdownMenuItem>
-          </DropdownMenuGroup>
-        </DropdownMenuContent>
-      </DropdownMenu>
+              <Send data-icon="inline-start" />{{
+                t(
+                  selectedRange
+                    ? "project.preview.sendSelectionToTab"
+                    : "project.preview.sendToTab",
+                )
+              }}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            side="top"
+            align="end"
+            class="w-64"
+            @close-auto-focus.prevent
+          >
+            <DropdownMenuGroup>
+              <DropdownMenuItem
+                v-for="tab in sessionTabs"
+                :key="tab.id"
+                @select="sendFile(file, tab.id, menuSelection)"
+              >
+                <SquareTerminal />
+                <span class="truncate">{{
+                  "label" in tab && tab.label
+                    ? tab.label
+                    : t("project.contentTabs.newSession")
+                }}</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem v-if="!sessionTabs.length" disabled>{{
+                t("project.preview.noSessionTabs")
+              }}</DropdownMenuItem>
+            </DropdownMenuGroup>
+            <DropdownMenuSeparator />
+            <DropdownMenuGroup>
+              <DropdownMenuItem
+                data-action="new-session"
+                @select="sendFileToNewSession(file, menuSelection)"
+              >
+                <Plus />{{ t("project.preview.newSession") }}
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
     </footer>
   </section>
 </template>
