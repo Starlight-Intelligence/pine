@@ -28,9 +28,6 @@ import ProjectFilePreview from "./ProjectFilePreview.vue";
 import RetainedPanel from "./RetainedPanel.vue";
 
 const { t } = useI18n();
-const workbenchLogoStyle = {
-  mask: `url("${pineLogo}") center / contain no-repeat`,
-};
 const { state: sidebarState, isMobile } = useSidebar();
 const contentTabsStore = useContentTabsStore();
 const tabNavigation = useContentTabNavigation();
@@ -366,10 +363,11 @@ watch(activeSession, (session) => {
       :aria-label="t('project.contentTabs.emptyTitle')"
       class="pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden p-8"
     >
-      <div
+      <img
         aria-hidden="true"
-        class="pointer-events-none size-full max-h-72 max-w-72 bg-primary/10 select-none"
-        :style="workbenchLogoStyle"
+        :src="pineLogo"
+        alt=""
+        class="pointer-events-none size-full max-h-72 max-w-72 object-contain opacity-10 select-none dark:invert"
       />
     </div>
   </div>
