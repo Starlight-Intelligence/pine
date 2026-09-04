@@ -513,9 +513,9 @@ describe("ProjectContentTabs", () => {
     expect(
       wrapper.find('[role="region"][aria-label="No tabs open"]').exists(),
     ).toBe(true);
-    const logo = wrapper.get('[role="region"][aria-label="No tabs open"] img');
-    expect(logo.attributes("alt")).toBe("");
-    expect(logo.attributes("src")).toBeTruthy();
+    const logo = wrapper.get('[role="region"][aria-label="No tabs open"] svg');
+    expect(logo.classes()).toContain("text-muted-foreground/10");
+    expect(logo.find("path").exists()).toBe(true);
     expect(wrapper.find('[data-slot="empty"]').exists()).toBe(false);
     expect(wrapper.find('[role="tabpanel"]').exists()).toBe(false);
     await wrapper.get('button[aria-label="Add session tab"]').trigger("click");

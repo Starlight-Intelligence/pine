@@ -10,9 +10,9 @@ import type { ComponentPublicInstance } from "vue";
 import { computed, nextTick, ref, useTemplateRef, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { handleError } from "@/app/errors/errorHandler";
+import { PineLogo } from "@/components/pine";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import pineLogo from "@/assets/pine-logo.svg";
 import { useSidebar } from "@/components/ui/sidebar";
 import { useContentTabNavigation } from "@/composables/useContentTabNavigation";
 import { cn } from "@/lib/utils";
@@ -363,11 +363,9 @@ watch(activeSession, (session) => {
       :aria-label="t('project.contentTabs.emptyTitle')"
       class="pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden p-8"
     >
-      <img
+      <PineLogo
         aria-hidden="true"
-        :src="pineLogo"
-        alt=""
-        class="pointer-events-none size-full max-h-72 max-w-72 scale-[1.35] object-contain opacity-10 select-none dark:invert"
+        class="pointer-events-none size-full max-h-72 max-w-72 scale-[1.35] text-muted-foreground/10 select-none"
       />
     </div>
   </div>

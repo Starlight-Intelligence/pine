@@ -87,7 +87,9 @@ function formatFileSize(size: number): string {
       <AttachmentMedia
         v-if="isPreviewableImage(attachment)"
         variant="image"
-        class="w-full! rounded-lg!"
+        :class="
+          surface === 'message' ? 'w-full! rounded-2xl!' : 'w-full! rounded-lg!'
+        "
       >
         <img
           :alt="attachment.name"

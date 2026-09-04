@@ -13,7 +13,7 @@ import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
 import { handleError } from "@/app/errors/errorHandler";
-import { PineCharacter } from "@/components/pine";
+import { PineCharacter, PineLogo } from "@/components/pine";
 import ProjectDialog from "@/components/project/ProjectDialog.vue";
 import {
   AlertDialog,
@@ -63,6 +63,7 @@ const editingProject = ref<PineProject | null>(null);
 const deletingProject = ref<PineProject | null>(null);
 const openingProjectId = ref<string | null>(null);
 const searchQuery = ref("");
+const isMacOSPlatform = computed(() => window.pine?.platform === "darwin");
 
 const filteredProjects = computed(() => {
   const query = searchQuery.value.trim().toLocaleLowerCase();
@@ -170,6 +171,14 @@ onMounted(() => {
     class="relative flex h-full min-h-0 flex-col overflow-hidden bg-background"
   >
     <WindowTitleBar>
+      <template #leading>
+        <PineLogo
+          v-if="isMacOSPlatform"
+          data-testid="macos-titlebar-logo"
+          aria-hidden="true"
+          class="pointer-events-none size-8 shrink-0 fill-current text-muted-foreground select-none"
+        />
+      </template>
       <template #trailing>
         <InputGroup
           class="h-8 w-40 transition-[width] duration-200 focus-within:w-56"

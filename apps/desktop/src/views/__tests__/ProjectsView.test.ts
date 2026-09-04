@@ -16,7 +16,8 @@ vi.mock("@/components/project/ProjectDialog.vue", () => ({
 }));
 vi.mock("@/components/window/WindowTitleBar.vue", () => ({
   default: {
-    template: '<header><slot name="trailing" /></header>',
+    template:
+      '<header><slot name="leading" /><slot name="trailing" /></header>',
   },
 }));
 
@@ -38,11 +39,15 @@ const project: PineProject = {
   updatedAt: "2026-08-19T12:00:00.000Z",
 };
 
-async function mountView(projects: PineProject[]) {
+async function mountView(
+  projects: PineProject[],
+  platform: "darwin" | "win32" = "darwin",
+) {
   Object.defineProperty(window, "pine", {
     configurable: true,
     value: {
       listProjects: vi.fn().mockResolvedValue({ projects }),
+      platform,
     },
   });
   const pinia = createPinia();
@@ -74,6 +79,22 @@ async function mountView(projects: PineProject[]) {
 describe("ProjectsView", () => {
   beforeEach(() => {
     setActivePinia(createPinia());
+  });
+
+  it("shows the compact logo beside the macOS window controls", async () => {
+    const wrapper = await mountView([]);
+    const logo = wrapper.get('[data-testid="macos-titlebar-logo"]');
+
+    expect(logo.classes()).toContain("size-8");
+    expect(logo.classes()).toContain("text-muted-foreground");
+  });
+
+  it("hides the title bar logo outside macOS", async () => {
+    const wrapper = await mountView([], "win32");
+
+    expect(wrapper.find('[data-testid="macos-titlebar-logo"]').exists()).toBe(
+      false,
+    );
   });
 
   it("keeps the create item first in the centered list", async () => {

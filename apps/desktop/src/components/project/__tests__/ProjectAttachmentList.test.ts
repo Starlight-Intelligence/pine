@@ -69,6 +69,7 @@ describe("ProjectAttachmentList", () => {
     expect(attachmentCards[0].attributes("data-orientation")).toBe("vertical");
     const imageMedia = attachmentCards[0].get('[data-slot="attachment-media"]');
     expect(imageMedia.attributes("data-variant")).toBe("image");
+    expect(imageMedia.classes()).toContain("rounded-2xl!");
     const img = imageMedia.get("img");
     expect(img.attributes("src")).toBe(
       attachmentImageUrl(imageAttachment.path),
@@ -100,6 +101,9 @@ describe("ProjectAttachmentList", () => {
     expect(
       wrapper.get('[data-slot="attachment-media"]').attributes("data-variant"),
     ).toBe("image");
+    expect(wrapper.get('[data-slot="attachment-media"]').classes()).toContain(
+      "rounded-lg!",
+    );
   });
 
   it("falls back to the icon variant when the preview fails to load", async () => {
