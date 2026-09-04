@@ -30,6 +30,12 @@ const { colorScheme } = storeToRefs(useAppearanceStore());
 const language = computed(
   () => props.node.language.trim().split(/\s+/)[0]?.toLowerCase() || "text",
 );
+const lineNumbers = computed(() =>
+  Array.from(
+    { length: props.node.code.split(/\r\n|\r|\n/).length },
+    (_, index) => index + 1,
+  ),
+);
 
 const html = ref("");
 watch(
@@ -89,8 +95,27 @@ async function copyCode(): Promise<void> {
         :data-color-scheme="colorScheme"
         :data-layout="layout"
       >
-        <div v-if="html" v-html="html"></div>
-        <pre v-else><code>{{ node.code }}</code></pre>
+        <div :class="layout === 'preview' ? 'code-preview' : undefined">
+          <div
+            v-if="layout === 'preview'"
+            class="code-preview-gutter"
+            aria-hidden="true"
+          >
+            <span
+              v-for="lineNumber in lineNumbers"
+              :key="lineNumber"
+              class="code-preview-line-number"
+            >
+              {{ lineNumber }}
+            </span>
+          </div>
+          <div
+            :class="layout === 'preview' ? 'code-preview-scroll' : undefined"
+          >
+            <div v-if="html" v-html="html"></div>
+            <pre v-else><code>{{ node.code }}</code></pre>
+          </div>
+        </div>
       </div>
     </div>
     <div
@@ -146,8 +171,48 @@ async function copyCode(): Promise<void> {
   padding: 0;
 }
 
-/* File previews use one outer viewport for both scroll directions. */
+/* File previews keep line numbers fixed while long lines scroll inside the code area. */
+.code-highlight[data-layout="preview"] .code-preview {
+  display: flex;
+  min-width: 0;
+}
+
+.code-highlight[data-layout="preview"] .code-preview-gutter {
+  flex: 0 0 auto;
+  min-width: 3ch;
+  padding: 1rem 0.75rem;
+  border-right: 1px solid color-mix(in oklch, currentColor 12%, transparent);
+  color: color-mix(in oklch, currentColor 45%, transparent);
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  text-align: right;
+  user-select: none;
+}
+
+.code-highlight[data-layout="preview"] .code-preview-line-number {
+  display: block;
+}
+
+.code-highlight[data-layout="preview"] .code-preview-scroll {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.code-highlight[data-layout="preview"] .code-preview-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.code-highlight[data-layout="preview"] .code-preview-scroll > div,
+.code-highlight[data-layout="preview"] .code-preview-scroll > pre {
+  width: max-content;
+  min-width: 100%;
+}
+
 .code-highlight[data-layout="preview"] :deep(pre) {
+  max-width: none;
   padding: 1rem;
   overflow: visible;
 }

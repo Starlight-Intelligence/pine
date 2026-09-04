@@ -117,6 +117,122 @@ async function expandRoot(wrapper: ReturnType<typeof mount>) {
 }
 
 describe("ProjectFileTree", () => {
+  it("omits dot directories at every level, including previously expanded ones, while keeping dotfiles", async () => {
+    localStorage.setItem(
+      PROJECT_SIDEBAR_STORAGE_PREFIX + "p1",
+      JSON.stringify({
+        tab: "files",
+        expanded: [
+          `${folderId}:`,
+          `${folderId}:.git`,
+          `${folderId}:src`,
+          `${folderId}:src/.cache`,
+        ],
+      }),
+    );
+    const { wrapper, listProjectDirectory } = mountTree(
+      "read-write",
+      ({ relativePath }) =>
+        Promise.resolve({
+          entries:
+            relativePath === ""
+              ? [
+                  { name: ".git", relativePath: ".git", kind: "directory" },
+                  { name: ".pine", relativePath: ".pine", kind: "directory" },
+                  { name: "src", relativePath: "src", kind: "directory" },
+                  { name: ".env", relativePath: ".env", kind: "file" },
+                  {
+                    name: ".gitignore",
+                    relativePath: ".gitignore",
+                    kind: "file",
+                  },
+                  ...[
+                    ".DS_Store",
+                    "Thumbs.db",
+                    "desktop.ini",
+                    "._notes.md",
+                  ].map((name) => ({
+                    name,
+                    relativePath: name,
+                    kind: "file" as const,
+                  })),
+                ]
+              : [
+                  {
+                    name: ".cache",
+                    relativePath: "src/.cache",
+                    kind: "directory",
+                  },
+                  {
+                    name: "main.ts",
+                    relativePath: "src/main.ts",
+                    kind: "file",
+                  },
+                  {
+                    name: ".DS_Store",
+                    relativePath: "src/.DS_Store",
+                    kind: "file",
+                  },
+                ],
+        }),
+    );
+    await flushPromises();
+    expect(wrapper.find('[data-path=".git"]').exists()).toBe(false);
+    expect(wrapper.find('[data-path=".pine"]').exists()).toBe(false);
+    expect(wrapper.find('[data-path="src/.cache"]').exists()).toBe(false);
+    expect(wrapper.find('[data-path=".env"]').exists()).toBe(true);
+    expect(wrapper.find('[data-path=".gitignore"]').exists()).toBe(true);
+    for (const path of [
+      ".DS_Store",
+      "Thumbs.db",
+      "desktop.ini",
+      "._notes.md",
+      "src/.DS_Store",
+    ]) {
+      expect(wrapper.find(`[data-path="${path}"]`).exists()).toBe(false);
+    }
+    expect(wrapper.find('[data-path="src/main.ts"]').exists()).toBe(true);
+    expect(
+      listProjectDirectory.mock.calls.map(([request]) => request.relativePath),
+    ).toEqual(["", "src"]);
+  });
+
+  it("renders file type icons while retaining the folder icon", async () => {
+    const { wrapper } = mountTree("read-write", () =>
+      Promise.resolve({
+        entries: [
+          { name: "docs", relativePath: "docs", kind: "directory" },
+          { name: "notes.md", relativePath: "notes.md", kind: "file" },
+          { name: "main.ts", relativePath: "main.ts", kind: "file" },
+          { name: "photo.PNG", relativePath: "photo.PNG", kind: "file" },
+          { name: "unknown.xyz", relativePath: "unknown.xyz", kind: "file" },
+        ],
+      }),
+    );
+    await expandRoot(wrapper);
+    expect(wrapper.find('[data-path="docs"] .lucide-folder').exists()).toBe(
+      true,
+    );
+    expect(
+      wrapper.find('[data-path="notes.md"] .lucide-book-open').exists(),
+    ).toBe(true);
+    expect(
+      wrapper.find('[data-path="main.ts"] .lucide-file-code').exists(),
+    ).toBe(true);
+    expect(
+      wrapper.find('[data-path="photo.PNG"] .lucide-file-image').exists(),
+    ).toBe(true);
+    expect(
+      wrapper.find('[data-path="unknown.xyz"] .lucide-file').exists(),
+    ).toBe(true);
+  });
+
+  it("keeps the file tree scrollable without showing the native scrollbar", () => {
+    const { wrapper } = mountTree();
+
+    expect(wrapper.get('[role="tree"]').classes()).toContain("no-scrollbar");
+  });
+
   it("opens a file on left click and reuses its tab without invoking an external app", async () => {
     const { wrapper, router, operateProjectFile } = mountTree();
     await expandRoot(wrapper);

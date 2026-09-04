@@ -19,12 +19,26 @@ const messages: PineTranscriptMessage[] = [
     role: "user",
     status: "complete",
   },
+  {
+    blocks: [{ type: "text", text: "Second prompt" }],
+    createdAt: "2026-09-01T00:01:00.000Z",
+    id: "message-2",
+    role: "user",
+    status: "complete",
+  },
+  {
+    blocks: [{ type: "text", text: "Third prompt" }],
+    createdAt: "2026-09-01T00:02:00.000Z",
+    id: "message-3",
+    role: "user",
+    status: "complete",
+  },
 ];
 
 describe("ProjectTranscriptOutline", () => {
-  it("uses compact popup spacing for the message navigation", () => {
-    const wrapper = mount(ProjectTranscriptOutline, {
-      props: { messages },
+  function mountOutline(testMessages: PineTranscriptMessage[]) {
+    return mount(ProjectTranscriptOutline, {
+      props: { messages: testMessages },
       global: {
         plugins: [createAppI18n("en-US")],
         stubs: {
@@ -36,6 +50,26 @@ describe("ProjectTranscriptOutline", () => {
         },
       },
     });
+  }
+
+  it("hides the message navigation before the third user message", () => {
+    const wrapper = mountOutline(messages.slice(0, 2));
+
+    expect(
+      wrapper.find('[data-slot="project-transcript-outline-menu"]').exists(),
+    ).toBe(false);
+  });
+
+  it("shows the message navigation from the third user message", () => {
+    const wrapper = mountOutline(messages);
+
+    expect(
+      wrapper.find('[data-slot="project-transcript-outline-menu"]').exists(),
+    ).toBe(true);
+  });
+
+  it("uses compact popup spacing for the message navigation", () => {
+    const wrapper = mountOutline(messages);
 
     expect(wrapper.get('[data-slot="hover-card-content"]').classes()).toContain(
       "p-1.5",

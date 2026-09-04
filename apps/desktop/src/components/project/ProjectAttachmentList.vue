@@ -104,11 +104,16 @@ function formatFileSize(size: number): string {
         <AttachmentTitle>{{ attachment.name }}</AttachmentTitle>
         <AttachmentDescription>
           {{
-            attachment.kind === "directory"
-              ? t("project.composer.folderAttachment")
-              : attachment.extension
-                ? `${attachment.extension.toUpperCase()} · ${formatFileSize(attachment.size)}`
-                : formatFileSize(attachment.size)
+            attachment.selection
+              ? t("project.composer.attachmentLines", {
+                  startLine: attachment.selection.startLine,
+                  endLine: attachment.selection.endLine,
+                })
+              : attachment.kind === "directory"
+                ? t("project.composer.folderAttachment")
+                : attachment.extension
+                  ? `${attachment.extension.toUpperCase()} · ${formatFileSize(attachment.size)}`
+                  : formatFileSize(attachment.size)
           }}
         </AttachmentDescription>
       </AttachmentContent>

@@ -156,6 +156,8 @@ export default {
       text: "Text",
       lines: "{count} lines",
       sendToTab: "Send to tab…",
+      sendSelectionToTab: "Send selection to tab…",
+      rendered: "Rendered",
       newSession: "Create session",
       noSessionTabs: "No session tabs open",
       sendFailed: "Could not attach file to session",
@@ -184,6 +186,7 @@ export default {
       addFile: "Add file",
       addFolder: "Add folder",
       folderAttachment: "Folder",
+      attachmentLines: "Lines {startLine}–{endLine}",
       openAttachment: "Open attachment {name}",
       attachmentOpenFailed:
         "Could not open the attachment with the system default application",

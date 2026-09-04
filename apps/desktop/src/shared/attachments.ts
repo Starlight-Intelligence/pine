@@ -76,6 +76,13 @@ export function attachmentImageUrl(path: string): string {
 
 export type PineAttachmentKind = "directory" | "file";
 
+export interface AttachmentSelection {
+  /** Inclusive, 1-based source line numbers. */
+  startLine: number;
+  endLine: number;
+  text: string;
+}
+
 export interface PineAttachment {
   extension: string;
   /** Missing on attachment blocks created before folder support. */
@@ -84,6 +91,7 @@ export interface PineAttachment {
   name: string;
   path: string;
   size: number;
+  selection?: AttachmentSelection;
 }
 
 export interface PickAttachmentsResult {
@@ -130,7 +138,25 @@ function isAttachment(value: unknown): value is PineAttachment {
     typeof attachment.path === "string" &&
     typeof attachment.size === "number" &&
     Number.isFinite(attachment.size) &&
-    attachment.size >= 0
+    attachment.size >= 0 &&
+    (attachment.selection === undefined ||
+      (attachment.kind !== "directory" &&
+        isAttachmentSelection(attachment.selection)))
+  );
+}
+
+function isAttachmentSelection(value: unknown): value is AttachmentSelection {
+  if (typeof value !== "object" || value === null) return false;
+  const selection = value as Record<string, unknown>;
+  return (
+    typeof selection.startLine === "number" &&
+    Number.isSafeInteger(selection.startLine) &&
+    selection.startLine >= 1 &&
+    typeof selection.endLine === "number" &&
+    Number.isSafeInteger(selection.endLine) &&
+    selection.endLine >= selection.startLine &&
+    typeof selection.text === "string" &&
+    selection.text.length > 0
   );
 }
 

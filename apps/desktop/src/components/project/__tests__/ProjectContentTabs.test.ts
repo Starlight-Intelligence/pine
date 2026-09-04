@@ -346,9 +346,11 @@ describe("ProjectContentTabs", () => {
     const { wrapper } = await mountTabs();
     const titlebar = wrapper.get('[data-slot="project-content-tabs-titlebar"]');
     const tabList = wrapper.get('[data-slot="project-content-tab-list"]');
+    const tabItems = wrapper.get('[data-slot="project-content-tab-items"]');
 
     expect(titlebar.classes()).toContain(preferencesPaddingClass);
     expect(tabList.classes()).toContain("flex-1");
+    expect(tabItems.classes()).toContain("py-1");
   });
 
   it("keeps the tab list blank area draggable and tabs interactive", async () => {
@@ -511,6 +513,9 @@ describe("ProjectContentTabs", () => {
     expect(
       wrapper.find('[role="region"][aria-label="No tabs open"]').exists(),
     ).toBe(true);
+    const logo = wrapper.get('[role="region"][aria-label="No tabs open"] img');
+    expect(logo.attributes("alt")).toBe("");
+    expect(logo.attributes("src")).toBeTruthy();
     expect(wrapper.find('[data-slot="empty"]').exists()).toBe(false);
     expect(wrapper.find('[role="tabpanel"]').exists()).toBe(false);
     await wrapper.get('button[aria-label="Add session tab"]').trigger("click");

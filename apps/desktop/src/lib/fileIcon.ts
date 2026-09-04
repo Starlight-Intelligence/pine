@@ -1,0 +1,156 @@
+import {
+  BookOpen,
+  Database,
+  File,
+  FileArchive,
+  FileBraces,
+  FileCode,
+  FileCog,
+  FileImage,
+  FileKey,
+  FileLock,
+  FileMusic,
+  FilePlay,
+  FileSpreadsheet,
+  FileTerminal,
+  FileText,
+  FileType,
+  Package,
+  Presentation,
+  Scale,
+  type LucideIcon,
+} from "@lucide/vue";
+
+const extensionGroups: [LucideIcon, string[]][] = [
+  [BookOpen, ["md", "markdown", "mdx", "rst"]],
+  [
+    FileCode,
+    [
+      "js",
+      "jsx",
+      "mjs",
+      "cjs",
+      "ts",
+      "tsx",
+      "mts",
+      "cts",
+      "vue",
+      "svelte",
+      "html",
+      "htm",
+      "css",
+      "scss",
+      "sass",
+      "less",
+      "py",
+      "pyi",
+      "rb",
+      "go",
+      "rs",
+      "c",
+      "h",
+      "cc",
+      "cpp",
+      "hpp",
+      "cs",
+      "java",
+      "kt",
+      "kts",
+      "swift",
+      "php",
+      "lua",
+      "r",
+      "dart",
+      "xml",
+      "graphql",
+      "gql",
+    ],
+  ],
+  [FileBraces, ["json", "jsonc", "json5", "ipynb"]],
+  [
+    FileCog,
+    [
+      "yaml",
+      "yml",
+      "toml",
+      "ini",
+      "conf",
+      "cfg",
+      "config",
+      "env",
+      "properties",
+    ],
+  ],
+  [FileText, ["txt", "text", "log", "pdf", "doc", "docx", "odt", "rtf", "tex"]],
+  [
+    FileImage,
+    [
+      "png",
+      "jpg",
+      "jpeg",
+      "gif",
+      "webp",
+      "svg",
+      "avif",
+      "ico",
+      "bmp",
+      "tif",
+      "tiff",
+      "heic",
+      "heif",
+      "psd",
+    ],
+  ],
+  [FileMusic, ["mp3", "wav", "flac", "aac", "ogg", "m4a", "aiff", "opus"]],
+  [FilePlay, ["mp4", "webm", "mov", "mkv", "avi", "m4v", "mpeg", "mpg"]],
+  [FileArchive, ["zip", "tar", "gz", "tgz", "bz2", "xz", "7z", "rar", "zst"]],
+  [FileSpreadsheet, ["csv", "tsv", "xls", "xlsx", "ods", "parquet"]],
+  [Presentation, ["ppt", "pptx", "odp", "key"]],
+  [Database, ["sql", "db", "sqlite", "sqlite3"]],
+  [FileTerminal, ["sh", "bash", "zsh", "fish", "bat", "cmd", "ps1"]],
+  [FileType, ["ttf", "otf", "woff", "woff2", "eot"]],
+  [FileLock, ["lock", "lockb"]],
+  [FileKey, ["pem", "crt", "cer", "p12", "pfx"]],
+];
+
+const extensionIcons = new Map(
+  extensionGroups.flatMap(([icon, extensions]) =>
+    extensions.map((extension) => [extension, icon] as const),
+  ),
+);
+
+const nameIcons = new Map<string, LucideIcon>([
+  ["package.json", Package],
+  ["package-lock.json", FileLock],
+  ["pnpm-lock.yaml", FileLock],
+  ["cargo.toml", Package],
+  ["pyproject.toml", Package],
+  ["composer.json", Package],
+  ["gemfile", Package],
+  ["go.mod", Package],
+  ["go.sum", FileLock],
+  ["dockerfile", FileCog],
+  ["containerfile", FileCog],
+  ["makefile", FileTerminal],
+  ["justfile", FileTerminal],
+  [".gitignore", FileCog],
+  [".gitattributes", FileCog],
+  [".gitmodules", FileCog],
+  [".editorconfig", FileCog],
+  [".npmrc", FileCog],
+  [".nvmrc", FileCog],
+  [".prettierrc", FileCog],
+  [".eslintrc", FileCog],
+]);
+
+/** Case-insensitive file names take precedence over the final extension. */
+export function fileIcon(filePath: string): LucideIcon {
+  const name = filePath.split(/[\\/]/).at(-1)?.toLowerCase() ?? "";
+  const exactIcon = nameIcons.get(name);
+  if (exactIcon) return exactIcon;
+  if (name === ".env" || name.startsWith(".env.")) return FileCog;
+  if (/^(license|licence|copying)(\.|$)/.test(name)) return Scale;
+  if (/^(readme|changelog|contributing)(\.|$)/.test(name)) return BookOpen;
+  if (!name.includes(".")) return File;
+  return extensionIcons.get(name.split(".").at(-1) ?? "") ?? File;
+}

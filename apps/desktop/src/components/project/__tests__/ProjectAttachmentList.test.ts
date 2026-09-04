@@ -36,6 +36,25 @@ function mountList(props: {
 }
 
 describe("ProjectAttachmentList", () => {
+  it.each(["composer", "message"] as const)(
+    "shows source line ranges on the %s card",
+    (surface) => {
+      const wrapper = mountList({
+        attachments: [
+          {
+            ...fileAttachment,
+            selection: { startLine: 3, endLine: 12, text: "selected" },
+          },
+        ],
+        surface,
+      });
+      expect(wrapper.get('[data-slot="attachment-description"]').text()).toBe(
+        "第 3–12 行",
+      );
+      expect(wrapper.text()).not.toContain("MD ·");
+    },
+  );
+
   it("renders image attachments with the official image variant", () => {
     const wrapper = mountList({
       attachments: [imageAttachment, fileAttachment],

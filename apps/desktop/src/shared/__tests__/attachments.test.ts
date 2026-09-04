@@ -20,6 +20,32 @@ const attachment: PineAttachment = {
 };
 
 describe("attachment messages", () => {
+  it("preserves selected text and line numbers in persisted messages", () => {
+    const selected = {
+      ...attachment,
+      selection: { startLine: 2, endLine: 4, text: "part\nof\na file" },
+    };
+    expect(
+      parseAttachmentMessage(serializeAttachmentMessage([selected], "Review")),
+    ).toEqual({ attachments: [selected], prompt: "Review" });
+  });
+
+  it.each([
+    { startLine: 0, endLine: 2, text: "x" },
+    { startLine: 4, endLine: 2, text: "x" },
+    { startLine: 1.5, endLine: 2, text: "x" },
+    { startLine: 1, endLine: 2, text: "" },
+  ])("rejects invalid selection metadata: %j", (selection) => {
+    const message = serializeAttachmentMessage(
+      [{ ...attachment, selection }],
+      "Review",
+    );
+    expect(parseAttachmentMessage(message)).toEqual({
+      attachments: [],
+      prompt: message,
+    });
+  });
+
   it("round-trips attachment metadata without changing the user prompt", () => {
     const message = serializeAttachmentMessage([attachment], "Read this file.");
 

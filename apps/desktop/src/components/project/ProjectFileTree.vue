@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import {
   ChevronRight,
-  File,
   Folder,
   FolderOpen,
   FolderPlus,
@@ -13,6 +12,7 @@ import { storeToRefs } from "pinia";
 import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { handleError } from "@/app/errors/errorHandler";
+import { fileIcon } from "@/lib/fileIcon";
 import { Badge } from "@/components/ui/badge";
 import {
   Empty,
@@ -158,7 +158,15 @@ async function readDirectory(
     folderId,
     relativePath,
   });
-  return result.entries.map((entry) => toTreeNode(folderId, entry));
+  return result.entries
+    .filter((entry) =>
+      entry.kind === "directory"
+        ? !entry.name.startsWith(".")
+        : ![".ds_store", "thumbs.db", "desktop.ini"].includes(
+            entry.name.toLowerCase(),
+          ) && !entry.name.startsWith("._"),
+    )
+    .map((entry) => toTreeNode(folderId, entry));
 }
 
 async function loadChildren(node: ProjectTreeNode): Promise<void> {
@@ -402,7 +410,7 @@ watch(activeProject, resetRoots, { immediate: true });
     :items="items"
     :get-key="nodeKey"
     :get-children="(item) => item.children"
-    class="scroll-fade h-full overflow-y-auto p-2 outline-none"
+    class="scroll-fade no-scrollbar h-full overflow-y-auto p-2 outline-none"
     @dragover="
       (event: DragEvent) => {
         const root = items.find(
@@ -488,7 +496,12 @@ watch(activeProject, resetRoots, { immediate: true });
                   v-else-if="item.value.kind === 'directory'"
                   class="size-4 shrink-0"
                 />
-                <File v-else class="size-4 shrink-0" />
+                <component
+                  :is="fileIcon(item.value.name)"
+                  v-else
+                  class="size-4 shrink-0"
+                  aria-hidden="true"
+                />
                 <span class="truncate">{{ item.value.name }}</span>
                 <Badge
                   v-if="item.value.isUnavailable"
