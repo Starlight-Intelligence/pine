@@ -150,9 +150,12 @@ const presentation = computed(() => {
     const stateKey = state === "awaiting" ? "awaitingApproval" : state;
     return {
       // The gate label carries its own trailing separator so the target
-      // reads as one sentence, e.g. "正在审核Bash操作：osascript …".
+      // reads as one sentence, e.g. "正在审核 读取文档目录：ls ~/Documents".
       before: t(`project.transcript.tools.${stateKey}`, {
-        tool: t(`project.transcript.toolKinds.${kind}`),
+        tool:
+          kind === "bash" && description
+            ? compactInline(description)
+            : t(`project.transcript.toolKinds.${kind}`),
       }),
       operation: undefined,
       separator: "",
