@@ -238,7 +238,7 @@ watch(activeSession, (session) => {
 </script>
 
 <template>
-  <div class="flex h-full min-h-0 flex-col bg-background">
+  <div class="relative flex h-full min-h-0 flex-col bg-background">
     <div
       data-slot="project-content-tabs-titlebar"
       :class="
@@ -355,7 +355,7 @@ watch(activeSession, (session) => {
       v-else
       role="region"
       :aria-label="t('project.contentTabs.emptyTitle')"
-      class="flex min-h-0 flex-1 items-center justify-center overflow-hidden p-8"
+      class="pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden p-8"
     >
       <div
         aria-hidden="true"
