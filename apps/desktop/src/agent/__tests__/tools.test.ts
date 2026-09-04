@@ -309,17 +309,208 @@ describe("createPineToolDefinitions", () => {
     expect(gate.reviewDenial).not.toHaveBeenCalled();
   });
 
-  it("only grants shell writes to writable folders and Pine's temporary directory", () => {
-    const profile = createMacOsBashSandboxProfile(
-      ["/project/source"],
-      "/pine/project/tmp",
-    );
+  it("separates shell read grants from write grants without unrestricted reads", () => {
+    const profile = createMacOsBashSandboxProfile({
+      readablePaths: [
+        "/project/source",
+        "/project/context",
+        '/attachment/"file',
+      ],
+      writableFolders: ["/project/source"],
+      temporaryDirectory: "/pine/project/tmp",
+    });
 
     expect(profile).toContain('(subpath "/project/source")');
-    expect(profile).not.toContain("/project/context");
+    expect(profile).toContain('(subpath "/project/context")');
+    expect(profile).toContain('(subpath "/attachment/\\"file")');
+    expect(profile.split("(allow file-write*")[1]).not.toContain(
+      "/project/context",
+    );
+    expect(profile.split("(allow file-write*")[1]).not.toContain(
+      "/attachment/",
+    );
     expect(profile).toContain('(subpath "/pine/project/tmp")');
     expect(profile).toContain("(deny default)");
+    expect(profile).not.toContain("(allow file-read*)");
+    for (const broadRoot of [
+      "/",
+      "/System",
+      "/Users",
+      "/private/tmp",
+      "/opt/homebrew",
+    ]) {
+      expect(profile).not.toContain(`(subpath "${broadRoot}")`);
+    }
   });
+
+  it("tells the agent to use privileged bash for external reads", async () => {
+    const { location } = await createFixture();
+    const tools = await createPineToolDefinitions(location, createFakeGate());
+    const bash = tools.find((tool) => tool.name === "bash")!;
+    const privileged = tools.find((tool) => tool.name === "privileged_bash")!;
+    expect(bash.description).toContain(
+      "Reading or listing other external paths",
+    );
+    expect(bash.promptSnippet).toContain(
+      "use privileged_bash directly to read or list",
+    );
+    expect(privileged.description).toContain(
+      "ordinary bash blocks these reads even in Auto Approve mode",
+    );
+  });
+
+  describe.runIf(process.platform === "darwin" && !process.env.CODEX_SANDBOX)(
+    "native shell read boundaries",
+    () => {
+      const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
+
+      async function setup() {
+        const fixture = await createFixture();
+        const attachments = new PineAttachedPathAccess();
+        const gate = createFakeGate();
+        const tools = await createPineToolDefinitions(
+          fixture.location,
+          gate,
+          attachments,
+        );
+        const bash = tools.find((tool) => tool.name === "bash")!;
+        const run = (command: string) =>
+          bash.execute(
+            "read-boundary",
+            { command, description: "test read boundaries" },
+            undefined,
+            undefined,
+            undefined as never,
+          );
+        return { ...fixture, attachments, gate, run };
+      }
+
+      it("reads shared folders and temporary files using system and Bun tools", async () => {
+        const { readWrite, readOnly, run } = await setup();
+        await writeFile(path.join(readWrite, "local.txt"), "local-content");
+        await writeFile(path.join(readOnly, "context.txt"), "shared-content");
+        const result = await run(
+          `/bin/cat local.txt ${quote(path.join(readOnly, "context.txt"))}; printf temporary-content > "$TMPDIR/probe"; /bin/cat "$TMPDIR/probe"; bun --version`,
+        );
+        expect(result.content).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              type: "text",
+              text: expect.stringContaining(
+                "local-contentshared-contenttemporary-content",
+              ),
+            }),
+          ]),
+        );
+      });
+
+      it("blocks external files, directory listings and symlink escapes without escalating", async () => {
+        const { readWrite, outside, run, gate } = await setup();
+        const secret = path.join(outside, "secret.txt");
+        await writeFile(secret, "external-secret-content");
+        await symlink(outside, path.join(readWrite, "escape"));
+        for (const command of [
+          `/bin/cat ${quote(secret)}`,
+          `/bin/ls ${quote(outside)}`,
+          "/bin/cat escape/secret.txt",
+          `bun -e ${quote(`console.log(await Bun.file(${JSON.stringify(secret)}).text())`)}`,
+        ]) {
+          const error = await run(command).catch((error: unknown) => error);
+          expect(error).toBeInstanceOf(Error);
+          expect((error as Error).message).toContain("Use privileged_bash");
+          expect((error as Error).message).not.toContain(
+            "external-secret-content",
+          );
+        }
+        expect(gate.reviewBashCommand).not.toHaveBeenCalled();
+        expect(gate.reviewDenial).not.toHaveBeenCalled();
+        expect(gate.reviewPrivilegedCall).not.toHaveBeenCalled();
+      });
+
+      it("picks up new attachments without granting siblings or writes", async () => {
+        const { outside, readOnly, attachments, run } = await setup();
+        const attachment = path.join(outside, "attachment.txt");
+        const sibling = path.join(outside, "sibling.txt");
+        const directory = path.join(outside, "attached-directory");
+        await mkdir(directory);
+        await writeFile(attachment, "attached-file");
+        await writeFile(sibling, "private-sibling");
+        await writeFile(path.join(directory, "child.txt"), "attached-child");
+        await expect(run(`/bin/cat ${quote(attachment)}`)).rejects.toThrow(
+          "Use privileged_bash",
+        );
+        await attachments.grant([attachment, directory]);
+        const result = await run(
+          `/bin/cat ${quote(attachment)} ${quote(path.join(directory, "child.txt"))}`,
+        );
+        expect(result.content).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              type: "text",
+              text: expect.stringContaining("attached-fileattached-child"),
+            }),
+          ]),
+        );
+        await expect(run(`/bin/cat ${quote(sibling)}`)).rejects.toThrow(
+          "Use privileged_bash",
+        );
+        for (const target of [
+          attachment,
+          path.join(directory, "child.txt"),
+          path.join(readOnly, "new.txt"),
+        ]) {
+          await expect(
+            run(`printf changed > ${quote(target)}`),
+          ).rejects.toThrow("Use privileged_bash");
+        }
+        expect(await readFile(attachment, "utf8")).toBe("attached-file");
+      });
+
+      it("does not report a shell terminated by a signal as successful", async () => {
+        const { run } = await setup();
+        await expect(run("kill -TERM $$")).rejects.toThrow(
+          "Shell terminated by signal SIGTERM",
+        );
+      });
+
+      it("requires privileged approval before reading an external file", async () => {
+        const { location, outside, run, gate } = await setup();
+        const target = path.join(outside, "reviewed.txt");
+        await writeFile(target, "approved-external-content");
+        const command = `/bin/cat ${quote(target)}`;
+        await expect(run(command)).rejects.toThrow("Use privileged_bash");
+        const tools = await createPineToolDefinitions(location, gate);
+        const privileged = tools.find(
+          (tool) => tool.name === "privileged_bash",
+        )!;
+        const readExternal = () =>
+          privileged.execute(
+            "privileged-read",
+            { command, description: "read the requested external file" },
+            undefined,
+            undefined,
+            undefined as never,
+          );
+        gate.reviewPrivilegedCall.mockResolvedValueOnce({
+          kind: "deny",
+          reason: "External read was denied",
+        });
+        await expect(readExternal()).rejects.toThrow(
+          "External read was denied",
+        );
+        const approved = await readExternal();
+        expect(approved.content).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              type: "text",
+              text: expect.stringContaining("approved-external-content"),
+            }),
+          ]),
+        );
+        expect(gate.reviewPrivilegedCall).toHaveBeenCalledTimes(2);
+      });
+    },
+  );
 
   describe("matchSandboxDenial", () => {
     it("recognizes every denial dialect seen in real sandbox runs", () => {

@@ -42,11 +42,10 @@ export async function resolveLoginPath(): Promise<string> {
 /**
  * Build the environment for Pine's bash tool.
  *
- * Unlike the previous hard-coded env, this keeps the user's real HOME (read
- * access is allowed by the sandbox profile, so git identity and tool configs
- * work) and the login PATH (so node/bun/etc. can run). Caches for common
- * package managers are redirected into Pine's per-project temporary directory
- * so installs succeed inside the sandbox without granting HOME write access.
+ * Preserve HOME and the login PATH for consistent path resolution. They do not
+ * grant sandbox access: private home configs and unshared toolchains may need
+ * privileged_bash. Package caches use Pine's temporary directory so ordinary
+ * commands do not need read/write access to the user's global caches.
  */
 export function createBashEnvironment(
   environment: NodeJS.ProcessEnv | undefined,

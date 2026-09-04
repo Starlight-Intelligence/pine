@@ -11,6 +11,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import path from "node:path";
+import os from "node:os";
 import type { TSchema } from "typebox";
 import {
   createBashToolDefinition,
@@ -67,6 +68,10 @@ export class PineAttachedPathAccess {
     return [...this.paths].some((attachedPath) =>
       pathContains(attachedPath, canonicalPath),
     );
+  }
+
+  readablePaths(): string[] {
+    return [...this.paths];
   }
 }
 
@@ -180,6 +185,13 @@ export class PineToolAccessPolicy {
       .filter((folder) => folder.access === "read-write")
       .map((folder) => folder.path);
   }
+
+  readablePaths(): string[] {
+    return [
+      ...this.folders.map((folder) => folder.path),
+      ...(this.attachedPaths?.readablePaths() ?? []),
+    ];
+  }
 }
 
 async function detectImageMimeType(
@@ -254,11 +266,75 @@ function isAuthorizeDenial(error: unknown): boolean {
   );
 }
 
-export function createMacOsBashSandboxProfile(
-  writableFolders: string[],
-  temporaryDirectory: string,
-): string {
+// Runtime installation trees only. In particular, /System includes the Data
+// volume and must NOT be granted wholesale. Neither HOME nor arbitrary PATH
+// entries are implicit read grants. Other toolchains require shared folders or
+// privileged_bash instead of silently widening the filesystem boundary.
+const MACOS_RUNTIME_DIRECTORIES = [
+  "/bin",
+  "/sbin",
+  "/usr/bin",
+  "/usr/sbin",
+  "/usr/lib",
+  "/usr/libexec",
+  "/usr/share",
+  "/System/Library",
+  "/System/Cryptexes/OS",
+  "/System/Volumes/Preboot/Cryptexes/OS",
+  "/private/preboot/Cryptexes/OS",
+  "/Library/Apple",
+  "/Library/Developer/CommandLineTools",
+  "/Applications/Xcode.app/Contents/Developer",
+  "/opt/homebrew/Cellar",
+  "/usr/local/Cellar",
+  "/private/var/db/dyld",
+  "/private/var/db/com.apple.dyld",
+  "/private/var/db/timezone",
+  "/private/etc/ssl/certs",
+];
+
+const MACOS_RUNTIME_FILES = [
+  // dyld opens the root directory during startup. This grants only the root
+  // itself, not its descendants (unlike a subpath "/" rule).
+  "/",
+  "/dev/null",
+  "/dev/zero",
+  "/dev/tty",
+  "/dev/random",
+  "/dev/urandom",
+  "/private/etc/zshenv",
+  "/private/etc/passwd",
+  "/private/etc/group",
+  "/private/etc/hosts",
+  "/private/etc/resolv.conf",
+  "/private/etc/localtime",
+  "/private/etc/ssl/cert.pem",
+];
+
+export function createMacOsBashSandboxProfile({
+  readablePaths,
+  writableFolders,
+  temporaryDirectory,
+  runtimeFiles = [],
+}: {
+  readablePaths: string[];
+  writableFolders: string[];
+  temporaryDirectory: string;
+  runtimeFiles?: string[];
+}): string {
   const writablePaths = new Set([...writableFolders, temporaryDirectory]);
+  const readRules = [
+    ...new Set([
+      ...MACOS_RUNTIME_DIRECTORIES,
+      ...readablePaths,
+      ...writablePaths,
+    ]),
+  ].map((target) => `  (subpath "${escapeSandboxString(target)}")`);
+  readRules.push(
+    ...[...MACOS_RUNTIME_FILES, ...runtimeFiles].map(
+      (target) => `  (literal "${escapeSandboxString(target)}")`,
+    ),
+  );
   const writeRules = [...writablePaths]
     .map((folderPath) => `  (subpath "${escapeSandboxString(folderPath)}")`)
     .join("\n");
@@ -268,7 +344,14 @@ export function createMacOsBashSandboxProfile(
 (allow network*)
 (allow mach-lookup)
 (allow sysctl-read)
-(allow file-read*)
+; Directory metadata permits path traversal, not listing directory contents.
+(allow file-read-metadata
+  (vnode-type DIRECTORY)
+  (literal "/etc")
+  (literal "/tmp")
+  (literal "/var"))
+(allow file-read* file-map-executable
+${readRules.join("\n")})
 (allow file-write*
   (literal "/dev/null")
   (literal "/dev/tty")
@@ -288,13 +371,14 @@ function createScopedBashOperations(
   policy: PineToolAccessPolicy,
   temporaryDirectory: string,
   loginPath: string,
+  runtimeFiles: string[],
 ): BashOperations {
   return {
     exec: async (command, cwd, options) => {
       await policy.authorize(cwd, "write");
       if (process.platform !== "darwin") {
         throw new Error(
-          "Bash is unavailable because Pine cannot enforce project write boundaries on this platform yet.",
+          "Bash is unavailable because Pine cannot enforce project read/write boundaries on this platform yet.",
         );
       }
       if (options.signal?.aborted) throw new Error("aborted");
@@ -307,10 +391,12 @@ function createScopedBashOperations(
         timeoutMs = Math.min(options.timeout * 1_000, 2_147_483_647);
       }
       const shellPath = "/bin/zsh";
-      const profile = createMacOsBashSandboxProfile(
-        policy.writableFolders(),
+      const profile = createMacOsBashSandboxProfile({
+        readablePaths: policy.readablePaths(),
+        writableFolders: policy.writableFolders(),
         temporaryDirectory,
-      );
+        runtimeFiles,
+      });
       const child = spawn(
         "/usr/bin/sandbox-exec",
         // pipefail: a sandbox denial at the head of a pipeline (`ps aux | head`)
@@ -322,6 +408,8 @@ function createScopedBashOperations(
           "-p",
           profile,
           shellPath,
+          // Do not source the user's ~/.zshenv outside the shared folders.
+          "-f",
           "-o",
           "pipefail",
           "-o",
@@ -369,9 +457,14 @@ function createScopedBashOperations(
       }
 
       try {
-        const exitCode = await new Promise<number | null>((resolve, reject) => {
+        const { exitCode, exitSignal } = await new Promise<{
+          exitCode: number | null;
+          exitSignal: NodeJS.Signals | null;
+        }>((resolve, reject) => {
           child.once("error", reject);
-          child.once("close", resolve);
+          child.once("close", (code, signal) => {
+            resolve({ exitCode: code, exitSignal: signal });
+          });
         });
         if (options.signal?.aborted) throw new Error("aborted");
         if (timedOut) throw new Error(`timeout:${options.timeout}`);
@@ -386,6 +479,11 @@ function createScopedBashOperations(
         const outputTail = `${stdoutTail}\n${stderrTail}`;
         if (matchSandboxDenial(outputTail)) {
           throw new SandboxDeniedError(outputTail);
+        }
+        if (exitCode === null) {
+          throw new Error(
+            `Shell terminated by signal ${exitSignal ?? "unknown"}.\n${outputTail.trim()}`,
+          );
         }
         return { exitCode: effectiveExit };
       } finally {
@@ -537,6 +635,11 @@ export async function createPineToolDefinitions(
   // Permissive twin used to re-run a call the gate approved beyond the grants.
   const permissivePolicy = PineToolAccessPolicy.permissive(location.cwd);
   const loginPath = await resolveLoginPath();
+  // Bun's standalone installer puts a single executable in HOME. Grant that
+  // exact executable (and its canonical target), never its parent directory.
+  const bunPath = path.join(os.homedir(), ".bun", "bin", "bun");
+  const canonicalBunPath = await realpath(bunPath).catch(() => null);
+  const runtimeFiles = canonicalBunPath ? [bunPath, canonicalBunPath] : [];
 
   // Native (unsandboxed) execution. YOLO keeps the user's full environment;
   // reviewed native re-runs retain Pine's deterministic shell environment.
@@ -602,6 +705,7 @@ export async function createPineToolDefinitions(
       policy,
       canonicalBashTemporaryDirectory,
       loginPath,
+      runtimeFiles,
     ),
   });
 
@@ -624,7 +728,7 @@ export async function createPineToolDefinitions(
     ),
   });
   const sandboxGuidance =
-    " Pine provides an isolated writable temporary directory through $TMPDIR; direct writes to /tmp are blocked.";
+    " Ordinary bash can read only shared project folders, user-attached files/directories, Pine's temporary directory, and an allowlist of system/toolchain runtime files. Reading or listing other external paths (including ~/Documents, ~/Downloads, private configs, and unrelated projects) is blocked even in Auto Approve mode. Use privileged_bash directly for those external reads and explain the required access; each call requires approval. Writes are limited to read-write shared folders and $TMPDIR; direct writes to /tmp are blocked.";
   const pineBashTool = defineTool({
     ...bashTool,
     parameters: pineBashParams,
@@ -671,7 +775,7 @@ export async function createPineToolDefinitions(
       }
     },
     description: `${bashTool.description}${sandboxGuidance} Explicitly describe what each command does in the description field, written first, in the same language as the user's messages.`,
-    promptSnippet: `${bashTool.promptSnippet}. Use $TMPDIR for temporary files instead of /tmp; Always write the description argument before composing the command, in the user's language`,
+    promptSnippet: `${bashTool.promptSnippet}. Reads are restricted to shared folders, attachments, $TMPDIR and runtime files; use privileged_bash directly to read or list other external paths, subject to approval. Use $TMPDIR for temporary files instead of /tmp; always write description before command, in the user's language`,
   });
 
   const privilegedBashTool =
@@ -717,14 +821,18 @@ export async function createPineToolDefinitions(
             );
           },
           description:
-            "Run a shell command with the user's native permissions, outside Pine's project sandbox. Every call requires a fresh approval unless YOLO mode is active. Use it for macOS application control (osascript, open, Shortcuts, Automator), launching GUI applications, controlling or signaling processes outside Pine (kill, pkill, killall), reading or writing paths outside the shared project folders, or another operation that ordinary bash explicitly reports was denied by the project sandbox. Do not use it for normal project commands or ordinary command errors.",
+            "Run a shell command with the user's native permissions, outside Pine's project sandbox. Every call requires a fresh approval unless YOLO mode is active. Use it directly to read files or list directories outside the shared project folders and user attachments: ordinary bash blocks these reads even in Auto Approve mode. Also use it for external writes, macOS application control (osascript, open, Shortcuts, Automator), launching GUI applications, controlling or signaling processes outside Pine (kill, pkill, killall), or another operation that ordinary bash explicitly reports was denied by the project sandbox. State the needed external access in description. Do not use it for normal project commands or ordinary command errors.",
           promptSnippet:
             "Use privileged_bash directly for macOS app/GUI control, external process control, out-of-project filesystem access, or after ordinary bash explicitly says the project sandbox denied an operation. Calls receive a fresh review before native execution unless YOLO mode is active. State why native privileges are required in description before composing command.",
         })
       : null;
 
   return [
-    gatedReadTool,
+    {
+      ...gatedReadTool,
+      description: `${gatedReadTool.description} Read shared project files and user attachments. To read files in other external folders, use privileged_bash with an explanation of the needed access; approval is required.`,
+      promptSnippet: `${gatedReadTool.promptSnippet}. For files outside shared folders and user attachments, use privileged_bash subject to approval`,
+    },
     pineBashTool,
     gatedEditTool,
     gatedWriteTool,
