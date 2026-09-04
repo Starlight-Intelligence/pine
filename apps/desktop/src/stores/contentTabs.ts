@@ -122,6 +122,7 @@ export const useContentTabsStore = defineStore("content-tabs", () => {
     projectId.value = null;
     composerAttachments.value = {};
     nextSessionTabNumber = 2;
+    // A saved empty list is intentional; only missing/invalid state gets a draft.
     tabs.value = saved?.tabs ?? initialTabs();
     fallbackActiveTabId.value = saved?.activeTabId ?? tabs.value[0]?.id ?? null;
     projectId.value = id;

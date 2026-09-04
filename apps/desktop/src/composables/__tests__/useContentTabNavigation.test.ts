@@ -8,6 +8,36 @@ import { CONTENT_TABS_STORAGE_PREFIX } from "@/lib/contentTabStorage";
 import { useContentTabNavigation } from "../useContentTabNavigation";
 
 describe("persisted content tab navigation", () => {
+  it("keeps a restored empty workspace unselected even with a stale tab query", async () => {
+    localStorage.clear();
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    const store = useContentTabsStore();
+    store.restore("one");
+    store.close("session-1", "session-1");
+    store.reset();
+    store.restore("one");
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [{ path: "/projects/:projectId", component: {} }],
+    });
+    await router.push("/projects/one?tab=session-1");
+    let navigation!: ReturnType<typeof useContentTabNavigation>;
+    const wrapper = mount(
+      defineComponent({
+        setup() {
+          navigation = useContentTabNavigation();
+          return () => h("span", navigation.activeTabId.value);
+        },
+      }),
+      { global: { plugins: [pinia, router] } },
+    );
+    expect(navigation.activeTabId.value).toBe("");
+    expect(navigation.activeTab.value).toBeNull();
+    expect(store.tabs).toEqual([]);
+    wrapper.unmount();
+  });
+
   it("restores selection without a query and records route changes for the right project", async () => {
     localStorage.clear();
     const pinia = createPinia();

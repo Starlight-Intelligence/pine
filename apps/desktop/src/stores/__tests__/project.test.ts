@@ -28,6 +28,33 @@ describe("project store", () => {
     setActivePinia(createPinia());
   });
 
+  it.each([false, true])(
+    "preserves an empty workspace when reopening (fresh stores: %s)",
+    async (freshStores) => {
+      Object.defineProperty(window, "pine", {
+        configurable: true,
+        value: {
+          openProject: vi.fn().mockResolvedValue({ project }),
+          closeProject: vi.fn().mockResolvedValue(undefined),
+        },
+      });
+      const store = useProjectStore();
+      await store.openProject(project.id);
+      const tabs = useContentTabsStore();
+      // A project without saved state starts with a new session.
+      expect(tabs.tabs).toEqual([
+        { id: "session-1", kind: "session", state: "draft" },
+      ]);
+      tabs.close("session-1", "session-1");
+      await store.closeProject();
+
+      if (freshStores) setActivePinia(createPinia());
+      await useProjectStore().openProject(project.id);
+      expect(useContentTabsStore().tabs).toEqual([]);
+      expect(useContentTabsStore().fallbackActiveTabId).toBeNull();
+    },
+  );
+
   it("restores tabs when reopening and updating a project without overwriting them on close", async () => {
     Object.defineProperty(window, "pine", {
       configurable: true,
