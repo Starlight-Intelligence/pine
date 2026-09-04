@@ -274,7 +274,7 @@ watch(activeSession, (session) => {
 
           <div
             data-slot="project-content-tab"
-            class="window-no-drag group relative flex h-8 w-40 min-w-40 items-center rounded-2xl"
+            class="window-no-drag group/tab relative flex h-8 w-40 min-w-40 items-center rounded-2xl"
             :data-tab-id="tab.id"
             :draggable="true"
             @dragstart="startTabDrag($event, tab)"
@@ -297,7 +297,7 @@ watch(activeSession, (session) => {
               :tabindex="activeTabId === tab.id ? 0 : -1"
               :variant="activeTabId === tab.id ? 'secondary' : 'ghost'"
               size="sm"
-              class="h-8 w-full min-w-0 justify-start pr-10"
+              class="h-8 w-full min-w-0 justify-start group-hover/tab:pr-10 group-has-[:focus-visible]/tab:pr-10"
               @click="activateTab(tab.id)"
               @keydown="moveTabFocus(index, $event)"
             >
@@ -306,7 +306,7 @@ watch(activeSession, (session) => {
             </Button>
 
             <Button
-              class="pointer-events-none absolute inset-y-0 right-2 my-auto opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100"
+              class="pointer-events-none absolute inset-y-0 right-2 my-auto opacity-0 transition-opacity group-hover/tab:pointer-events-auto group-hover/tab:opacity-100 group-has-[:focus-visible]/tab:pointer-events-auto group-has-[:focus-visible]/tab:opacity-100"
               variant="ghost"
               size="icon-xs"
               :aria-label="
