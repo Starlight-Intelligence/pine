@@ -23,6 +23,7 @@ interface CodeBlockNodeProps {
 const props = defineProps<{
   node: CodeBlockNodeProps;
   loading?: boolean;
+  layout?: "block" | "preview";
 }>();
 
 const { colorScheme } = storeToRefs(useAppearanceStore());
@@ -77,13 +78,17 @@ async function copyCode(): Promise<void> {
 
 <template>
   <div
-    class="relative my-6"
+    :class="cn('relative', layout === 'preview' ? 'w-full' : 'my-6')"
     data-slot="code-block"
     @mouseenter="hovered = true"
     @mouseleave="hovered = false"
   >
     <div class="overflow-hidden rounded-lg bg-muted">
-      <div class="code-highlight" :data-color-scheme="colorScheme">
+      <div
+        class="code-highlight"
+        :data-color-scheme="colorScheme"
+        :data-layout="layout"
+      >
         <div v-if="html" v-html="html"></div>
         <pre v-else><code>{{ node.code }}</code></pre>
       </div>
@@ -139,6 +144,12 @@ async function copyCode(): Promise<void> {
   line-height: inherit;
   background: transparent;
   padding: 0;
+}
+
+/* File previews use one outer viewport for both scroll directions. */
+.code-highlight[data-layout="preview"] :deep(pre) {
+  padding: 1rem;
+  overflow: visible;
 }
 
 /* Shiki emits both palettes as token variables. Explicitly apply each palette

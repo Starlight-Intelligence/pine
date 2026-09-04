@@ -64,7 +64,7 @@ export function readContentTabs(projectId: string): ContentTabState | null {
           ? JSON.stringify([tab.folderId, tab.relativePath])
           : tab.state === "bound"
             ? `session:${tab.sessionId}`
-            : "draft";
+            : `draft:${tab.id}`;
       if (entries.has(identity)) continue;
       ids.add(tab.id);
       entries.add(identity);

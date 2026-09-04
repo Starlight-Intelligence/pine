@@ -166,12 +166,14 @@ export const useContentTabsStore = defineStore("content-tabs", () => {
     return tab;
   }
 
-  function createSessionTab(): DraftSessionTab {
+  function createSessionTab({
+    reuseDraft = true,
+  }: { reuseDraft?: boolean } = {}): DraftSessionTab {
     const existingDraft = tabs.value.find(
       (tab): tab is DraftSessionTab =>
         tab.kind === "session" && tab.state === "draft",
     );
-    if (existingDraft) return existingDraft;
+    if (reuseDraft && existingDraft) return existingDraft;
 
     const tab = makeDraftTab();
     tabs.value = [...tabs.value, tab];

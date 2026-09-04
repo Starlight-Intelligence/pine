@@ -17,7 +17,7 @@ export function useFileToSession() {
 
   async function sendFile(
     file: ProjectFilePreviewRequest,
-    target: string | PineSessionSummary,
+    target: string | PineSessionSummary | null,
   ): Promise<void> {
     const origin = project.activeProject;
     if (!origin || origin.id !== file.projectId) return;
@@ -29,9 +29,13 @@ export function useFileToSession() {
       // Do not deliver late inspection results into another project or a closed tab.
       if (project.activeProject !== origin) return;
       const tab =
-        typeof target === "string"
-          ? tabs.tabs.find((tab) => tab.id === target && tab.kind === "session")
-          : tabs.openSession(target);
+        target === null
+          ? tabs.createSessionTab({ reuseDraft: false })
+          : typeof target === "string"
+            ? tabs.tabs.find(
+                (tab) => tab.id === target && tab.kind === "session",
+              )
+            : tabs.openSession(target);
       if (!tab || !tabs.addAttachments(tab.id, result.attachments)) return;
       navigation.activate(tab.id);
     } catch (error) {
@@ -44,5 +48,11 @@ export function useFileToSession() {
     }
   }
 
-  return { isSending, sendFile };
+  function sendFileToNewSession(
+    file: ProjectFilePreviewRequest,
+  ): Promise<void> {
+    return sendFile(file, null);
+  }
+
+  return { isSending, sendFile, sendFileToNewSession };
 }

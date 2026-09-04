@@ -113,12 +113,29 @@ describe("ProjectFilePreview", () => {
     expect(choices.map((item) => item.textContent?.trim())).toEqual([
       "Review",
       "New session",
+      "Create session",
     ]);
     await new DOMWrapper(choices[1]).trigger("click");
     await flushPromises();
     expect(store.attachmentsFor(draft.id)).toEqual([attachment]);
     expect(store.attachmentsFor("session-1")).toEqual([]);
     expect(store.fallbackActiveTabId).toBe(draft.id);
+    await wrapper.get("footer button").trigger("click");
+    await flushPromises();
+    const separator = document.querySelector(
+      '[data-slot="dropdown-menu-separator"]',
+    );
+    const createAction = document.querySelector('[data-action="new-session"]');
+    expect(separator).not.toBeNull();
+    expect(createAction).not.toBeNull();
+    await new DOMWrapper(createAction).trigger("click");
+    await flushPromises();
+    const createdId = store.fallbackActiveTabId!;
+    expect(createdId).not.toBe(draft.id);
+    expect(store.tabs.find((tab) => tab.id === createdId)).toMatchObject({
+      state: "draft",
+    });
+    expect(store.attachmentsFor(createdId)).toEqual([attachment]);
   });
 
   it("ignores stale reads when switching files", async () => {

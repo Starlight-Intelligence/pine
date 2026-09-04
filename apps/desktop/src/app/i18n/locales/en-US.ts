@@ -156,6 +156,7 @@ export default {
       text: "Text",
       lines: "{count} lines",
       sendToTab: "Send to tab…",
+      newSession: "Create session",
       noSessionTabs: "No session tabs open",
       sendFailed: "Could not attach file to session",
       failedTitle: "Unable to preview file",

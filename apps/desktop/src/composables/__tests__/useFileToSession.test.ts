@@ -70,6 +70,31 @@ async function setup() {
 }
 
 describe("file to session delivery", () => {
+  it("creates an independent draft, attaches the file, and activates it", async () => {
+    const { store, router, sender } = await setup();
+    store.addAttachments("session-1", [
+      { ...attachment, path: "/existing.md" },
+    ]);
+    await sender.sendFileToNewSession(file);
+    await flushPromises();
+    const targetId = String(router.currentRoute.value.query.tab);
+    expect(targetId).not.toBe("session-1");
+    expect(store.tabs.find((tab) => tab.id === targetId)).toMatchObject({
+      kind: "session",
+      state: "draft",
+    });
+    expect(store.attachmentsFor(targetId)).toEqual([attachment]);
+    expect(store.attachmentsFor("session-1")).toEqual([
+      { ...attachment, path: "/existing.md" },
+    ]);
+  });
+
+  it("does not create a new session when file inspection fails", async () => {
+    const { store, sender, inspect } = await setup();
+    inspect.mockRejectedValue(new Error("missing file"));
+    await sender.sendFileToNewSession(file);
+    expect(store.tabs).toHaveLength(2);
+  });
   it("attaches to an unmounted draft and activates it without submitting a message", async () => {
     const { store, router, sender, inspect } = await setup();
     const existing = { ...attachment, path: "/other.md" };

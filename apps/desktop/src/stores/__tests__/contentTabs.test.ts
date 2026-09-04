@@ -133,7 +133,7 @@ describe("content tabs store", () => {
     expect(store.tabs).toEqual([]);
   });
 
-  it("restores interrupted creation as one usable draft", () => {
+  it("restores interrupted creation and keeps independent drafts", () => {
     const store = useContentTabsStore();
     store.restore("one");
     store.beginPrompt("session-1", "pending");
@@ -141,6 +141,7 @@ describe("content tabs store", () => {
     store.restore("one");
     expect(store.tabs).toEqual([
       { id: "session-1", kind: "session", state: "draft" },
+      { id: "session-2", kind: "session", state: "draft" },
     ]);
     expect(store.beginPrompt("session-1", "retry")).toBe(true);
   });

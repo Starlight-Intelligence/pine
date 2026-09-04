@@ -1,7 +1,13 @@
 <script setup lang="ts">
 import { computed, onDeactivated, ref, useTemplateRef, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import { FileQuestion, FileWarning, Send, SquareTerminal } from "@lucide/vue";
+import {
+  FileQuestion,
+  FileWarning,
+  Plus,
+  Send,
+  SquareTerminal,
+} from "@lucide/vue";
 import CodeBlock from "@/components/markdown/CodeBlock.vue";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,10 +24,12 @@ import {
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { useContentTabsStore } from "@/stores/contentTabs";
 import { useFileToSession } from "@/composables/useFileToSession";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { fileLanguage } from "@/lib/fileLanguage";
 import type {
   ProjectFilePreview,
@@ -35,7 +43,7 @@ const tabsStore = useContentTabsStore();
 const sessionTabs = computed(() =>
   tabsStore.tabs.filter((tab) => tab.kind === "session"),
 );
-const { isSending, sendFile } = useFileToSession();
+const { isSending, sendFile, sendFileToNewSession } = useFileToSession();
 const failed = ref(false);
 const revision = ref(0);
 const video = useTemplateRef<HTMLVideoElement>("video");
@@ -161,21 +169,25 @@ onDeactivated(() => video.value?.pause());
         }}</EmptyDescription>
       </EmptyHeader>
     </Empty>
-    <div
+    <ScrollArea
       v-else-if="preview.kind === 'text'"
-      class="scroll-fade min-h-0 flex-1 overflow-auto px-5"
+      class="min-h-0 min-w-0 flex-1 [&_[data-slot=scroll-area-viewport]]:scroll-fade"
     >
-      <CodeBlock
-        :node="{
-          type: 'code_block',
-          code: preview.text,
-          language:
-            preview.text.length > 200_000
-              ? 'text'
-              : fileLanguage(file.relativePath),
-        }"
-      />
-    </div>
+      <div class="w-max min-w-full p-4">
+        <CodeBlock
+          layout="preview"
+          :node="{
+            type: 'code_block',
+            code: preview.text,
+            language:
+              preview.text.length > 200_000
+                ? 'text'
+                : fileLanguage(file.relativePath),
+          }"
+        />
+      </div>
+      <ScrollBar orientation="horizontal" />
+    </ScrollArea>
     <div
       v-else
       class="scroll-fade flex min-h-0 flex-1 items-center justify-center overflow-auto p-6"
@@ -201,7 +213,7 @@ onDeactivated(() => video.value?.pause());
       />
     </div>
     <footer
-      class="mt-auto flex min-h-12 shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-t pl-5 pr-2 py-2 text-xs text-muted-foreground"
+      class="mt-auto flex min-h-12 shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-t pl-5 pr-2 py-2 text-sm text-muted-foreground"
       :title="file.relativePath"
       :aria-label="t('project.preview.metadata')"
     >
@@ -248,6 +260,15 @@ onDeactivated(() => video.value?.pause());
             <DropdownMenuItem v-if="!sessionTabs.length" disabled>{{
               t("project.preview.noSessionTabs")
             }}</DropdownMenuItem>
+          </DropdownMenuGroup>
+          <DropdownMenuSeparator />
+          <DropdownMenuGroup>
+            <DropdownMenuItem
+              data-action="new-session"
+              @select="sendFileToNewSession(file)"
+            >
+              <Plus />{{ t("project.preview.newSession") }}
+            </DropdownMenuItem>
           </DropdownMenuGroup>
         </DropdownMenuContent>
       </DropdownMenu>

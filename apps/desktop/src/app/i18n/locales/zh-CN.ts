@@ -151,6 +151,7 @@ export default {
       text: "文本",
       lines: "{count} 行",
       sendToTab: "发送到选项卡…",
+      newSession: "新建会话",
       noSessionTabs: "没有打开的会话选项卡",
       sendFailed: "无法添加文件到会话",
       failedTitle: "无法预览文件",
