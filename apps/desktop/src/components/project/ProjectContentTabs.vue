@@ -359,7 +359,7 @@ watch(activeSession, (session) => {
     >
       <div
         aria-hidden="true"
-        class="pointer-events-none size-full max-h-[36rem] max-w-[36rem] bg-primary/10 select-none"
+        class="pointer-events-none size-full max-h-72 max-w-72 bg-primary/10 select-none"
         :style="workbenchLogoStyle"
       />
     </div>
