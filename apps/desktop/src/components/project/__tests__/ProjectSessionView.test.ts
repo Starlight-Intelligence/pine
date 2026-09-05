@@ -108,6 +108,7 @@ describe("ProjectSessionView file drop", () => {
     await flushPromises();
 
     expect(promptSession).toHaveBeenCalledWith({
+      locale: "en-US",
       message: "Change direction",
       target: { kind: "session", sessionId: runningSession.id },
       approvalMode: "auto-approve",

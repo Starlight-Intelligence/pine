@@ -15,6 +15,7 @@ import type {
   PineModelCatalog,
   ProviderLoginResult,
   SelectModelRequest,
+  SelectUtilityModelRequest,
 } from "../shared/models";
 import type {
   LoadSessionMessagesResult,
@@ -325,13 +326,15 @@ export class ProjectRuntimeRegistry {
       request.streamingBehavior === "follow-up"
         ? "followUp"
         : request.streamingBehavior;
-    const result = await this.agentHost.prompt(
+    const promptArguments = [
       activeSession.id,
       request.message,
       streamingBehavior,
       attachedPaths.length > 0 ? attachedPaths : undefined,
       runtime.approvalMode,
-    );
+      ...(request.locale ? [request.locale] : []),
+    ] as const;
+    const result = await this.agentHost.prompt(...promptArguments);
     if (
       runtime.session.status === "active" &&
       runtime.session.summary.id === result.session.id
@@ -409,6 +412,12 @@ export class ProjectRuntimeRegistry {
       request.thinkingLevel,
       this.activeSessionId(this.runtimes.get(webContentsId)),
     );
+  }
+
+  selectUtilityModel(
+    request: SelectUtilityModelRequest,
+  ): Promise<{ updated: boolean }> {
+    return this.agentHost.selectUtilityModel(this.agentDir, request);
   }
 
   ownerOfSession(sessionId: string): number | undefined {

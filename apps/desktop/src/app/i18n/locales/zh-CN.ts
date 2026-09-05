@@ -19,6 +19,9 @@ export default {
     themeDark: "深色",
     sidebarVibrancy: "侧栏模糊效果",
     sidebarVibrancyDescription: "使用 macOS 原生模糊材质渲染侧栏",
+    utilityModel: "标题生成和自动批准模型",
+    selectUtilityModel: "选择模型",
+    noUtilityModelSelected: "未选择任何模型",
   },
   models: {
     favorites: "收藏的模型",
@@ -392,6 +395,10 @@ export default {
     },
   },
   errors: {
+    utilityModel: {
+      title: "无法更新专用模型",
+      description: "请检查模型服务后重试",
+    },
     providerDisconnect: {
       title: "无法解绑模型服务",
       description: "凭据未被删除，请稍后重试",

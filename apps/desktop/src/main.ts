@@ -66,6 +66,7 @@ import {
   PROVIDER_AUTH_EVENT_CHANNEL,
   RESPOND_PROVIDER_AUTH_CHANNEL,
   SELECT_MODEL_CHANNEL,
+  SELECT_UTILITY_MODEL_CHANNEL,
   isProviderAuthEvent,
   type PineModelCatalog,
   type ProviderLoginResult,
@@ -342,6 +343,7 @@ const LoadSessionMessagesRequestSchema = z.object({
   sessionId: z.uuid(),
 });
 const PromptSessionRequestSchema = z.object({
+  locale: z.enum(["en-US", "zh-CN"]).default("en-US"),
   message: z.string().trim().min(1).max(100_000),
   target: z.discriminatedUnion("kind", [
     z.object({ kind: z.literal("new") }),
@@ -387,6 +389,10 @@ const SelectModelRequestSchema = z.object({
     "xhigh",
     "max",
   ]),
+});
+const SelectUtilityModelRequestSchema = SelectModelRequestSchema.pick({
+  modelId: true,
+  providerId: true,
 });
 const ProviderAuthUrlSchema = z.url().refine((url) => {
   try {
@@ -634,6 +640,14 @@ ipcMain.handle(
     getProjectRuntimes().selectModel(
       event.sender.id,
       SelectModelRequestSchema.parse(request),
+    ),
+);
+
+ipcMain.handle(
+  SELECT_UTILITY_MODEL_CHANNEL,
+  (_event, request: unknown): Promise<{ updated: boolean }> =>
+    getProjectRuntimes().selectUtilityModel(
+      SelectUtilityModelRequestSchema.parse(request),
     ),
 );
 

@@ -141,6 +141,7 @@ export type PineAgentEvent =
     };
 
 export interface PromptSessionRequest {
+  locale?: "en-US" | "zh-CN";
   message: string;
   target:
     | { kind: "new" }

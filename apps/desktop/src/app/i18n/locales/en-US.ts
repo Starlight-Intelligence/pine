@@ -20,6 +20,9 @@ export default {
     sidebarVibrancy: "Sidebar blur",
     sidebarVibrancyDescription:
       "Render the sidebar with the native macOS blur material",
+    utilityModel: "Title generation and Auto Approve model",
+    selectUtilityModel: "Choose model",
+    noUtilityModelSelected: "No model selected",
   },
   models: {
     favorites: "Favorites",
@@ -404,6 +407,10 @@ export default {
     },
   },
   errors: {
+    utilityModel: {
+      title: "Unable to update utility model",
+      description: "Check the model provider and try again",
+    },
     providerDisconnect: {
       title: "Unable to disconnect provider",
       description: "Credentials were not deleted. Try again in a moment",

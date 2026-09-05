@@ -4,14 +4,22 @@ import { mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { APP_LOCALE_STORAGE_KEY, createAppI18n } from "@/app/i18n";
 import { ToggleGroup } from "@/components/ui/toggle-group";
+import type { PineModelCatalog } from "@/shared/models";
 import {
   SIDEBAR_VIBRANCY_STORAGE_KEY,
   THEME_PREFERENCE_STORAGE_KEY,
   useAppearanceStore,
 } from "@/stores/appearance";
+import { useModelsStore } from "@/stores/models";
 import PinePreferencesDialog from "../PinePreferencesDialog.vue";
 
 const passthroughStub = { template: "<div><slot /></div>" };
+const modelPickerStub = {
+  props: ["open", "purpose"],
+  emits: ["update:open"],
+  template:
+    '<div data-model-picker :data-open="open" :data-purpose="purpose" />',
+};
 const setSidebarVibrancy = vi.fn().mockResolvedValue({ applied: true });
 
 function installPineApi(platform: string | undefined): void {
@@ -42,6 +50,7 @@ function mountDialog() {
         DialogHeader: passthroughStub,
         DialogTitle: passthroughStub,
         DialogTrigger: passthroughStub,
+        ModelPickerDialog: modelPickerStub,
       },
     },
   });
@@ -73,9 +82,55 @@ describe("PinePreferencesDialog", () => {
     expect(wrapper.text()).toContain("Pine 设置");
     expect(wrapper.text()).toContain("语言");
     expect(wrapper.text()).toContain("外观");
+    expect(wrapper.text()).toContain("标题生成和自动批准模型");
+    expect(wrapper.text()).toContain("未选择任何模型");
+    expect(wrapper.text()).toContain("选择模型");
     expect(wrapper.find('[data-slot="dialog-description"]').exists()).toBe(
       false,
     );
+  });
+
+  it("shows the selected utility model name", async () => {
+    const { pinia, wrapper } = mountDialog();
+    const catalog: PineModelCatalog = {
+      models: [
+        {
+          api: "test",
+          contextWindow: 128_000,
+          id: "glm-4.5-air",
+          input: ["text"],
+          maxTokens: 8_192,
+          name: "GLM 4.5 Air",
+          providerId: "zai",
+          providerName: "Z.AI",
+          reasoning: false,
+          supportedThinkingLevels: ["off"],
+        },
+      ],
+      providers: [],
+      utilitySelection: { modelId: "glm-4.5-air", providerId: "zai" },
+    };
+
+    useModelsStore(pinia).catalog = catalog;
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.text()).toContain("GLM 4.5 Air");
+    expect(wrapper.text()).not.toContain("未选择任何模型");
+  });
+
+  it("opens the shared model picker in utility mode", async () => {
+    const { wrapper } = mountDialog();
+    const picker = wrapper.get("[data-model-picker]");
+    const selectButton = wrapper
+      .findAll("button")
+      .find((button) => button.text() === "选择模型");
+
+    expect(picker.attributes("data-purpose")).toBe("utility");
+    expect(picker.attributes("data-open")).toBe("false");
+
+    await selectButton?.trigger("click");
+
+    expect(picker.attributes("data-open")).toBe("true");
   });
 
   it("applies and persists language and theme selections", async () => {

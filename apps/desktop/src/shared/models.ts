@@ -1,5 +1,6 @@
 export const GET_MODEL_CATALOG_CHANNEL = "models:catalog" as const;
 export const SELECT_MODEL_CHANNEL = "models:select" as const;
+export const SELECT_UTILITY_MODEL_CHANNEL = "models:select-utility" as const;
 export const LOGIN_PROVIDER_CHANNEL = "providers:login" as const;
 export const RESPOND_PROVIDER_AUTH_CHANNEL = "providers:auth-response" as const;
 export const CANCEL_PROVIDER_AUTH_CHANNEL = "providers:auth-cancel" as const;
@@ -45,11 +46,17 @@ export interface PineModelSelection {
   thinkingLevel: PineThinkingLevel;
 }
 
+export type PineUtilityModelSelection = Pick<
+  PineModelSelection,
+  "modelId" | "providerId"
+>;
+
 export interface PineModelCatalog {
   models: readonly PineModelDescriptor[];
   providers: readonly PineProviderDescriptor[];
   recommendedModelIds?: readonly string[];
   selection?: PineModelSelection;
+  utilitySelection?: PineUtilityModelSelection;
 }
 
 export type PineProviderAuthPrompt =
@@ -114,6 +121,7 @@ export interface ProviderLoginResult {
 }
 
 export type SelectModelRequest = PineModelSelection;
+export type SelectUtilityModelRequest = PineUtilityModelSelection;
 
 export interface LogoutProviderRequest {
   providerId: string;

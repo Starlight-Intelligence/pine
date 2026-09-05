@@ -31,6 +31,7 @@ async function handleRequest(request: AgentWorkerRequest): Promise<void> {
         request.streamingBehavior,
         request.attachedPaths,
         request.approvalMode,
+        request.locale,
       );
       break;
     case "session:abort":
@@ -88,6 +89,12 @@ async function handleRequest(request: AgentWorkerRequest): Promise<void> {
         request.modelId,
         request.thinkingLevel,
         request.sessionId,
+      );
+      break;
+    case "models:select-utility":
+      result = await runtime.selectUtilityModel(
+        request.agentDir,
+        request.selection,
       );
       break;
     case "runtime:dispose":

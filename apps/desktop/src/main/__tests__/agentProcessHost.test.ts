@@ -151,6 +151,29 @@ describe("AgentProcessHost", () => {
     });
   });
 
+  it("sends the dedicated utility model selection to the worker", async () => {
+    const { host, process } = createHost();
+    const selection = { providerId: "provider", modelId: "utility-model" };
+    const pending = host.selectUtilityModel("/pine/agent", selection);
+    await vi.waitFor(() => expect(process.requests).toHaveLength(1));
+
+    expect(process.requests[0]).toEqual(
+      expect.objectContaining({
+        type: "models:select-utility",
+        agentDir: "/pine/agent",
+        selection,
+      }),
+    );
+    process.emit("message", {
+      type: "response",
+      id: process.requests[0].id,
+      ok: true,
+      result: { updated: true },
+    });
+
+    await expect(pending).resolves.toEqual({ updated: true });
+  });
+
   it("rejects pending work when the utility process exits", async () => {
     const { host, process } = createHost();
     const pending = host.abort("session-1");

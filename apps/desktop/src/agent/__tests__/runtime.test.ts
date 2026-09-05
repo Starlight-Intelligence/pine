@@ -2,14 +2,16 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
-import type { Api, Model } from "@earendil-works/pi-ai";
+import type { Api, AssistantMessage, Model } from "@earendil-works/pi-ai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   attachedPathsFromSessionEntries,
   judgeStreamOptions,
+  normalizeGeneratedTitle,
   parseJudgeRulings,
   PineAgentRuntime,
   projectSessionDirectory,
+  titleFromAssistantMessage,
   toolNamesForApprovalMode,
 } from "../runtime";
 import { serializeAttachmentMessage } from "../../shared/attachments";
@@ -65,6 +67,53 @@ describe("judgeStreamOptions", () => {
     expect(
       judgeStreamOptions(modelWithApi("openai-completions"), signal),
     ).toEqual({ signal });
+  });
+});
+
+describe("normalizeGeneratedTitle", () => {
+  it("keeps only a bounded, unquoted first line", () => {
+    expect(normalizeGeneratedTitle('  "初始会话标题。"\n额外解释')).toBe(
+      "初始会话标题",
+    );
+    expect(normalizeGeneratedTitle(" ")).toBeUndefined();
+    expect([...normalizeGeneratedTitle("a".repeat(80))!]).toHaveLength(60);
+  });
+});
+
+describe("titleFromAssistantMessage", () => {
+  it("accepts only the structured submit_title tool result", () => {
+    const message = {
+      role: "assistant",
+      content: [
+        {
+          type: "toolCall",
+          id: "title-call",
+          name: "submit_title",
+          arguments: { title: "Dedicated Utility Model" },
+        },
+      ],
+    } as unknown as AssistantMessage;
+
+    expect(titleFromAssistantMessage(message)).toBe("Dedicated Utility Model");
+    expect(
+      titleFromAssistantMessage({
+        ...message,
+        content: [{ type: "text", text: "Unexpected prose" }],
+      }),
+    ).toBeUndefined();
+    expect(
+      titleFromAssistantMessage({
+        ...message,
+        content: [
+          {
+            type: "toolCall",
+            id: "title-call",
+            name: "submit_title",
+            arguments: { title: "Title", explanation: "Unexpected" },
+          },
+        ],
+      } as unknown as AssistantMessage),
+    ).toBeUndefined();
   });
 });
 

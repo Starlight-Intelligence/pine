@@ -22,6 +22,7 @@ const contextUsage: PineContextUsage = {
 describe("session store", () => {
   beforeEach(() => {
     setActivePinia(createPinia());
+    document.documentElement.lang = "en-US";
   });
 
   it("keeps the newest search response when requests finish out of order", async () => {
@@ -247,9 +248,25 @@ describe("session store", () => {
     ]);
     expect(store.activeSession?.id).toBe(session.id);
     expect(promptSession).toHaveBeenCalledWith({
+      locale: "en-US",
       message: "Describe the task",
       target: { kind: "new" },
     });
+  });
+
+  it("passes the current interface language to title generation", async () => {
+    document.documentElement.lang = "zh-CN";
+    const promptSession = vi.fn().mockResolvedValue({ session });
+    Object.defineProperty(window, "pine", {
+      configurable: true,
+      value: { promptSession },
+    });
+
+    await useSessionStore().prompt("描述任务");
+
+    expect(promptSession).toHaveBeenCalledWith(
+      expect.objectContaining({ locale: "zh-CN" }),
+    );
   });
 
   it("targets the active session when sending a follow-up", async () => {
@@ -271,6 +288,7 @@ describe("session store", () => {
     await store.prompt("Continue here", session.id);
 
     expect(promptSession).toHaveBeenCalledWith({
+      locale: "en-US",
       message: "Continue here",
       target: { kind: "session", sessionId: session.id },
     });
@@ -306,6 +324,7 @@ describe("session store", () => {
     });
 
     expect(promptSession).toHaveBeenCalledWith({
+      locale: "en-US",
       message: "Change direction",
       target: { kind: "session", sessionId: session.id },
       approvalMode: "auto-approve",

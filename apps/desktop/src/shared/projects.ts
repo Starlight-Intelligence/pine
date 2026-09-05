@@ -25,6 +25,7 @@ import type {
   ProviderAuthResponseRequest,
   ProviderLoginResult,
   SelectModelRequest,
+  SelectUtilityModelRequest,
 } from "./models";
 import type {
   ProjectEntryReference,
@@ -169,6 +170,9 @@ export interface PineDesktopApi extends PineWindowApi {
     request: LogoutProviderRequest,
   ) => Promise<{ disposed: boolean }>;
   selectModel: (request: SelectModelRequest) => Promise<{ disposed: boolean }>;
+  selectUtilityModel: (
+    request: SelectUtilityModelRequest,
+  ) => Promise<{ updated: boolean }>;
   openProviderAuthUrl: (url: string) => Promise<void>;
   onProviderAuthEvent: (listener: ProviderAuthEventListener) => () => void;
   loadSessionMessages: (

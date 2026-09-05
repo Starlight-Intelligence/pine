@@ -9,6 +9,7 @@ import type {
   PineModelCatalog,
   PineProviderAuthEvent,
   PineThinkingLevel,
+  PineUtilityModelSelection,
   ProviderLoginResult,
 } from "../shared/models";
 import type { PineContextUsage, PineSessionSummary } from "../shared/sessions";
@@ -56,6 +57,7 @@ export type AgentWorkerRequest =
       type: "session:prompt";
       sessionId: string;
       message: string;
+      locale: "en-US" | "zh-CN";
       /** User-selected attachment paths granted read-only access. */
       attachedPaths?: string[];
       approvalMode?: PineApprovalMode;
@@ -125,6 +127,12 @@ export type AgentWorkerRequest =
       providerId: string;
       sessionId?: string;
       thinkingLevel: PineThinkingLevel;
+    }
+  | {
+      id: string;
+      type: "models:select-utility";
+      agentDir: string;
+      selection: PineUtilityModelSelection;
     }
   | {
       id: string;

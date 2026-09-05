@@ -31,6 +31,7 @@ function createAgentHost(): AgentHost {
     cancelProviderAuth: vi.fn().mockResolvedValue({ cancelled: true }),
     logoutProvider: vi.fn().mockResolvedValue({ disposed: true }),
     selectModel: vi.fn().mockResolvedValue({ disposed: true }),
+    selectUtilityModel: vi.fn().mockResolvedValue({ updated: true }),
     openSession: vi.fn().mockResolvedValue({ session: sessionSummary }),
     prompt: vi.fn().mockResolvedValue({
       accepted: true,

@@ -17,6 +17,12 @@ import type {
 } from "@/shared/sessions";
 import { attachmentMessagePreview } from "@/shared/attachments";
 import { parseMessageBlocks } from "@/shared/sessions";
+import { isAppLocale } from "@/app/i18n";
+
+function currentAppLocale(): "en-US" | "zh-CN" {
+  const locale = document.documentElement.lang;
+  return isAppLocale(locale) ? locale : "en-US";
+}
 
 export interface PineTranscriptMessage extends PineTextMessage {
   status: "complete" | "streaming";
@@ -366,9 +372,10 @@ export const useSessionStore = defineStore("session", () => {
     isRunning.value = true;
     try {
       const result = await window.pine.promptSession({
+        locale: currentAppLocale(),
         message,
         target: sessionId ? { kind: "session", sessionId } : { kind: "new" },
-        approvalMode,
+        ...(approvalMode ? { approvalMode } : {}),
         ...(streamingBehavior ? { streamingBehavior } : {}),
       });
       const session = {
@@ -401,6 +408,7 @@ export const useSessionStore = defineStore("session", () => {
       throw new Error("The running session is not ready for steering yet.");
     }
     await window.pine.promptSession({
+      locale: currentAppLocale(),
       message,
       target: { kind: "session", sessionId },
       approvalMode,

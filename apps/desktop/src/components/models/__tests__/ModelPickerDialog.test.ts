@@ -3,7 +3,7 @@ import { createPinia, setActivePinia } from "pinia";
 import { WrenchIcon } from "@lucide/vue";
 import { describe, expect, it, vi } from "vitest";
 import { createAppI18n } from "@/app/i18n";
-import type { PineModelCatalog } from "@/shared/models";
+import type { PineModelCatalog, PineModelDescriptor } from "@/shared/models";
 import { useModelsStore } from "@/stores/models";
 import ModelPickerDialog from "../ModelPickerDialog.vue";
 
@@ -41,21 +41,37 @@ const alertDialogActionStub = {
     '<button :disabled="disabled" v-bind="$attrs" @click="$emit(\'click\', $event)"><slot /></button>',
 };
 
+const utilityModel: PineModelDescriptor = {
+  api: "test",
+  contextWindow: 128_000,
+  id: "glm-4.5-air",
+  input: ["text"],
+  maxTokens: 8_192,
+  name: "GLM 4.5 Air",
+  providerId: "zai",
+  providerName: "Z.AI",
+  reasoning: false,
+  supportedThinkingLevels: ["off"],
+};
+
 const connectedCatalog: PineModelCatalog = {
-  models: [],
+  models: [utilityModel],
   providers: [
     {
       authMethods: [{ label: "API key", type: "api_key" }],
       configured: true,
       id: "zai",
-      modelCount: 10,
+      modelCount: 1,
       name: "Z.AI",
     },
   ],
+  recommendedModelIds: [utilityModel.id],
 };
 
-function mountPicker() {
+function mountPicker(purpose: "session" | "utility" = "session") {
   const logoutProvider = vi.fn().mockResolvedValue({ disposed: true });
+  const selectModel = vi.fn().mockResolvedValue(undefined);
+  const selectUtilityModel = vi.fn().mockResolvedValue(undefined);
   const getModelCatalog = vi.fn().mockResolvedValue({
     ...connectedCatalog,
     providers: connectedCatalog.providers.map((provider) => ({
@@ -65,7 +81,12 @@ function mountPicker() {
   });
   Object.defineProperty(window, "pine", {
     configurable: true,
-    value: { getModelCatalog, logoutProvider },
+    value: {
+      getModelCatalog,
+      logoutProvider,
+      selectModel,
+      selectUtilityModel,
+    },
   });
 
   const pinia = createPinia();
@@ -73,7 +94,7 @@ function mountPicker() {
   useModelsStore().catalog = connectedCatalog;
 
   const wrapper = mount(ModelPickerDialog, {
-    props: { open: false },
+    props: { open: false, purpose },
     global: {
       plugins: [pinia, createAppI18n("zh-CN")],
       stubs: {
@@ -98,7 +119,13 @@ function mountPicker() {
     },
   });
 
-  return { getModelCatalog, logoutProvider, wrapper };
+  return {
+    getModelCatalog,
+    logoutProvider,
+    selectModel,
+    selectUtilityModel,
+    wrapper,
+  };
 }
 
 describe("ModelPickerDialog provider management", () => {
@@ -143,5 +170,29 @@ describe("ModelPickerDialog provider management", () => {
     expect(wrapper.get("[data-alert-dialog]").attributes("data-open")).toBe(
       "false",
     );
+  });
+});
+
+describe("ModelPickerDialog utility model selection", () => {
+  it("selects the utility model without showing a recommended badge", async () => {
+    const { selectModel, selectUtilityModel, wrapper } = mountPicker("utility");
+    const modelItem = wrapper
+      .findAll("[data-command-item]")
+      .find((item) => item.attributes("data-value")?.includes(utilityModel.id));
+
+    expect(modelItem).toBeDefined();
+    expect(wrapper.find('[data-model-capability="recommended"]').exists()).toBe(
+      false,
+    );
+
+    await modelItem?.trigger("click");
+    await flushPromises();
+
+    expect(selectUtilityModel).toHaveBeenCalledWith({
+      modelId: utilityModel.id,
+      providerId: utilityModel.providerId,
+    });
+    expect(selectModel).not.toHaveBeenCalled();
+    expect(wrapper.emitted("update:open")).toContainEqual([false]);
   });
 });

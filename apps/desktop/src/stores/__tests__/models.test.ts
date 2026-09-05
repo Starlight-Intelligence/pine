@@ -51,6 +51,7 @@ beforeEach(() => {
       getModelCatalog: vi.fn().mockResolvedValue(catalog),
       logoutProvider: vi.fn().mockResolvedValue({ disposed: true }),
       selectModel: vi.fn().mockResolvedValue(undefined),
+      selectUtilityModel: vi.fn().mockResolvedValue({ updated: true }),
     },
   });
 });
@@ -124,6 +125,27 @@ describe("models store lists", () => {
       providerId: "provider",
     });
     expect(window.pine.getModelCatalog).toHaveBeenCalledOnce();
+  });
+
+  it("selects a dedicated utility model without changing the session model", async () => {
+    const store = useModelsStore();
+    store.catalog = {
+      ...catalog,
+      selection: {
+        providerId: alpha.providerId,
+        modelId: alpha.id,
+        thinkingLevel: "high",
+      },
+    };
+
+    await store.selectUtilityModel(beta);
+
+    expect(window.pine.selectUtilityModel).toHaveBeenCalledWith({
+      providerId: beta.providerId,
+      modelId: beta.id,
+    });
+    expect(store.selectedModel).toBe(alpha);
+    expect(store.utilitySelectedModel).toBe(beta);
   });
 });
 

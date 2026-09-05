@@ -41,6 +41,7 @@ import {
   PROVIDER_AUTH_EVENT_CHANNEL,
   RESPOND_PROVIDER_AUTH_CHANNEL,
   SELECT_MODEL_CHANNEL,
+  SELECT_UTILITY_MODEL_CHANNEL,
   type LoginProviderRequest,
   type LogoutProviderRequest,
   type PineModelCatalog,
@@ -49,6 +50,7 @@ import {
   type ProviderAuthResponseRequest,
   type ProviderLoginResult,
   type SelectModelRequest,
+  type SelectUtilityModelRequest,
 } from "./shared/models";
 import {
   CREATE_PROJECT_CHANNEL,
@@ -180,6 +182,10 @@ const pineApi: PineDesktopApi = {
     ipcRenderer.invoke(LOGOUT_PROVIDER_CHANNEL, request),
   selectModel: (request: SelectModelRequest): Promise<{ disposed: boolean }> =>
     ipcRenderer.invoke(SELECT_MODEL_CHANNEL, request),
+  selectUtilityModel: (
+    request: SelectUtilityModelRequest,
+  ): Promise<{ updated: boolean }> =>
+    ipcRenderer.invoke(SELECT_UTILITY_MODEL_CHANNEL, request),
   openProviderAuthUrl: (url: string): Promise<void> =>
     ipcRenderer.invoke(OPEN_PROVIDER_AUTH_URL_CHANNEL, url),
   onProviderAuthEvent: (listener: ProviderAuthEventListener): (() => void) => {

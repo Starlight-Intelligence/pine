@@ -6,6 +6,7 @@ import type {
   LoginProviderRequest,
   PineModelCatalog,
   PineThinkingLevel,
+  PineUtilityModelSelection,
   ProviderLoginResult,
 } from "../shared/models";
 import type {
@@ -48,6 +49,7 @@ export interface AgentHost {
     streamingBehavior?: "followUp" | "steer",
     attachedPaths?: readonly string[],
     approvalMode?: PineApprovalMode,
+    locale?: "en-US" | "zh-CN",
   ): Promise<AgentWorkerPromptResult>;
   renameSession(
     sessionId: string,
@@ -75,6 +77,10 @@ export interface AgentHost {
     thinkingLevel: PineThinkingLevel,
     sessionId?: string,
   ): Promise<{ disposed: boolean }>;
+  selectUtilityModel(
+    agentDir: string,
+    selection: PineUtilityModelSelection,
+  ): Promise<{ updated: boolean }>;
   subscribe(listener: (event: PineRuntimeEvent) => void): () => void;
   /** Resolve a pending user-approval round trip inside the agent worker. */
   respondApproval(requestId: string, decision: GateDecision): void;
@@ -129,6 +135,7 @@ export class AgentProcessHost implements AgentHost {
     streamingBehavior?: "followUp" | "steer",
     attachedPaths?: readonly string[],
     approvalMode?: PineApprovalMode,
+    locale: "en-US" | "zh-CN" = "en-US",
   ): Promise<AgentWorkerPromptResult> {
     return this.request({
       type: "session:prompt",
@@ -137,6 +144,7 @@ export class AgentProcessHost implements AgentHost {
       ...(streamingBehavior ? { streamingBehavior } : {}),
       ...(attachedPaths?.length ? { attachedPaths: [...attachedPaths] } : {}),
       ...(approvalMode ? { approvalMode } : {}),
+      locale,
     });
   }
 
@@ -222,6 +230,17 @@ export class AgentProcessHost implements AgentHost {
       modelId,
       thinkingLevel,
       ...(sessionId ? { sessionId } : {}),
+    });
+  }
+
+  selectUtilityModel(
+    agentDir: string,
+    selection: PineUtilityModelSelection,
+  ): Promise<{ updated: boolean }> {
+    return this.request({
+      type: "models:select-utility",
+      agentDir,
+      selection,
     });
   }
 

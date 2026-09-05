@@ -15,7 +15,9 @@ import {
   type Context,
   type Model,
   type ModelsApiStreamOptions,
+  type Tool,
 } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import type { PineAgentEvent, PineApprovalMode } from "../shared/agent";
@@ -24,10 +26,14 @@ import type {
   PineModelCatalog,
   PineProviderAuthEvent,
   PineThinkingLevel,
+  PineUtilityModelSelection,
   ProviderLoginResult,
 } from "../shared/models";
 import type { PineContextUsage, PineSessionSummary } from "../shared/sessions";
-import { parseAttachmentMessage } from "../shared/attachments";
+import {
+  attachmentMessagePreview,
+  parseAttachmentMessage,
+} from "../shared/attachments";
 import {
   type AgentSessionLocation,
   type AgentWorkerPromptResult,
@@ -52,8 +58,29 @@ import {
   type UserApprovalRequest,
 } from "./gate";
 import { createPineToolDefinitions, PineAttachedPathAccess } from "./tools";
+import {
+  readPineAgentSettings,
+  writeUtilityModelSelection,
+} from "./pineSettings";
 
 const JUDGE_TIMEOUT_MS = 60_000;
+const TITLE_TIMEOUT_MS = 30_000;
+
+const TITLE_TOOL: Tool = {
+  name: "submit_title",
+  description:
+    "Submit the concise conversation title. Call this exactly once and do not answer in plain text.",
+  parameters: Type.Object(
+    {
+      title: Type.String({
+        description: "A concise title in the requested language.",
+        minLength: 1,
+        maxLength: 60,
+      }),
+    },
+    { additionalProperties: false },
+  ),
+};
 
 const JUDGE_SYSTEM_PROMPT = `You are the automated safety reviewer inside Pine, a desktop coding agent. The agent tried to make a tool call that Pine's deterministic sandbox or folder policy blocked, that matched a destructive-command heuristic, or that explicitly requested native execution outside the sandbox. You decide whether the agent may proceed.
 
@@ -177,6 +204,7 @@ interface LiveAgentSession {
   turn: GateTurnContext;
   /** Paths directly attached by the user; read-only for file tools. */
   attachedPaths: PineAttachedPathAccess;
+  locale: "en-US" | "zh-CN";
 }
 
 export interface PineAgentRuntimeOptions {
@@ -314,6 +342,36 @@ export function judgeStreamOptions(
   }
 }
 
+export function normalizeGeneratedTitle(value: string): string | undefined {
+  const title = value
+    .trim()
+    .split(/\r?\n/, 1)[0]
+    ?.replace(/^['"`“”「」『』]+|['"`“”「」『』]+$/g, "")
+    ?.replace(/[.!?。！？]+$/, "")
+    .trim();
+  if (!title) return undefined;
+  return [...title].slice(0, 60).join("");
+}
+
+export function titleFromAssistantMessage(
+  message: AssistantMessage | undefined,
+): string | undefined {
+  const call = message?.content.find(
+    (block) => block.type === "toolCall" && block.name === TITLE_TOOL.name,
+  );
+  if (
+    call?.type !== "toolCall" ||
+    typeof call.arguments !== "object" ||
+    call.arguments === null ||
+    Array.isArray(call.arguments) ||
+    Object.keys(call.arguments).some((key) => key !== "title") ||
+    typeof (call.arguments as { title?: unknown }).title !== "string"
+  ) {
+    return undefined;
+  }
+  return normalizeGeneratedTitle((call.arguments as { title: string }).title);
+}
+
 export class PineAgentRuntime {
   private readonly activeMessageIds = new Map<string, string>();
   private readonly liveSessions = new Map<string, LiveAgentSession>();
@@ -321,6 +379,8 @@ export class PineAgentRuntime {
   private readonly loginControllers = new Map<string, AbortController>();
   private readonly pendingAuthPrompts = new Map<string, PendingAuthPrompt>();
   private readonly pendingApprovals = new Map<string, PendingUserApproval>();
+  private readonly titleGenerationAttempts = new Set<string>();
+  private readonly titleGenerationInFlight = new Set<string>();
 
   constructor(private readonly options: PineAgentRuntimeOptions) {}
 
@@ -352,8 +412,10 @@ export class PineAgentRuntime {
     streamingBehavior?: "followUp" | "steer",
     attachedPaths: readonly string[] = [],
     approvalMode: PineApprovalMode = "auto-approve",
+    locale: "en-US" | "zh-CN" = "en-US",
   ): Promise<AgentWorkerPromptResult> {
     const live = this.getSession(sessionId);
+    live.locale = locale;
     this.setApprovalMode(live, approvalMode);
     await live.attachedPaths.grant(attachedPaths);
     live.turn.lastUserPrompt = message;
@@ -527,10 +589,33 @@ export class PineAgentRuntime {
     const defaultProvider = settings.getDefaultProvider();
     const defaultModel = settings.getDefaultModel();
     const defaultThinkingLevel = settings.getDefaultThinkingLevel() ?? "medium";
+    let utilitySelection = (await readPineAgentSettings(agentDir)).utilityModel;
+    if (
+      !utilitySelection &&
+      defaultProvider &&
+      defaultModel &&
+      runtime.hasConfiguredAuth(defaultProvider) &&
+      runtime.getModel(defaultProvider, defaultModel)
+    ) {
+      utilitySelection = {
+        providerId: defaultProvider,
+        modelId: defaultModel,
+      };
+      await writeUtilityModelSelection(agentDir, utilitySelection);
+    }
+    const validUtilitySelection =
+      utilitySelection &&
+      runtime.hasConfiguredAuth(utilitySelection.providerId) &&
+      runtime.getModel(utilitySelection.providerId, utilitySelection.modelId)
+        ? utilitySelection
+        : undefined;
 
     return {
       providers,
       models: models.map((model) => this.describeModel(model, providers)),
+      ...(validUtilitySelection
+        ? { utilitySelection: validUtilitySelection }
+        : {}),
       ...(defaultProvider &&
       defaultModel &&
       runtime.hasConfiguredAuth(defaultProvider) &&
@@ -640,6 +725,21 @@ export class PineAgentRuntime {
     return { disposed: true };
   }
 
+  async selectUtilityModel(
+    agentDir: string,
+    selection: PineUtilityModelSelection,
+  ): Promise<{ updated: boolean }> {
+    const runtime = await this.getModelRuntime(agentDir);
+    const model = runtime.getModel(selection.providerId, selection.modelId);
+    if (!model) throw new Error("Model not found.");
+    const available = await runtime.getAvailable(selection.providerId);
+    if (!available.some((candidate) => candidate.id === selection.modelId)) {
+      throw new Error("Configure this provider before selecting its model.");
+    }
+    await writeUtilityModelSelection(agentDir, selection);
+    return { updated: true };
+  }
+
   private async registerSession(
     location: AgentSessionLocation,
     sessionManager: SessionManager,
@@ -673,6 +773,7 @@ export class PineAgentRuntime {
       gate: undefined as never,
       turn: {},
       attachedPaths,
+      locale: "en-US",
     };
     const resourceLoader = new DefaultResourceLoader({
       cwd: location.cwd,
@@ -850,7 +951,7 @@ export class PineAgentRuntime {
 
   /**
    * Structured-output judge: one direct stream call for the whole review batch
-   * against the session's selected model, then read every ruling back by ID.
+   * against Pine's dedicated utility model, then read every ruling back by ID.
    * Never goes through session.prompt (no recursion into the tool pipeline).
    */
   private async runJudge(
@@ -858,9 +959,9 @@ export class PineAgentRuntime {
     requests: JudgeRequest[],
   ): Promise<JudgeRuling[]> {
     if (requests.length === 0) return [];
-    const model = live.session.model;
-    if (!model) throw new Error("No model is selected for this session.");
     const modelRuntime = await this.getModelRuntime(live.agentDir);
+    const model = await this.utilityModel(live.agentDir, modelRuntime);
+    if (!model) throw new Error("No utility model is configured.");
     const timeout = AbortSignal.timeout(JUDGE_TIMEOUT_MS);
     const requestSignals = requests.flatMap((request) =>
       request.signal ? [request.signal] : [],
@@ -946,6 +1047,104 @@ export class PineAgentRuntime {
     }
     live.turn.lastAssistantText = text.trim() || undefined;
     live.turn.lastThinking = thinking.trim() || undefined;
+  }
+
+  private async utilityModel(
+    agentDir: string,
+    runtime: ModelRuntime,
+  ): Promise<Model<Api> | undefined> {
+    let selection = (await readPineAgentSettings(agentDir)).utilityModel;
+    if (!selection) {
+      const settings = SettingsManager.create(process.cwd(), agentDir, {
+        projectTrusted: false,
+      });
+      await settings.reload();
+      const providerId = settings.getDefaultProvider();
+      const modelId = settings.getDefaultModel();
+      if (providerId && modelId) {
+        selection = { providerId, modelId };
+        if (
+          runtime.hasConfiguredAuth(providerId) &&
+          runtime.getModel(providerId, modelId)
+        ) {
+          await writeUtilityModelSelection(agentDir, selection);
+        }
+      }
+    }
+    if (!selection || !runtime.hasConfiguredAuth(selection.providerId)) {
+      return undefined;
+    }
+    return runtime.getModel(selection.providerId, selection.modelId);
+  }
+
+  private async generateInitialTitle(live: LiveAgentSession): Promise<void> {
+    const session = live.session;
+    if (
+      session.sessionName ||
+      this.titleGenerationAttempts.has(session.sessionId) ||
+      this.titleGenerationInFlight.has(session.sessionId)
+    ) {
+      return;
+    }
+
+    const messages = session.sessionManager
+      .getEntries()
+      .filter((entry) => entry.type === "message")
+      .filter(
+        (entry) =>
+          entry.message.role === "user" || entry.message.role === "assistant",
+      );
+    if (!messages.some((entry) => entry.message.role === "user")) return;
+    const transcript = truncateText(
+      messages
+        .map((entry) => {
+          const role = entry.message.role === "user" ? "User" : "Assistant";
+          const text = attachmentMessagePreview(
+            textFromMessageContent(
+              "content" in entry.message ? entry.message.content : "",
+            ),
+          );
+          return `${role}: ${truncateText(text, 4_000)}`;
+        })
+        .filter((line) => !line.endsWith(": "))
+        .join("\n\n"),
+      6_000,
+    );
+    if (!transcript) return;
+
+    this.titleGenerationInFlight.add(session.sessionId);
+    try {
+      const modelRuntime = await this.getModelRuntime(live.agentDir);
+      const model = await this.utilityModel(live.agentDir, modelRuntime);
+      if (!model) return;
+      this.titleGenerationAttempts.add(session.sessionId);
+      const language =
+        live.locale === "zh-CN" ? "Simplified Chinese" : "English";
+      const signal = AbortSignal.timeout(TITLE_TIMEOUT_MS);
+      const context: Context = {
+        systemPrompt: `Generate a concise conversation title in ${language}. Capture the user's task and use at most 12 words. Call submit_title exactly once with { "title": string }; do not answer in plain text.`,
+        messages: [
+          {
+            role: "user",
+            timestamp: Date.now(),
+            content: transcript,
+          },
+        ],
+        tools: [TITLE_TOOL],
+      };
+      const options = { ...judgeStreamOptions(model, signal), maxTokens: 80 };
+      let final: AssistantMessage | undefined;
+      for await (const event of modelRuntime.stream(model, context, options)) {
+        if (event.type === "done") final = event.message;
+        else if (event.type === "error") return;
+      }
+      const title = titleFromAssistantMessage(final);
+      if (title && !session.sessionName) session.setSessionName(title);
+    } catch {
+      // Title generation is best-effort and must never fail the user's turn.
+    } finally {
+      this.titleGenerationInFlight.delete(session.sessionId);
+    }
   }
 
   private getSession(sessionId: string): LiveAgentSession {
@@ -1122,6 +1321,9 @@ export class PineAgentRuntime {
           sessionId,
           summary: sessionSummary(session),
         });
+        break;
+      case "agent_settled":
+        void this.generateInitialTitle(this.getSession(sessionId));
         break;
       default:
         break;

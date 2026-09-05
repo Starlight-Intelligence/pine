@@ -82,11 +82,22 @@ export const useModelsStore = defineStore("models", () => {
   const models = computed(() => catalog.value.models);
   const providers = computed(() => catalog.value.providers);
   const selection = computed(() => catalog.value.selection);
+  const utilitySelection = computed(() => catalog.value.utilitySelection);
   const recommendedModelIds = computed(
     () => new Set(catalog.value.recommendedModelIds ?? []),
   );
   const selectedModel = computed(() => {
     const selected = selection.value;
+    return selected
+      ? models.value.find(
+          (model) =>
+            model.providerId === selected.providerId &&
+            model.id === selected.modelId,
+        )
+      : undefined;
+  });
+  const utilitySelectedModel = computed(() => {
+    const selected = utilitySelection.value;
     return selected
       ? models.value.find(
           (model) =>
@@ -210,6 +221,20 @@ export const useModelsStore = defineStore("models", () => {
     await select(model, thinkingLevel);
   }
 
+  async function selectUtilityModel(model: PineModelDescriptor): Promise<void> {
+    await window.pine.selectUtilityModel({
+      providerId: model.providerId,
+      modelId: model.id,
+    });
+    catalog.value = {
+      ...catalog.value,
+      utilitySelection: {
+        providerId: model.providerId,
+        modelId: model.id,
+      },
+    };
+  }
+
   async function beginLogin(
     provider: PineProviderDescriptor,
     authType: PineAuthType,
@@ -293,10 +318,13 @@ export const useModelsStore = defineStore("models", () => {
     recentModels,
     respondToPrompt,
     select,
+    selectUtilityModel,
     selectedModel,
     selection,
     setThinkingLevel,
     toggleFavorite,
+    utilitySelectedModel,
+    utilitySelection,
   };
 });
 

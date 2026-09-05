@@ -44,12 +44,19 @@ import ProviderIcon from "./ProviderIcon.vue";
 
 type PickerView = "models" | "providers";
 
-const props = defineProps<{ open: boolean }>();
+const props = withDefaults(
+  defineProps<{
+    open: boolean;
+    purpose?: "session" | "utility";
+  }>(),
+  { purpose: "session" },
+);
 const emit = defineEmits<{ "update:open": [open: boolean] }>();
 
 const { t } = useI18n();
 const modelsStore = useModelsStore();
-const { isLoading, models, providers, selection } = storeToRefs(modelsStore);
+const { isLoading, models, providers, selection, utilitySelection } =
+  storeToRefs(modelsStore);
 const view = ref<PickerView>("models");
 const isAuthOpen = ref(false);
 const selectedProvider = ref<PineProviderDescriptor | null>(null);
@@ -116,9 +123,10 @@ watch(
 );
 
 function isSelected(model: PineModelDescriptor): boolean {
+  const selected =
+    props.purpose === "utility" ? utilitySelection.value : selection.value;
   return (
-    selection.value?.providerId === model.providerId &&
-    selection.value.modelId === model.id
+    selected?.providerId === model.providerId && selected.modelId === model.id
   );
 }
 
@@ -134,8 +142,21 @@ async function openAuth(provider: PineProviderDescriptor): Promise<void> {
 }
 
 async function selectModel(model: PineModelDescriptor): Promise<void> {
-  await modelsStore.select(model);
-  emit("update:open", false);
+  try {
+    if (props.purpose === "utility") {
+      await modelsStore.selectUtilityModel(model);
+    } else {
+      await modelsStore.select(model);
+    }
+    emit("update:open", false);
+  } catch (error) {
+    if (props.purpose !== "utility") throw error;
+    handleError(error, {
+      id: "preferences.utility-model",
+      title: t("errors.utilityModel.title"),
+      description: t("errors.utilityModel.description"),
+    });
+  }
 }
 
 function selectProvider(provider: PineProviderDescriptor): void {
@@ -253,7 +274,9 @@ async function handleConnected(): Promise<void> {
             <span class="ml-auto flex shrink-0 items-center gap-1">
               <ModelCapabilities
                 :model="model"
-                :recommended="modelsStore.isRecommended(model)"
+                :recommended="
+                  purpose === 'session' && modelsStore.isRecommended(model)
+                "
               />
               <Button
                 type="button"

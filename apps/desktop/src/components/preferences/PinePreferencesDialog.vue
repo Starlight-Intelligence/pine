@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { SettingsIcon } from "@lucide/vue";
 import { storeToRefs } from "pinia";
+import { ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { isAppLocale, persistAppLocale } from "@/app/i18n";
+import ModelPickerDialog from "@/components/models/ModelPickerDialog.vue";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -19,12 +21,21 @@ import {
 } from "@/components/ui/field";
 import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { useModelsStore } from "@/stores/models";
 import { isThemePreference, useAppearanceStore } from "@/stores/appearance";
 
 const { locale, t } = useI18n();
 const appearanceStore = useAppearanceStore();
+const modelsStore = useModelsStore();
 const { supportsSidebarVibrancy, themePreference } =
   storeToRefs(appearanceStore);
+const { utilitySelectedModel } = storeToRefs(modelsStore);
+const isOpen = ref(false);
+const isUtilityModelPickerOpen = ref(false);
+
+watch(isOpen, (open) => {
+  if (open) void modelsStore.load();
+});
 
 function updateLocale(value: unknown): void {
   if (typeof value !== "string" || !isAppLocale(value)) return;
@@ -45,7 +56,7 @@ function updateSidebarVibrancy(value: boolean): void {
 </script>
 
 <template>
-  <Dialog>
+  <Dialog v-model:open="isOpen">
     <DialogTrigger as-child>
       <Button
         data-slot="pine-preferences-trigger"
@@ -108,6 +119,28 @@ function updateSidebarVibrancy(value: boolean): void {
             </ToggleGroupItem>
           </ToggleGroup>
         </Field>
+
+        <Field orientation="horizontal">
+          <div class="flex min-w-0 flex-1 flex-col gap-1">
+            <FieldTitle id="pine-utility-model-setting">
+              {{ t("preferences.utilityModel") }}
+            </FieldTitle>
+            <FieldDescription>
+              {{
+                utilitySelectedModel?.name ??
+                t("preferences.noUtilityModelSelected")
+              }}
+            </FieldDescription>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            aria-labelledby="pine-utility-model-setting"
+            @click="isUtilityModelPickerOpen = true"
+          >
+            {{ t("preferences.selectUtilityModel") }}
+          </Button>
+        </Field>
         <Field v-if="supportsSidebarVibrancy" orientation="horizontal">
           <div class="flex min-w-0 flex-1 flex-col gap-1">
             <FieldTitle id="pine-sidebar-vibrancy-setting">
@@ -127,4 +160,9 @@ function updateSidebarVibrancy(value: boolean): void {
       </FieldGroup>
     </DialogContent>
   </Dialog>
+
+  <ModelPickerDialog
+    v-model:open="isUtilityModelPickerOpen"
+    purpose="utility"
+  />
 </template>
