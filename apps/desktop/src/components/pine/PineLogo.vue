@@ -1,3 +1,7 @@
+<script setup lang="ts">
+defineOptions({ inheritAttrs: false });
+</script>
+
 <template>
   <!--
     viewBox is cropped to the artwork's ink bounds (x 221.0-803.0,
@@ -5,6 +9,7 @@
     box instead of floating inside the source file's baked-in padding.
   -->
   <svg
+    v-bind="$attrs"
     viewBox="206.4 206.4 611.2 611.2"
     fill="currentColor"
     xmlns="http://www.w3.org/2000/svg"
