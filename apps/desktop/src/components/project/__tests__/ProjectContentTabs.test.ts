@@ -44,7 +44,7 @@ vi.mock("../ProjectSessionView.vue", () => ({
 const windowControlsPaddingClass =
   "pl-[calc(var(--window-titlebar-leading-offset)+var(--window-titlebar-control-height)+0.75rem)]";
 const preferencesPaddingClass =
-  "pr-[calc(var(--window-titlebar-control-height)+1.25rem)]";
+  "pr-[calc(var(--window-titlebar-control-height)+1rem)]";
 
 async function mountTabs(withFile = false) {
   const pinia = createPinia();
@@ -365,6 +365,21 @@ describe("ProjectContentTabs", () => {
     expect(titlebar.classes()).toContain(preferencesPaddingClass);
     expect(tabList.classes()).toContain("flex-1");
     expect(tabItems.classes()).toContain("py-1");
+  });
+
+  it("shows the overflow actions only while tabs are open", async () => {
+    const { wrapper } = await mountTabs();
+    const moreActions = 'button[aria-label="More actions"]';
+
+    expect(wrapper.get(moreActions).classes()).toContain("window-no-drag");
+    await wrapper
+      .get('button[aria-label="Close New session"]')
+      .trigger("click");
+    await flushPromises();
+    expect(wrapper.find(moreActions).exists()).toBe(false);
+    await wrapper.get('button[aria-label="Add session tab"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find(moreActions).exists()).toBe(true);
   });
 
   it("keeps the tab list blank area draggable and tabs interactive", async () => {

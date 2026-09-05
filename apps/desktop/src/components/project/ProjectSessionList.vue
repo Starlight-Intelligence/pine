@@ -7,33 +7,12 @@ import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { handleError } from "@/app/errors/errorHandler";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { Button } from "@/components/ui/button";
-import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuGroup,
   ContextMenuItem,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -51,6 +30,8 @@ import type { PineSessionSummary } from "@/shared/sessions";
 import { useContentTabsStore } from "@/stores/contentTabs";
 import { useProjectStore } from "@/stores/project";
 import { useSessionStore } from "@/stores/session";
+import SessionDeleteDialog from "@/components/sessions/SessionDeleteDialog.vue";
+import SessionRenameDialog from "@/components/sessions/SessionRenameDialog.vue";
 
 const { locale, t } = useI18n();
 const emit = defineEmits<{
@@ -100,14 +81,15 @@ const { isLoadingRecent, recentSessions } = storeToRefs(sessionStore);
 const scrollHost = ref<HTMLElement | null>(null);
 const sessionPendingDelete = ref<PineSessionSummary | null>(null);
 const isDeleteDialogOpen = ref(false);
-const isDeleting = ref(false);
 const sessionPendingRename = ref<PineSessionSummary | null>(null);
 const isRenameDialogOpen = ref(false);
-const renameName = ref("");
-const isRenaming = ref(false);
-const canRename = computed(
-  () => renameName.value.trim().length > 0 && !isRenaming.value,
-);
+
+watch(isDeleteDialogOpen, (open) => {
+  if (!open) sessionPendingDelete.value = null;
+});
+watch(isRenameDialogOpen, (open) => {
+  if (!open) sessionPendingRename.value = null;
+});
 
 const dateFormatter = computed(
   () =>
@@ -158,57 +140,7 @@ function requestSessionDeletion(session: PineSessionSummary): void {
 
 function requestSessionRename(session: PineSessionSummary): void {
   sessionPendingRename.value = session;
-  renameName.value = sessionTitle(session);
   isRenameDialogOpen.value = true;
-}
-
-function setRenameDialogOpen(open: boolean): void {
-  isRenameDialogOpen.value = open;
-  if (open) return;
-  sessionPendingRename.value = null;
-  renameName.value = "";
-}
-
-async function renameRequestedSession(): Promise<void> {
-  const session = sessionPendingRename.value;
-  const name = renameName.value.trim();
-  if (!session || !name || isRenaming.value) return;
-
-  isRenaming.value = true;
-  try {
-    const renamed = await sessionStore.renameSession(session.id, name);
-    contentTabsStore.updateSession(renamed);
-    setRenameDialogOpen(false);
-  } catch (error) {
-    handleError(error, {
-      id: "sessions.sidebar.rename",
-      title: t("errors.sessionRename.title"),
-      description: t("errors.sessionRename.description"),
-    });
-  } finally {
-    isRenaming.value = false;
-  }
-}
-
-async function deleteRequestedSession(): Promise<void> {
-  const session = sessionPendingDelete.value;
-  if (!session || isDeleting.value) return;
-
-  isDeleting.value = true;
-  try {
-    await sessionStore.deleteSession(session.id);
-    tabNavigation.removeSession(session.id);
-    isDeleteDialogOpen.value = false;
-    sessionPendingDelete.value = null;
-  } catch (error) {
-    handleError(error, {
-      id: "sessions.sidebar.delete",
-      title: t("errors.sessionDelete.title"),
-      description: t("errors.sessionDelete.description"),
-    });
-  } finally {
-    isDeleting.value = false;
-  }
 }
 
 watch(
@@ -350,76 +282,14 @@ watch(
       </ScrollArea>
     </div>
 
-    <AlertDialog v-model:open="isDeleteDialogOpen">
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>{{ t("sessions.deleteTitle") }}</AlertDialogTitle>
-          <AlertDialogDescription>
-            {{
-              t("sessions.deleteDescription", {
-                name: sessionPendingDelete
-                  ? sessionTitle(sessionPendingDelete)
-                  : "",
-              })
-            }}
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel :disabled="isDeleting">
-            {{ t("common.cancel") }}
-          </AlertDialogCancel>
-          <AlertDialogAction
-            variant="destructive"
-            :disabled="isDeleting"
-            @click="deleteRequestedSession"
-          >
-            {{ t("common.delete") }}
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+    <SessionDeleteDialog
+      v-model:open="isDeleteDialogOpen"
+      :session="sessionPendingDelete"
+    />
 
-    <Dialog :open="isRenameDialogOpen" @update:open="setRenameDialogOpen">
-      <DialogContent>
-        <form
-          class="flex flex-col gap-6"
-          @submit.prevent="renameRequestedSession"
-        >
-          <DialogHeader>
-            <DialogTitle>{{ t("sessions.renameTitle") }}</DialogTitle>
-            <DialogDescription>
-              {{ t("sessions.renameDescription") }}
-            </DialogDescription>
-          </DialogHeader>
-          <FieldGroup>
-            <Field>
-              <FieldLabel for="session-name">
-                {{ t("sessions.nameLabel") }}
-              </FieldLabel>
-              <Input
-                id="session-name"
-                v-model="renameName"
-                maxlength="200"
-                autocomplete="off"
-                required
-              />
-            </Field>
-          </FieldGroup>
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              :disabled="isRenaming"
-              @click="setRenameDialogOpen(false)"
-            >
-              {{ t("common.cancel") }}
-            </Button>
-            <Button type="submit" :disabled="!canRename">
-              {{ t("common.save") }}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+    <SessionRenameDialog
+      v-model:open="isRenameDialogOpen"
+      :session="sessionPendingRename"
+    />
   </div>
 </template>

@@ -187,6 +187,7 @@ export default {
         "Select a file in the sidebar to preview it, or start a new session.",
       newSession: "New session",
       addTab: "Add session tab",
+      moreActions: "More actions",
       closeTab: "Close {name}",
       tabListLabel: "Open content",
     },

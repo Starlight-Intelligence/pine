@@ -180,6 +180,7 @@ export default {
       emptyDescription: "从左侧选择文件进行预览，或新建会话。",
       newSession: "新会话",
       addTab: "新建会话标签页",
+      moreActions: "更多操作",
       closeTab: "关闭 {name}",
       tabListLabel: "已打开的内容",
     },

@@ -54,6 +54,7 @@ import { Input } from "@/components/ui/input";
 import { useProjectSidebarStore } from "@/stores/projectSidebar";
 import { useProjectStore } from "@/stores/project";
 import { useContentTabNavigation } from "@/composables/useContentTabNavigation";
+import { useProjectFileChanges } from "@/composables/useProjectFileChanges";
 
 interface ProjectTreeNode extends ProjectEntry {
   children?: ProjectTreeNode[];
@@ -67,6 +68,15 @@ const { t } = useI18n();
 const projectStore = useProjectStore();
 const tabNavigation = useContentTabNavigation();
 const { activeProject } = storeToRefs(projectStore);
+const { onProjectFilesChanged } = useProjectFileChanges();
+onProjectFilesChanged(() => {
+  void refresh().catch((error) =>
+    handleError(error, {
+      id: "project.files.menu-refresh",
+      title: t("errors.projectFiles.title"),
+    }),
+  );
+});
 const items = ref<ProjectTreeNode[]>([]);
 const loadingDirectories = new Set<string>();
 const sidebarStore = useProjectSidebarStore();

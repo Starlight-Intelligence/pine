@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { PlusIcon, SquareTerminalIcon, XIcon } from "@lucide/vue";
+import { MessageSquarePlusIcon, SquareTerminalIcon, XIcon } from "@lucide/vue";
 import { storeToRefs } from "pinia";
 import type { ComponentPublicInstance } from "vue";
 import { computed, nextTick, ref, useTemplateRef, watch } from "vue";
@@ -21,6 +21,7 @@ import { useContentTabsStore } from "@/stores/contentTabs";
 import { useSessionStore } from "@/stores/session";
 import ProjectSessionView from "./ProjectSessionView.vue";
 import ProjectFilePreview from "./ProjectFilePreview.vue";
+import ProjectTabsOverflowMenu from "./ProjectTabsOverflowMenu.vue";
 import RetainedPanel from "./RetainedPanel.vue";
 
 const { t } = useI18n();
@@ -236,7 +237,7 @@ watch(activeSession, (session) => {
       data-slot="project-content-tabs-titlebar"
       :class="
         cn(
-          'pointer-events-none relative z-30 flex h-[var(--window-titlebar-height)] shrink-0 items-center gap-2 pr-[calc(var(--window-titlebar-control-height)+1.25rem)] pl-3 transition-[padding] duration-500 ease-out-expo',
+          'pointer-events-none relative z-30 flex h-[var(--window-titlebar-height)] shrink-0 items-center gap-2 pr-[calc(var(--window-titlebar-control-height)+1rem)] pl-3 transition-[padding] duration-500 ease-out-expo',
           shouldReserveWindowControlsSpace &&
             'pl-[calc(var(--window-titlebar-leading-offset)+var(--window-titlebar-control-height)+0.75rem)]',
         )
@@ -320,6 +321,8 @@ watch(activeSession, (session) => {
         </div>
       </div>
 
+      <ProjectTabsOverflowMenu v-if="tabs.length" />
+
       <Button
         class="window-no-drag pointer-events-auto"
         variant="ghost"
@@ -327,7 +330,7 @@ watch(activeSession, (session) => {
         :aria-label="t('project.contentTabs.addTab')"
         @click="tabNavigation.createSessionTab"
       >
-        <PlusIcon />
+        <MessageSquarePlusIcon />
       </Button>
     </div>
 
