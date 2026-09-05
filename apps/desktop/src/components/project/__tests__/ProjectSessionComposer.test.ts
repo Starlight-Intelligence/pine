@@ -12,6 +12,7 @@ interface ComposerProps {
   approvalMode?: "let-me-review" | "auto-approve" | "YOLO";
   isRunning?: boolean;
   pendingApproval?: PinePendingApproval | null;
+  steeringMessages?: readonly string[];
 }
 
 function mountComposer(
@@ -513,6 +514,45 @@ describe("ProjectSessionComposer", () => {
 
     expect(wrapper.emitted("abort")).toEqual([[]]);
     expect(wrapper.emitted("submit")).toBeUndefined();
+  });
+
+  it("uses steering copy and submits with Enter while running", async () => {
+    const wrapper = mountComposer({ isRunning: true });
+    const textarea = wrapper.get("textarea");
+
+    expect(textarea.attributes("placeholder")).toBe("追加要求、改变方向……");
+    await textarea.setValue("先修复类型错误");
+
+    const steeringButton = wrapper.get('button[aria-label="追加要求"]');
+    expect(steeringButton.get("svg").classes()).toContain(
+      "lucide-corner-down-right",
+    );
+    await textarea.trigger("keydown", { key: "Enter" });
+
+    expect(wrapper.emitted("submit")).toEqual([["先修复类型错误"]]);
+    expect(wrapper.emitted("abort")).toBeUndefined();
+  });
+
+  it("renders queued steering as a withdrawable dashed user bubble", async () => {
+    const wrapper = mountComposer({
+      isRunning: true,
+      steeringMessages: ["改用更小的接口"],
+    });
+    const staged = wrapper.get('[data-slot="staged-steering-message"]');
+    const withdraw = staged.get('button[aria-label="撤回暂存消息"]');
+
+    expect(staged.text()).toContain("改用更小的接口");
+    expect(staged.get('[data-slot="bubble-content"]').classes()).toContain(
+      "border-dashed",
+    );
+    expect(
+      withdraw.element.compareDocumentPosition(
+        staged.get('[data-slot="bubble"]').element,
+      ) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    await withdraw.trigger("click");
+    expect(wrapper.emitted("withdrawSteering")).toEqual([["改用更小的接口"]]);
   });
 
   it("saves pathless pasted images into Pine-managed attachment storage", async () => {

@@ -189,6 +189,7 @@ export default {
     composer: {
       label: "Session message",
       placeholder: "Describe a task or clarify what you need…",
+      steeringPlaceholder: "Add requirements or change direction…",
       addAttachment: "Add attachment",
       addFile: "Add file",
       addFolder: "Add folder",
@@ -205,7 +206,10 @@ export default {
       dropAttachmentsDescription:
         "You can add multiple files or folders at once",
       send: "Send message",
+      steer: "Steer response",
       stop: "Stop response",
+      withdrawSteering: "Withdraw staged message",
+      withdrawSteeringFailed: "Could not withdraw the staged message",
       model: "Model",
       selectModel: "Choose model",
       reasoningEffort: "Reasoning effort",

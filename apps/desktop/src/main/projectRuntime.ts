@@ -352,6 +352,15 @@ export class ProjectRuntimeRegistry {
     return { ...result, sessionId };
   }
 
+  async dequeueSteering(
+    webContentsId: number,
+    message: string,
+  ): Promise<{ message?: string; removed: boolean }> {
+    const runtime = this.get(webContentsId);
+    if (runtime.session.status !== "active") return { removed: false };
+    return this.agentHost.dequeueSteering(runtime.session.summary.id, message);
+  }
+
   async setApprovalMode(
     webContentsId: number,
     approvalMode: PineApprovalMode,
@@ -416,6 +425,18 @@ export class ProjectRuntimeRegistry {
         runtime.session.summary.id === sessionId
       ) {
         runtime.session.contextUsage = contextUsage;
+        return;
+      }
+    }
+  }
+
+  updateSessionSummary(sessionId: string, summary: PineSessionSummary): void {
+    for (const runtime of this.runtimes.values()) {
+      if (
+        runtime.session.status === "active" &&
+        runtime.session.summary.id === sessionId
+      ) {
+        runtime.session.summary = summary;
         return;
       }
     }

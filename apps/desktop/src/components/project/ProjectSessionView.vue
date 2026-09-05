@@ -12,6 +12,7 @@ import { toast } from "vue-sonner";
 import type { PineApprovalAction, PineApprovalMode } from "@/shared/agent";
 import {
   attachmentMessagePreview,
+  parseAttachmentMessage,
   type PineAttachment,
 } from "@/shared/attachments";
 import { PineCharacter } from "@/components/pine";
@@ -66,6 +67,7 @@ const isLoadingMessages = tabValue(liveState.isLoadingMessages);
 const isRunning = tabValue(liveState.isRunning);
 const messages = tabValue(liveState.messages);
 const pendingApprovals = tabValue(liveState.pendingApprovals);
+const steeringMessages = tabValue(liveState.steeringMessages);
 const reviewingToolCallIds = tabValue(liveState.reviewingToolCallIds);
 const draft = ref("");
 const attachments = computed<PineAttachment[]>({
@@ -104,6 +106,17 @@ watch(approvalMode, (value) => {
 });
 
 function submit(message: string): void {
+  if (isRunning.value) {
+    draft.value = "";
+    void sessionStore.steer(message, approvalMode.value).catch(() => {
+      restoreComposerMessage(message);
+      toast.error(t("errors.sessionPrompt.title"), {
+        description: t("errors.sessionPrompt.description"),
+      });
+    });
+    return;
+  }
+
   const sessionId = props.sessionId;
   if (
     !contentTabsStore.beginPrompt(
@@ -123,6 +136,24 @@ function submit(message: string): void {
         description: t("errors.sessionPrompt.description"),
       });
     });
+}
+
+function restoreComposerMessage(message: string): void {
+  const parsed = parseAttachmentMessage(message);
+  draft.value = [parsed.prompt, draft.value]
+    .filter((value) => value.trim())
+    .join("\n\n");
+  contentTabsStore.addAttachments(props.tabId, parsed.attachments);
+}
+
+async function withdrawSteering(message: string): Promise<void> {
+  try {
+    const restored = await sessionStore.dequeueSteering(message);
+    if (!restored) return;
+    restoreComposerMessage(restored);
+  } catch {
+    toast.error(t("project.composer.withdrawSteeringFailed"));
+  }
 }
 
 function respondToApproval(
@@ -283,9 +314,11 @@ async function handleDrop(event: DragEvent): Promise<void> {
         v-model:approvalMode="approvalMode"
         :is-running="isRunning"
         :pending-approval="pendingApproval"
+        :steering-messages="steeringMessages"
         @abort="abort"
         @respond="respondToApproval"
         @submit="submit"
+        @withdraw-steering="withdrawSteering"
       />
 
       <Empty

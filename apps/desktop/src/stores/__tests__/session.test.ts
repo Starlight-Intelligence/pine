@@ -276,6 +276,63 @@ describe("session store", () => {
     });
   });
 
+  it("queues steering on the active session and exposes pi queue updates", async () => {
+    let listener: ((event: PineAgentEvent) => void) | undefined;
+    const promptSession = vi.fn().mockResolvedValue({ session });
+    Object.defineProperty(window, "pine", {
+      configurable: true,
+      value: {
+        loadSessionMessages: vi.fn().mockResolvedValue({
+          hasMore: false,
+          messages: [],
+        }),
+        onSessionEvent: vi.fn((nextListener) => {
+          listener = nextListener;
+          return () => undefined;
+        }),
+        promptSession,
+        resumeSession: vi.fn().mockResolvedValue({ session }),
+      },
+    });
+    const store = useSessionStore();
+    store.connectAgentEvents();
+    await store.resume(session.id);
+
+    await store.prompt("Change direction", session.id, "auto-approve", "steer");
+    listener?.({
+      type: "steering-queue",
+      sessionId: session.id,
+      messages: ["Change direction"],
+    });
+
+    expect(promptSession).toHaveBeenCalledWith({
+      message: "Change direction",
+      target: { kind: "session", sessionId: session.id },
+      approvalMode: "auto-approve",
+      streamingBehavior: "steer",
+    });
+    expect(store.steeringMessages).toEqual(["Change direction"]);
+  });
+
+  it("dequeues a staged steering message through the preload API", async () => {
+    const dequeueSteering = vi.fn().mockResolvedValue({
+      message: "Change direction",
+      removed: true,
+    });
+    Object.defineProperty(window, "pine", {
+      configurable: true,
+      value: { dequeueSteering },
+    });
+    const store = useSessionStore();
+
+    await expect(store.dequeueSteering("Change direction")).resolves.toBe(
+      "Change direction",
+    );
+    expect(dequeueSteering).toHaveBeenCalledWith({
+      message: "Change direction",
+    });
+  });
+
   it("syncs approval mode changes immediately", async () => {
     const setApprovalMode = vi.fn().mockResolvedValue({ updated: true });
     Object.defineProperty(window, "pine", {

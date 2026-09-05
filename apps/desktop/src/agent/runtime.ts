@@ -358,44 +358,74 @@ export class PineAgentRuntime {
     await live.attachedPaths.grant(attachedPaths);
     live.turn.lastUserPrompt = message;
     live.gate?.resetTurn();
-    let accepted = false;
-
     this.options.emit({ type: "run-state", sessionId, state: "running" });
-    try {
-      await live.session.prompt(message, {
-        ...(streamingBehavior ? { streamingBehavior } : {}),
-        preflightResult: (success) => {
-          accepted = success;
-        },
-        source: "interactive",
-      });
-      return {
+    return new Promise<AgentWorkerPromptResult>((resolve, reject) => {
+      let responseSettled = false;
+      const result = (accepted: boolean): AgentWorkerPromptResult => ({
         accepted,
         session: sessionSummary(live.session),
         ...(live.session.sessionFile
           ? { sessionFile: live.session.sessionFile }
           : {}),
+      });
+      const settleAccepted = (): void => {
+        if (responseSettled) return;
+        responseSettled = true;
+        resolve(result(true));
       };
-    } catch (error) {
-      const message = toErrorMessage(error);
-      this.options.emit({
-        type: "session-error",
-        sessionId,
-        errorId: randomUUID(),
-        message,
-      });
-      this.options.emit({
-        type: "run-state",
-        sessionId,
-        state: "failed",
-        error: message,
-      });
-      throw error;
-    } finally {
-      if (live.session.isIdle) {
-        this.options.emit({ type: "run-state", sessionId, state: "idle" });
-      }
-    }
+
+      void live.session
+        .prompt(message, {
+          ...(streamingBehavior ? { streamingBehavior } : {}),
+          preflightResult: (success) => {
+            if (success) settleAccepted();
+          },
+          source: "interactive",
+        })
+        .then(settleAccepted)
+        .catch((error: unknown) => {
+          const errorMessage = toErrorMessage(error);
+          this.options.emit({
+            type: "session-error",
+            sessionId,
+            errorId: randomUUID(),
+            message: errorMessage,
+          });
+          this.options.emit({
+            type: "run-state",
+            sessionId,
+            state: "failed",
+            error: errorMessage,
+          });
+          if (!responseSettled) {
+            responseSettled = true;
+            reject(error instanceof Error ? error : new Error(errorMessage));
+          }
+        })
+        .finally(() => {
+          if (live.session.isIdle) {
+            this.options.emit({ type: "run-state", sessionId, state: "idle" });
+          }
+        });
+    });
+  }
+
+  /** Remove one still-queued steering message without disturbing its siblings. */
+  async dequeueSteering(
+    sessionId: string,
+    message: string,
+  ): Promise<{ message?: string; removed: boolean }> {
+    const live = this.getSession(sessionId);
+    const steering = [...live.session.getSteeringMessages()];
+    const index = steering.indexOf(message);
+    if (index < 0) return { removed: false };
+
+    const followUp = [...live.session.getFollowUpMessages()];
+    const [removed] = steering.splice(index, 1);
+    live.session.clearQueue();
+    for (const queued of steering) await live.session.steer(queued);
+    for (const queued of followUp) await live.session.followUp(queued);
+    return { message: removed, removed: true };
   }
 
   async abort(sessionId: string): Promise<{ aborted: boolean }> {
@@ -695,6 +725,9 @@ export class PineAgentRuntime {
       tools: customTools.map((tool) => tool.name),
     });
     live.session = session;
+    // Pine presents every staged steering message together, so inject the
+    // whole batch at the next steering boundary instead of serializing turns.
+    session.setSteeringMode("all");
     this.syncApprovalModeTools(live);
     live.unsubscribe = session.subscribe((event) =>
       this.forwardEvent(session, event),
@@ -1025,6 +1058,13 @@ export class PineAgentRuntime {
           messageId: this.activeMessageIds.get(sessionId) ?? randomUUID(),
           message: toPineJsonValue(event.message),
           update: toPineJsonValue(event.assistantMessageEvent),
+        });
+        break;
+      case "queue_update":
+        this.options.emit({
+          type: "steering-queue",
+          sessionId,
+          messages: [...event.steering],
         });
         break;
       case "tool_execution_start":

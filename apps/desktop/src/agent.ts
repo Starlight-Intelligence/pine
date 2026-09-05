@@ -36,6 +36,12 @@ async function handleRequest(request: AgentWorkerRequest): Promise<void> {
     case "session:abort":
       result = await runtime.abort(request.sessionId);
       break;
+    case "session:dequeue-steering":
+      result = await runtime.dequeueSteering(
+        request.sessionId,
+        request.message,
+      );
+      break;
     case "session:set-approval-mode":
       result = runtime.setSessionApprovalMode(
         request.sessionId,

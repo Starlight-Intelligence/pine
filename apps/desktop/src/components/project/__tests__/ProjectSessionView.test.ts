@@ -6,6 +6,7 @@ import { useContentTabsStore } from "@/stores/contentTabs";
 import { createPinia, setActivePinia } from "pinia";
 import { describe, expect, it, vi } from "vitest";
 import { createAppI18n } from "@/app/i18n";
+import { serializeAttachmentMessage } from "@/shared/attachments";
 import ProjectSessionView from "../ProjectSessionView.vue";
 
 const activeTabId = ref("session-1");
@@ -63,9 +64,9 @@ function mountView() {
         MessageScrollerItem: slotStub,
         PineCharacter: true,
         ProjectSessionComposer: {
-          props: ["attachments"],
+          props: ["attachments", "modelValue", "steeringMessages"],
           template:
-            '<div data-slot="composer-stub" :data-attachment-count="attachments?.length ?? 0" />',
+            '<div data-slot="composer-stub" :data-attachment-count="attachments?.length ?? 0" :data-draft="modelValue"><button data-slot="submit-steering-stub" @click="$emit(\'submit\', \'Change direction\')" /><button v-if="steeringMessages?.length" data-slot="withdraw-steering-stub" @click="$emit(\'withdrawSteering\', steeringMessages[0])" /></div>',
         },
         ProjectTranscriptMessage: true,
         ProjectTranscriptOutline: true,
@@ -76,6 +77,73 @@ function mountView() {
 }
 
 describe("ProjectSessionView file drop", () => {
+  it("steers a running session while its tab is still creating", async () => {
+    const { wrapper } = mountView();
+    const sessionStore = useSessionStore();
+    const contentTabsStore = useContentTabsStore();
+    const runningSession = {
+      id: "019cfe51-7166-79b9-a5b9-c652fcca9eab",
+      createdAt: "2026-07-14T00:00:00.000Z",
+      updatedAt: "2026-07-14T00:00:00.000Z",
+      messageCount: 1,
+    };
+    const promptSession = vi.fn().mockResolvedValue({
+      accepted: true,
+      session: runningSession,
+    });
+    window.pine.loadSessionMessages = vi.fn().mockResolvedValue({
+      hasMore: false,
+      messages: [],
+    });
+    window.pine.resumeSession = vi.fn().mockResolvedValue({
+      session: runningSession,
+    });
+    window.pine.promptSession = promptSession;
+    await sessionStore.resume(runningSession.id);
+    sessionStore.isRunning = true;
+    contentTabsStore.beginPrompt("session-1", "Initial prompt");
+    await flushPromises();
+
+    await wrapper.get('[data-slot="submit-steering-stub"]').trigger("click");
+    await flushPromises();
+
+    expect(promptSession).toHaveBeenCalledWith({
+      message: "Change direction",
+      target: { kind: "session", sessionId: runningSession.id },
+      approvalMode: "auto-approve",
+      streamingBehavior: "steer",
+    });
+    expect(contentTabsStore.tabs[0]).toEqual(
+      expect.objectContaining({ state: "creating" }),
+    );
+  });
+
+  it("restores a dequeued steering message and its attachments to the composer", async () => {
+    const { wrapper } = mountView();
+    const sessionStore = useSessionStore();
+    const attachment = {
+      extension: "md",
+      modifiedAt: "2026-09-02T12:00:00.000Z",
+      name: "notes.md",
+      path: "/tmp/notes.md",
+      size: 1_024,
+    };
+    const queued = serializeAttachmentMessage([attachment], "Change direction");
+    window.pine.dequeueSteering = vi.fn().mockResolvedValue({
+      message: queued,
+      removed: true,
+    });
+    sessionStore.steeringMessages = [queued];
+    await flushPromises();
+
+    await wrapper.get('[data-slot="withdraw-steering-stub"]').trigger("click");
+    await flushPromises();
+
+    const composer = wrapper.get('[data-slot="composer-stub"]');
+    expect(composer.attributes("data-draft")).toBe("Change direction");
+    expect(composer.attributes("data-attachment-count")).toBe("1");
+  });
+
   it("receives attachments for its own composer while in the background", async () => {
     const { wrapper } = mountView();
     const store = useContentTabsStore();

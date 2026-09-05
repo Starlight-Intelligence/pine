@@ -30,6 +30,10 @@ interface AgentProcess {
 
 export interface AgentHost {
   abort(sessionId: string): Promise<{ aborted: boolean }>;
+  dequeueSteering(
+    sessionId: string,
+    message: string,
+  ): Promise<{ message?: string; removed: boolean }>;
   createSession(
     location: AgentSessionLocation,
   ): Promise<AgentWorkerSessionResult>;
@@ -138,6 +142,17 @@ export class AgentProcessHost implements AgentHost {
 
   abort(sessionId: string): Promise<{ aborted: boolean }> {
     return this.request({ type: "session:abort", sessionId });
+  }
+
+  dequeueSteering(
+    sessionId: string,
+    message: string,
+  ): Promise<{ message?: string; removed: boolean }> {
+    return this.request({
+      type: "session:dequeue-steering",
+      sessionId,
+      message,
+    });
   }
 
   setApprovalMode(

@@ -118,6 +118,7 @@ export const useSessionStore = defineStore("session", () => {
   const isRunning = ref(false);
   const contextUsage = ref<PineContextUsage | null>(null);
   const pendingApprovals = ref<PinePendingApproval[]>([]);
+  const steeringMessages = ref<string[]>([]);
   /** Tool calls currently held by the auto-reviewer (auto-approve). */
   const reviewingToolCallIds = ref<ReadonlySet<string>>(new Set());
   const hasEarlierMessages = ref(false);
@@ -131,6 +132,7 @@ export const useSessionStore = defineStore("session", () => {
     summary: PineSessionSummary | null;
     messages: PineTranscriptMessage[];
     contextUsage: PineContextUsage | null;
+    steeringMessages: string[];
     hasEarlierMessages: boolean;
     nextBefore?: string;
   }
@@ -143,6 +145,7 @@ export const useSessionStore = defineStore("session", () => {
       summary: activeSession.value,
       messages: messages.value,
       contextUsage: contextUsage.value,
+      steeringMessages: steeringMessages.value,
       hasEarlierMessages: hasEarlierMessages.value,
       nextBefore: nextBefore.value,
     });
@@ -256,6 +259,7 @@ export const useSessionStore = defineStore("session", () => {
       activeSession.value = cached.summary;
       messages.value = cached.messages;
       contextUsage.value = cached.contextUsage;
+      steeringMessages.value = cached.steeringMessages;
       isLoadingMessages.value = false;
       hasEarlierMessages.value = cached.hasEarlierMessages;
       nextBefore.value = cached.nextBefore;
@@ -268,6 +272,7 @@ export const useSessionStore = defineStore("session", () => {
     hasEarlierMessages.value = false;
     nextBefore.value = undefined;
     contextUsage.value = null;
+    steeringMessages.value = [];
     isLoadingMessages.value = true;
 
     try {
@@ -353,6 +358,7 @@ export const useSessionStore = defineStore("session", () => {
     message: string,
     sessionId?: string,
     approvalMode?: PineApprovalMode,
+    streamingBehavior?: "follow-up" | "steer",
   ): Promise<PineSessionSummary> {
     const sequence = ++activationSequence;
     currentSessionId = sessionId ?? null;
@@ -363,6 +369,7 @@ export const useSessionStore = defineStore("session", () => {
         message,
         target: sessionId ? { kind: "session", sessionId } : { kind: "new" },
         approvalMode,
+        ...(streamingBehavior ? { streamingBehavior } : {}),
       });
       const session = {
         ...result.session,
@@ -379,14 +386,35 @@ export const useSessionStore = defineStore("session", () => {
     } catch (error) {
       if (sequence === activationSequence) {
         isStartingPrompt = false;
-        isRunning.value = false;
+        if (!streamingBehavior) isRunning.value = false;
       }
       throw error;
     }
   }
 
+  async function steer(
+    message: string,
+    approvalMode?: PineApprovalMode,
+  ): Promise<void> {
+    const sessionId = currentSessionId;
+    if (!sessionId) {
+      throw new Error("The running session is not ready for steering yet.");
+    }
+    await window.pine.promptSession({
+      message,
+      target: { kind: "session", sessionId },
+      approvalMode,
+      streamingBehavior: "steer",
+    });
+  }
+
   async function abort(): Promise<void> {
     await window.pine.abortSession();
+  }
+
+  async function dequeueSteering(message: string): Promise<string | undefined> {
+    const result = await window.pine.dequeueSteering({ message });
+    return result.removed ? result.message : undefined;
   }
 
   async function setApprovalMode(
@@ -481,7 +509,14 @@ export const useSessionStore = defineStore("session", () => {
       if (event.state === "idle") {
         pendingApprovals.value = [];
         reviewingToolCallIds.value = new Set();
+        steeringMessages.value = [];
       }
+      return;
+    }
+    if (event.type === "steering-queue") {
+      if (currentSessionId !== event.sessionId) return;
+      steeringMessages.value = [...event.messages];
+      syncSessionCache(event.sessionId);
       return;
     }
     if (event.type === "session-error") {
@@ -714,6 +749,7 @@ export const useSessionStore = defineStore("session", () => {
     hasEarlierMessages.value = false;
     nextBefore.value = undefined;
     contextUsage.value = null;
+    steeringMessages.value = [];
     pendingApprovals.value = [];
     reviewingToolCallIds.value = new Set();
     isRunning.value = false;
@@ -740,6 +776,7 @@ export const useSessionStore = defineStore("session", () => {
     hasEarlierMessages.value = false;
     nextBefore.value = undefined;
     contextUsage.value = null;
+    steeringMessages.value = [];
   }
 
   return {
@@ -748,6 +785,7 @@ export const useSessionStore = defineStore("session", () => {
     connectAgentEvents,
     contextUsage,
     deleteSession,
+    dequeueSteering,
     dropSessionCache,
     hasEarlierMessages,
     isLoadingRecent,
@@ -769,6 +807,8 @@ export const useSessionStore = defineStore("session", () => {
     searchResults,
     setApprovalMode,
     startDraft,
+    steer,
+    steeringMessages,
   };
 });
 
