@@ -725,6 +725,9 @@ export class PineAgentRuntime {
       tools: customTools.map((tool) => tool.name),
     });
     live.session = session;
+    // Pine presents every staged steering message together, so inject the
+    // whole batch at the next steering boundary instead of serializing turns.
+    session.setSteeringMode("all");
     this.syncApprovalModeTools(live);
     live.unsubscribe = session.subscribe((event) =>
       this.forwardEvent(session, event),

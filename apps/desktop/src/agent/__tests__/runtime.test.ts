@@ -267,8 +267,16 @@ describe("PineAgentRuntime", () => {
 
     try {
       const result = await runtime.createSession(location);
+      const liveSessions = (
+        runtime as unknown as {
+          liveSessions: Map<string, { session: AgentSession }>;
+        }
+      ).liveSessions;
 
       expect(result.session.messageCount).toBe(0);
+      expect(liveSessions.get(result.session.id)?.session.steeringMode).toBe(
+        "all",
+      );
       expect(result.sessionFile).toContain(
         projectSessionDirectory(location.sessionsRoot, location.cwd),
       );
