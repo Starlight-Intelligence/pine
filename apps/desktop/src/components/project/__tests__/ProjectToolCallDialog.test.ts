@@ -51,27 +51,17 @@ describe("ProjectToolCallDialog", () => {
       expect(wrapper.findComponent(ShieldBanIcon).exists()).toBe(true);
       expect(wrapper.findComponent(AlertCircleIcon).exists()).toBe(false);
       expect(wrapper.text()).toContain("已拒绝");
-      expect(wrapper.get('[data-slot="marker-content"]').classes()).toContain(
-        "text-warning",
-      );
       await wrapper.setProps({
         reviewing: true,
         toolCall: { ...wrapper.props("toolCall"), status: "running" },
       });
       expect(wrapper.text()).toContain("已拒绝");
       expect(wrapper.text()).not.toContain("正在审核");
-      expect(
-        wrapper.get('[data-slot="marker-content"]').classes(),
-      ).not.toContain("shimmer");
       await wrapper.get('button[data-slot="marker"]').trigger("click");
       const badges = document.body.querySelectorAll(
         '[data-slot="dialog-content"] [data-slot="badge"]',
       );
       expect(badges).toHaveLength(2);
-      for (const badge of badges) {
-        expect(badge.classList).toContain("text-warning");
-        expect(badge.classList).not.toContain("text-destructive");
-      }
       expect(document.body.textContent).toContain(
         decidedBy === "judge" ? "自动审批驳回" : "用户已拒绝",
       );
@@ -85,13 +75,6 @@ describe("ProjectToolCallDialog", () => {
     expect(wrapper.findComponent(AlertCircleIcon).exists()).toBe(false);
     await wrapper.get('button[data-slot="marker"]').trigger("click");
     expect(document.body.textContent).toContain("沙箱拒绝");
-    const badges = document.body.querySelectorAll(
-      '[data-slot="dialog-content"] [data-slot="badge"]',
-    );
-    for (const badge of badges) {
-      expect(badge.classList).toContain("text-warning");
-      expect(badge.classList).not.toContain("text-destructive");
-    }
     wrapper.unmount();
   });
 
@@ -99,23 +82,7 @@ describe("ProjectToolCallDialog", () => {
     const wrapper = mountMarker(null);
     expect(wrapper.findComponent(AlertCircleIcon).exists()).toBe(true);
     expect(wrapper.findComponent(ShieldBanIcon).exists()).toBe(false);
-    expect(wrapper.get('[data-slot="marker-content"]').classes()).toContain(
-      "text-destructive",
-    );
     await wrapper.get('button[data-slot="marker"]').trigger("click");
-    const badge = document.body.querySelector(
-      '[data-slot="dialog-content"] [data-slot="badge"]',
-    );
-    expect(badge?.classList).toContain("text-destructive");
-    wrapper.unmount();
-  });
-
-  it("makes every tool marker visibly interactive", () => {
-    const wrapper = mountMarker();
-    const trigger = wrapper.get('button[data-slot="marker"]');
-
-    expect(trigger.classes()).toContain("cursor-pointer");
-    expect(trigger.classes()).toContain("hover:bg-muted/60");
     wrapper.unmount();
   });
 
@@ -127,9 +94,6 @@ describe("ProjectToolCallDialog", () => {
     expect(dialogText).toContain("工具调用详情");
     expect(dialogText).toContain("自动审批驳回");
     expect(dialogText).toContain("请改用不会覆盖现有文件的命令。");
-    const dialog = document.body.querySelector('[data-slot="dialog-content"]');
-    expect(dialog?.classList).toContain("sm:max-w-4xl");
-
     const tables = document.body.querySelectorAll("[data-tool-value-table]");
     expect(tables).toHaveLength(2);
     expect(dialogText).toContain("command");

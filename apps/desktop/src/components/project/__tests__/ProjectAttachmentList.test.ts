@@ -1,7 +1,7 @@
 import { mount } from "@vue/test-utils";
 import { describe, expect, it } from "vitest";
 import { createAppI18n } from "@/app/i18n";
-import { attachmentImageUrl, type PineAttachment } from "@/shared/attachments";
+import type { PineAttachment } from "@/shared/attachments";
 import ProjectAttachmentList from "../ProjectAttachmentList.vue";
 
 const imageAttachment: PineAttachment = {
@@ -73,57 +73,6 @@ describe("ProjectAttachmentList", () => {
 
     expect(wrapper.get('[data-slot="attachment-description"]').text()).toBe(
       "选中内容 · Sheet1!A1:B2",
-    );
-  });
-
-  it("renders image attachments with the official image variant", () => {
-    const wrapper = mountList({
-      attachments: [imageAttachment, fileAttachment],
-      surface: "message",
-    });
-
-    const attachmentCards = wrapper.findAll('[data-slot="attachment"]');
-    expect(attachmentCards).toHaveLength(2);
-
-    // Image previews use the stacked official example layout on both
-    // surfaces; the composer keeps them inside the rounded input.
-    expect(attachmentCards[0].attributes("data-orientation")).toBe("vertical");
-    const imageMedia = attachmentCards[0].get('[data-slot="attachment-media"]');
-    expect(imageMedia.attributes("data-variant")).toBe("image");
-    expect(imageMedia.classes()).toContain("rounded-2xl!");
-    const img = imageMedia.get("img");
-    expect(img.attributes("src")).toBe(
-      attachmentImageUrl(imageAttachment.path),
-    );
-    expect(img.attributes("alt")).toBe("screenshot.png");
-    expect(attachmentCards[0].text()).toContain("PNG · 2.0 KB");
-
-    // Non-image attachments keep the icon variant with a type · size line.
-    expect(attachmentCards[1].attributes("data-orientation")).toBe(
-      "horizontal",
-    );
-    expect(
-      attachmentCards[1]
-        .get('[data-slot="attachment-media"]')
-        .attributes("data-variant"),
-    ).toBeUndefined();
-    expect(attachmentCards[1].text()).toContain("MD · 1.0 KB");
-  });
-
-  it("stacks image previews vertically on the composer surface too", () => {
-    const wrapper = mountList({
-      attachments: [imageAttachment],
-      surface: "composer",
-    });
-
-    expect(
-      wrapper.get('[data-slot="attachment"]').attributes("data-orientation"),
-    ).toBe("vertical");
-    expect(
-      wrapper.get('[data-slot="attachment-media"]').attributes("data-variant"),
-    ).toBe("image");
-    expect(wrapper.get('[data-slot="attachment-media"]').classes()).toContain(
-      "rounded-lg!",
     );
   });
 

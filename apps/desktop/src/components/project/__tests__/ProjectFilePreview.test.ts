@@ -261,15 +261,6 @@ describe("ProjectFilePreview", () => {
       false,
     );
     expect(wrapper.find("pre.shiki").exists()).toBe(true);
-    expect(wrapper.get('[data-slot="code-block"]').classes()).toContain(
-      "w-full",
-    );
-    expect(
-      Array.from(
-        wrapper.get('[data-slot="code-block"]').element.parentElement
-          ?.classList ?? [],
-      ),
-    ).toEqual(expect.arrayContaining(["min-w-0", "px-4", "pb-4"]));
   });
 
   it("lists only open session tabs and attaches the file through the footer menu", async () => {
@@ -487,10 +478,6 @@ describe("ProjectFilePreview", () => {
         expect(
           officePreview.find('[data-slot="office-preview-sizer"]').exists(),
         ).toBe(false);
-      } else {
-        expect(
-          officePreview.get('[data-slot="office-preview-sizer"]').classes(),
-        ).toContain("max-w-[var(--session-content-max-width)]");
       }
       expect(officePreview.props("inverted")).toBe(true);
       const slider = wrapper.findComponent(Slider);

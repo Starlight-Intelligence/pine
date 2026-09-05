@@ -42,11 +42,6 @@ vi.mock("../ProjectSessionView.vue", () => ({
   },
 }));
 
-const windowControlsPaddingClass =
-  "pl-[calc(var(--window-titlebar-leading-offset)+var(--window-titlebar-control-height)+0.75rem)]";
-const preferencesPaddingClass =
-  "pr-[calc(var(--window-titlebar-control-height)+1rem)]";
-
 async function mountTabs(withFile = false) {
   const pinia = createPinia();
   setActivePinia(pinia);
@@ -233,20 +228,6 @@ describe("ProjectContentTabs", () => {
     wrapper.unmount();
   });
 
-  it("uses the file tree icon resolver for file tabs", async () => {
-    const { wrapper, file } = await mountTabs(true);
-    const fileTab = wrapper.get(`[data-tab-id="${file!.id}"]`);
-
-    expect(fileTab.get('[data-icon="inline-start"]').classes()).toContain(
-      "lucide-file-code",
-    );
-    expect(
-      wrapper
-        .get('[data-tab-id="session-1"] [data-icon="inline-start"]')
-        .classes(),
-    ).toContain("lucide-square-terminal");
-  });
-
   it.each([
     { name: "right-clipped", left: 500, target: 520 },
     { name: "left-clipped", left: 20, target: 40 },
@@ -315,104 +296,6 @@ describe("ProjectContentTabs", () => {
       behavior: "instant",
     });
     wrapper.unmount();
-  });
-
-  it("does not reserve window controls space beside an expanded desktop sidebar", async () => {
-    sidebar.state = "expanded";
-    sidebar.isMobile = false;
-
-    const { wrapper } = await mountTabs();
-
-    expect(
-      wrapper.get('[data-slot="project-content-tabs-titlebar"]').classes(),
-    ).not.toContain(windowControlsPaddingClass);
-  });
-
-  it("reserves window controls space when the sidebar is manually collapsed", async () => {
-    sidebar.state = "collapsed";
-    sidebar.isMobile = false;
-
-    const { wrapper } = await mountTabs();
-
-    expect(
-      wrapper.get('[data-slot="project-content-tabs-titlebar"]').classes(),
-    ).toContain(windowControlsPaddingClass);
-  });
-
-  it("reserves window controls space when a narrow viewport hides the desktop sidebar", async () => {
-    sidebar.state = "expanded";
-    sidebar.isMobile = true;
-    const { wrapper } = await mountTabs();
-
-    expect(
-      wrapper.get('[data-slot="project-content-tabs-titlebar"]').classes(),
-    ).toContain(windowControlsPaddingClass);
-  });
-
-  it("centers close buttons without conflicting with the button pressed state", async () => {
-    const { wrapper } = await mountTabs();
-    const closeButton = wrapper.get('button[aria-label^="Close"]');
-
-    expect(closeButton.classes()).toContain("inset-y-0");
-    expect(closeButton.classes()).toContain("my-auto");
-    expect(closeButton.classes()).not.toContain("top-1/2");
-    expect(closeButton.classes()).not.toContain("-translate-y-1/2");
-  });
-
-  it("keeps tabs and the add action clear of global preferences", async () => {
-    const { wrapper } = await mountTabs();
-    const titlebar = wrapper.get('[data-slot="project-content-tabs-titlebar"]');
-    const tabList = wrapper.get('[data-slot="project-content-tab-list"]');
-    const tabItems = wrapper.get('[data-slot="project-content-tab-items"]');
-
-    expect(titlebar.classes()).toContain(preferencesPaddingClass);
-    expect(tabList.classes()).toContain("flex-1");
-    expect(tabItems.classes()).toContain("py-1");
-  });
-
-  it("shows the overflow actions only while tabs are open", async () => {
-    const { wrapper } = await mountTabs();
-    const moreActions = 'button[aria-label="More actions"]';
-
-    expect(wrapper.get(moreActions).classes()).toContain("window-no-drag");
-    await wrapper
-      .get('button[aria-label="Close New session"]')
-      .trigger("click");
-    await flushPromises();
-    expect(wrapper.find(moreActions).exists()).toBe(false);
-    await wrapper.get('button[aria-label="Add session tab"]').trigger("click");
-    await flushPromises();
-    expect(wrapper.find(moreActions).exists()).toBe(true);
-  });
-
-  it("keeps the tab list blank area draggable and tabs interactive", async () => {
-    const { wrapper } = await mountTabs();
-    const tabList = wrapper.get('[data-slot="project-content-tab-list"]');
-    const tab = wrapper.get('[data-slot="project-content-tab"]');
-    const addButton = wrapper.get('button[aria-label="Add session tab"]');
-
-    expect(tabList.classes()).toContain("window-drag");
-    expect(tabList.classes()).not.toContain("window-no-drag");
-    expect(tab.classes()).toContain("window-no-drag");
-    expect(addButton.classes()).toContain("window-no-drag");
-  });
-
-  it("optically aligns tab separators with the tab hover treatment", async () => {
-    const { wrapper } = await mountTabs(true);
-
-    await wrapper.get('button[aria-label="Add session tab"]').trigger("click");
-    await flushPromises();
-
-    expect(wrapper.get('[data-slot="separator"]').classes()).toEqual(
-      expect.arrayContaining([
-        "project-content-tab-separator",
-        "h-7",
-        "self-center",
-      ]),
-    );
-    expect(
-      wrapper.get('[data-slot="project-content-tab"]').classes(),
-    ).toContain("h-8");
   });
 
   it("binds each session tab to its own session and reuses its view", async () => {

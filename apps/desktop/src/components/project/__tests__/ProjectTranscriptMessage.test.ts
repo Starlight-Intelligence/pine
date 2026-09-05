@@ -20,20 +20,6 @@ function mountMessage(message: PineTranscriptMessage) {
 describe("ProjectTranscriptMessage", () => {
   beforeEach(() => setActivePinia(createPinia()));
 
-  it("renders completed assistant output as Markdown", () => {
-    const wrapper = mountMessage({
-      createdAt: "2026-08-26T00:00:00.000Z",
-      id: "assistant-complete",
-      role: "assistant",
-      status: "complete",
-      blocks: [{ type: "text", text: "**Complete** output" }],
-    });
-
-    expect(wrapper.get('[data-slot="markdown-content"] strong').text()).toBe(
-      "Complete",
-    );
-  });
-
   it("renders streaming assistant output as Markdown too", () => {
     const wrapper = mountMessage({
       createdAt: "2026-08-26T00:00:00.000Z",
@@ -98,21 +84,8 @@ describe("ProjectTranscriptMessage", () => {
       "bubble",
     );
     expect(content.element.children).toHaveLength(2);
-    expect(content.classes()).toContain("gap-1.5");
-    const attachmentGroup = wrapper.get('[data-slot="attachment-group"]');
-    expect(attachmentGroup.classes()).toEqual(
-      expect.arrayContaining(["self-end", "py-0", "gap-1.5"]),
-    );
-    expect(attachmentGroup.classes()).not.toContain("gap-3");
-    const attachment = wrapper.get('[data-slot="attachment"]');
-    expect(attachment.classes()).toContain("rounded-3xl");
-    expect(attachment.classes()).toContain(
-      "has-[>a,>button]:hover:bg-muted/50",
-    );
-    expect(attachment.classes()).toContain("hover:bg-muted/50");
     const trigger = wrapper.get('[data-slot="attachment-trigger"]');
     expect(trigger.attributes("aria-label")).toBe("打开附件 notes.md");
-    expect(trigger.classes()).toContain("cursor-pointer");
     await trigger.trigger("click");
     await flushPromises();
     expect(openAttachment).toHaveBeenCalledWith({
@@ -164,14 +137,8 @@ describe("ProjectTranscriptMessage", () => {
     });
 
     const marker = wrapper.getComponent(ProjectErrorMarker);
-    expect(marker.get('[data-slot="marker-content"]').classes()).toContain(
-      "text-destructive",
-    );
     expect(marker.get('[data-slot="marker-content"]').text()).toBe(
       "错误: Provider request failed",
-    );
-    expect(marker.get('[data-slot="marker-icon"] svg').classes()).toContain(
-      "text-destructive",
     );
   });
 

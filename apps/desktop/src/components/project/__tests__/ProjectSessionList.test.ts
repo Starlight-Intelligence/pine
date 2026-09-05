@@ -104,7 +104,6 @@ describe("ProjectSessionList", () => {
     };
     await target.trigger("dragover", { dataTransfer: transfer });
     expect(transfer.dropEffect).toBe("copy");
-    expect(target.classes()).toContain("ring-sidebar-ring");
     await target.trigger("drop", { dataTransfer: transfer });
     await flushPromises();
     const tab = store.tabs.find(

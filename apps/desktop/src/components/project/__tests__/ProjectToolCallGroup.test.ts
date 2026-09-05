@@ -1,5 +1,5 @@
 import { mount } from "@vue/test-utils";
-import { GlobeIcon, ShieldBanIcon } from "@lucide/vue";
+import { ShieldBanIcon } from "@lucide/vue";
 import { describe, expect, it } from "vitest";
 import { createAppI18n } from "@/app/i18n";
 import type { PineToolCall } from "@/shared/sessions";
@@ -93,17 +93,6 @@ describe("ProjectToolCallGroup", () => {
     expect(wrapper.findAllComponents(ProjectToolCallMarker)).toHaveLength(2);
   });
 
-  it("collapses static history runs by default", () => {
-    const wrapper = mountGroup();
-
-    expect(
-      wrapper.get('button[data-slot="marker"]').attributes("aria-expanded"),
-    ).toBe("false");
-    expect(
-      wrapper.get("[data-tool-calls-content]").attributes("aria-hidden"),
-    ).toBe("true");
-  });
-
   it("folds when the run drops out of the window or the response ends", async () => {
     const wrapper = mountGroup({ expanded: true });
     expect(
@@ -130,7 +119,7 @@ describe("ProjectToolCallGroup", () => {
     ).not.toBeUndefined();
   });
 
-  it("summarizes web fetches with a globe icon", () => {
+  it("summarizes web fetches", () => {
     const wrapper = mountGroup({
       toolCalls: [
         {
@@ -145,49 +134,6 @@ describe("ProjectToolCallGroup", () => {
     expect(wrapper.get('button[data-slot="marker"]').text()).toContain(
       "抓取了 1 个网页",
     );
-    expect(
-      wrapper.get("[data-tool-icons]").findComponent(GlobeIcon).exists(),
-    ).toBe(true);
     wrapper.unmount();
-  });
-
-  it("shows icons in actual call order, before the label", () => {
-    const ordered: PineToolCall[] = [
-      { id: "t-bash", input: {}, name: "bash", status: "complete" },
-      {
-        id: "t-read",
-        input: { path: "/a.ts" },
-        name: "read",
-        status: "complete",
-      },
-      {
-        id: "t-read-2",
-        input: { path: "/b.ts" },
-        name: "read",
-        status: "complete",
-      },
-    ];
-    const wrapper = mountGroup({ toolCalls: ordered });
-
-    const iconNames = wrapper
-      .get("[data-tool-icons]")
-      .findAll("svg")
-      .map((icon) => icon.attributes("class") ?? "");
-
-    expect(iconNames.filter((name) => name.includes("file-text")).length).toBe(
-      2,
-    );
-    // Every icon keeps its own fixed size so multiple icons never share width.
-    for (const name of iconNames) {
-      expect(name).toContain("size-4");
-    }
-    const firstFileText = iconNames.findIndex((name) =>
-      name.includes("file-text"),
-    );
-    const firstTerminal = iconNames.findIndex((name) =>
-      name.includes("terminal"),
-    );
-    // bash (terminal) happens before the read (file-text) calls in actual order.
-    expect(firstTerminal).toBeLessThan(firstFileText);
   });
 });

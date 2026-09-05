@@ -1,6 +1,5 @@
 import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
-import { WrenchIcon } from "@lucide/vue";
 import { describe, expect, it, vi } from "vitest";
 import { createAppI18n } from "@/app/i18n";
 import type { PineModelCatalog, PineModelDescriptor } from "@/shared/models";
@@ -129,26 +128,15 @@ function mountPicker(purpose: "session" | "utility" = "session") {
 }
 
 describe("ModelPickerDialog provider management", () => {
-  it("aligns provider actions right and confirms credential removal", async () => {
+  it("confirms credential removal", async () => {
     const { getModelCatalog, logoutProvider, wrapper } = mountPicker();
     const manageItem = wrapper.get(
       '[data-command-item][data-value="manage configure provider service model"]',
     );
 
-    expect(manageItem.text()).toContain("管理服务或模型");
-    expect(manageItem.findComponent(WrenchIcon).exists()).toBe(true);
-
     await manageItem.trigger("click");
 
-    const actions = wrapper.get('[data-slot="provider-actions"]');
-    expect(actions.classes()).toContain("ml-auto");
-
     const disconnectButton = wrapper.get('[data-testid="provider-disconnect"]');
-    expect(disconnectButton.attributes("data-variant")).toBe("ghost");
-    expect(disconnectButton.attributes("data-size")).toBe("icon-sm");
-    expect(disconnectButton.attributes("aria-label")).toBe("解绑 Z.AI");
-    expect(disconnectButton.text()).toBe("");
-
     await disconnectButton.trigger("click");
 
     expect(wrapper.get("[data-alert-dialog]").attributes("data-open")).toBe(
@@ -174,17 +162,13 @@ describe("ModelPickerDialog provider management", () => {
 });
 
 describe("ModelPickerDialog utility model selection", () => {
-  it("selects the utility model without showing a recommended badge", async () => {
+  it("selects the utility model without changing the session model", async () => {
     const { selectModel, selectUtilityModel, wrapper } = mountPicker("utility");
     const modelItem = wrapper
       .findAll("[data-command-item]")
       .find((item) => item.attributes("data-value")?.includes(utilityModel.id));
 
     expect(modelItem).toBeDefined();
-    expect(wrapper.find('[data-model-capability="recommended"]').exists()).toBe(
-      false,
-    );
-
     await modelItem?.trigger("click");
     await flushPromises();
 

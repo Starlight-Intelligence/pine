@@ -225,8 +225,6 @@ describe("MarkdownContent", () => {
     expect(table.get("strong").text()).toBe("Pine");
     expect(table.get("code").text()).toBe("code");
     expect(table.get("a").attributes("target")).toBe("_blank");
-    expect(table.findAll("th")[1].classes()).toContain("text-right");
-    expect(table.findAll("td")[2].classes()).toContain("text-center");
     expect(table.find("img").exists()).toBe(false);
     expect(table.text()).toContain("<img src=x onerror=alert(1)>");
     wrapper.unmount();

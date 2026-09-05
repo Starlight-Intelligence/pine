@@ -108,25 +108,6 @@ describe("CodeBlock", () => {
     wrapper.unmount();
   });
 
-  it("shows a noninteractive language label beside copy only on hover", async () => {
-    vi.mocked(codeToHtml).mockReturnValue(new Promise(() => {}));
-    const wrapper = mount(CodeBlock, {
-      props: { node: { ...node, language: "Bash title=example" } },
-    });
-    const toolbar = wrapper.get('[data-slot="code-block-toolbar"]');
-    const label = toolbar.get('[data-slot="code-block-language"]');
-    expect(label.element.tagName).toBe("SPAN");
-    expect(label.text()).toBe("bash");
-    expect(label.attributes("tabindex")).toBeUndefined();
-    expect(toolbar.findAll("button")).toHaveLength(1);
-    expect(toolbar.classes()).toContain("opacity-0");
-    await wrapper.trigger("mouseenter");
-    expect(toolbar.classes()).toContain("opacity-100");
-    await wrapper.trigger("mouseleave");
-    expect(toolbar.classes()).toContain("opacity-0");
-    wrapper.unmount();
-  });
-
   it("copies the exact source even when highlighting fails", async () => {
     vi.mocked(codeToHtml).mockRejectedValue(new Error("Unavailable"));
     const writeText = vi

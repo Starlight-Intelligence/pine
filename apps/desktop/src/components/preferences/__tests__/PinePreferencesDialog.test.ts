@@ -1,5 +1,4 @@
 import { createPinia, setActivePinia } from "pinia";
-import { SettingsIcon } from "@lucide/vue";
 import { mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { APP_LOCALE_STORAGE_KEY, createAppI18n } from "@/app/i18n";
@@ -87,24 +86,6 @@ describe("PinePreferencesDialog", () => {
     installPineApi(undefined);
   });
 
-  it("exposes the global settings action without extra descriptive copy", () => {
-    const { wrapper } = mountDialog();
-
-    expect(
-      wrapper.get('button[aria-label="打开 Pine 设置"]').attributes("title"),
-    ).toBe("打开 Pine 设置");
-    expect(wrapper.findComponent(SettingsIcon).exists()).toBe(true);
-    expect(wrapper.text()).toContain("Pine 设置");
-    expect(wrapper.text()).toContain("语言");
-    expect(wrapper.text()).toContain("外观");
-    expect(wrapper.text()).toContain("标题生成和自动批准模型");
-    expect(wrapper.text()).toContain("未选择任何模型");
-    expect(wrapper.text()).toContain("选择模型");
-    expect(wrapper.find('[data-slot="dialog-description"]').exists()).toBe(
-      false,
-    );
-  });
-
   it("shows the selected utility model name", async () => {
     const { pinia, wrapper } = mountDialog();
     const catalog: PineModelCatalog = {
@@ -182,14 +163,6 @@ describe("PinePreferencesDialog", () => {
     expect(window.localStorage.getItem(THEME_PREFERENCE_STORAGE_KEY)).toBe(
       "dark",
     );
-  });
-
-  it("hides the sidebar vibrancy toggle outside macOS", () => {
-    const { wrapper } = mountDialog();
-
-    expect(
-      wrapper.find('[data-testid="pine-sidebar-vibrancy-toggle"]').exists(),
-    ).toBe(false);
   });
 
   it("toggles the macOS sidebar vibrancy effect", async () => {

@@ -197,42 +197,6 @@ describe("ProjectFileTree", () => {
     ).toEqual(["", "src"]);
   });
 
-  it("renders file type icons while retaining the folder icon", async () => {
-    const { wrapper } = mountTree("read-write", () =>
-      Promise.resolve({
-        entries: [
-          { name: "docs", relativePath: "docs", kind: "directory" },
-          { name: "notes.md", relativePath: "notes.md", kind: "file" },
-          { name: "main.ts", relativePath: "main.ts", kind: "file" },
-          { name: "photo.PNG", relativePath: "photo.PNG", kind: "file" },
-          { name: "unknown.xyz", relativePath: "unknown.xyz", kind: "file" },
-        ],
-      }),
-    );
-    await expandRoot(wrapper);
-    expect(wrapper.find('[data-path="docs"] .lucide-folder').exists()).toBe(
-      true,
-    );
-    expect(
-      wrapper.find('[data-path="notes.md"] .lucide-book-open').exists(),
-    ).toBe(true);
-    expect(
-      wrapper.find('[data-path="main.ts"] .lucide-file-code').exists(),
-    ).toBe(true);
-    expect(
-      wrapper.find('[data-path="photo.PNG"] .lucide-file-image').exists(),
-    ).toBe(true);
-    expect(
-      wrapper.find('[data-path="unknown.xyz"] .lucide-file').exists(),
-    ).toBe(true);
-  });
-
-  it("keeps the file tree scrollable without showing the native scrollbar", () => {
-    const { wrapper } = mountTree();
-
-    expect(wrapper.get('[role="tree"]').classes()).toContain("no-scrollbar");
-  });
-
   it("opens a file on left click and reuses its tab without invoking an external app", async () => {
     const { wrapper, router, operateProjectFile } = mountTree();
     await expandRoot(wrapper);

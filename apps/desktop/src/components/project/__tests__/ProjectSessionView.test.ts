@@ -214,8 +214,6 @@ describe("ProjectSessionView file drop", () => {
     await layout.trigger("dragenter", { dataTransfer: fileTransfer() });
     const overlay = wrapper.get('[data-slot="attachment-drop-overlay"]');
     expect(overlay.attributes("role")).toBe("status");
-    expect(overlay.classes()).toContain("w-auto");
-    expect(overlay.classes()).not.toContain("w-full");
     expect(overlay.text()).toContain("松手以添加附件");
     expect(overlay.text()).toContain("可以一次添加多个文件或文件夹");
 

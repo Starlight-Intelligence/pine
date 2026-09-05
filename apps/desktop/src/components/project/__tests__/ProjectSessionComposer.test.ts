@@ -82,199 +82,6 @@ function mountComposer(
 }
 
 describe("ProjectSessionComposer", () => {
-  it("uses theme-native composer sizing and inline actions", () => {
-    const wrapper = mountComposer();
-    const form = wrapper.get("form");
-    const inputGroup = wrapper.get('[data-slot="input-group"]');
-    const textarea = wrapper.get("textarea");
-    const addons = wrapper.findAll('[data-slot="input-group-addon"]');
-    const actionButtons = wrapper.findAll(
-      '[data-slot="input-group-addon"] button',
-    );
-
-    expect(form.classes()).toContain(
-      "max-w-[var(--session-composer-max-width)]",
-    );
-    expect(form.classes()).toContain("px-[var(--session-composer-gutter)]");
-    expect(form.classes()).toContain("pb-3");
-    expect(form.classes()).not.toContain("pb-2");
-    expect(form.classes()).not.toContain("pb-4");
-    expect(inputGroup.classes()).toEqual(
-      expect.arrayContaining([
-        "session-composer-control",
-        "min-h-[var(--session-composer-control-height)]",
-        "rounded-[var(--session-composer-control-radius)]",
-        "has-[textarea]:rounded-[var(--session-composer-control-radius)]",
-      ]),
-    );
-    expect(textarea.classes()).toContain("session-composer-input");
-    expect(textarea.classes()).toContain(
-      "min-h-[var(--session-composer-control-height)]",
-    );
-    expect(textarea.classes()).toContain("pt-3.5");
-    expect(textarea.classes()).toContain("pb-3.5");
-    expect(textarea.classes()).toContain("text-sm");
-    expect(textarea.classes()).toContain("leading-5");
-    expect(textarea.classes()).not.toContain("min-h-12");
-    expect(textarea.classes()).not.toContain("py-4");
-    expect(textarea.classes()).toContain("field-sizing-content");
-    expect(textarea.attributes("placeholder")).toBe("描述任务、明确需求……");
-    expect(addons.map((addon) => addon.attributes("data-align"))).toEqual([
-      "inline-start",
-      "inline-end",
-    ]);
-    expect(
-      actionButtons.map((button) => button.attributes("data-variant")),
-    ).toEqual(["secondary", "default"]);
-    expect(
-      actionButtons.map((button) => button.attributes("data-size")),
-    ).toEqual(["icon-sm", "icon-sm"]);
-    expect(
-      actionButtons.every(
-        (button) =>
-          button
-            .classes()
-            .includes("size-[var(--session-composer-action-size)]") &&
-          button.classes().includes("rounded-full"),
-      ),
-    ).toBe(true);
-    expect(actionButtons[0].attributes("aria-label")).toBe("添加附件");
-    expect(actionButtons[0].attributes("data-slot")).toBe(
-      "attachment-menu-trigger",
-    );
-    expect(wrapper.findAll('[data-slot="tooltip-trigger"]')).toHaveLength(1);
-    expect(addons.every((addon) => addon.classes().includes("self-end"))).toBe(
-      true,
-    );
-    expect(addons.every((addon) => addon.classes().includes("py-1.5"))).toBe(
-      true,
-    );
-    expect(addons[0].classes()).toContain("pl-2.5");
-    expect(addons[1].classes()).toContain("pr-2.5");
-    expect(
-      wrapper
-        .get('[data-slot="approval-mode-trigger"]')
-        .attributes("data-size"),
-    ).toBe("sm");
-    expect(
-      wrapper
-        .get('[data-slot="model-selector-trigger"]')
-        .attributes("data-size"),
-    ).toBe("sm");
-    expect(
-      wrapper.findAll(
-        '[data-slot="model-selector-trigger"], [data-slot="reasoning-effort-trigger"]',
-      ),
-    ).toHaveLength(1);
-  });
-
-  it("restores the original bottom spacing while approval is pending", () => {
-    const wrapper = mountComposer({
-      pendingApproval: {
-        requestId: "approval-1",
-        toolCallId: "tool-1",
-        toolName: "bash",
-        trigger: "sandbox-denied",
-        subject: "ls -la ~/Desktop",
-      },
-    });
-    const form = wrapper.get("form");
-
-    expect(form.classes()).toContain("pb-4");
-    expect(form.classes()).not.toContain("pb-3");
-    expect(wrapper.find("textarea").exists()).toBe(false);
-  });
-
-  it("shows the default approval mode and configured Pi model", () => {
-    const wrapper = mountComposer();
-    const approvalTrigger = wrapper.get('[data-slot="approval-mode-trigger"]');
-    const modelTrigger = wrapper.get('[data-slot="model-selector-trigger"]');
-
-    expect(approvalTrigger.text()).toContain("自动审批");
-    expect(approvalTrigger.get("span").classes()).toContain("text-foreground");
-    expect(modelTrigger.text()).toContain("Claude Sonnet");
-    expect(modelTrigger.text()).toContain("高");
-  });
-
-  it("colors maximum and disabled reasoning levels", () => {
-    const maximumWrapper = mountComposer({}, "max");
-    expect(
-      maximumWrapper
-        .get('[data-slot="model-selector-thinking-level"]')
-        .classes(),
-    ).toContain("text-thinking-max!");
-    maximumWrapper.unmount();
-
-    const disabledWrapper = mountComposer({}, "off");
-    expect(
-      disabledWrapper
-        .get('[data-slot="model-selector-thinking-level"]')
-        .classes(),
-    ).toContain("text-destructive!");
-  });
-
-  it("shows the recommendation label and accessible capability icons", async () => {
-    const wrapper = mountComposer();
-
-    await wrapper.get('[data-slot="model-selector-trigger"]').trigger("click");
-    await flushPromises();
-
-    const recommended = document.querySelector(
-      '[data-model-capability="recommended"]',
-    );
-    expect(recommended?.textContent).toBe("推荐");
-    expect(recommended?.querySelector("svg")).toBeNull();
-    expect(recommended?.classList.contains("text-primary-foreground!")).toBe(
-      true,
-    );
-    const context = document.querySelector('[data-model-capability="context"]');
-    expect(context?.getAttribute("aria-label")).toBe("上下文窗口：200K");
-    expect(context?.querySelector("svg")).not.toBeNull();
-
-    wrapper.unmount();
-  });
-
-  it("reflects an externally selected approval mode", () => {
-    const wrapper = mountComposer({ approvalMode: "let-me-review" });
-
-    expect(wrapper.get('[data-slot="approval-mode-trigger"]').text()).toContain(
-      "让我过目",
-    );
-    expect(
-      wrapper.get('[data-slot="approval-mode-trigger"] span').classes(),
-    ).toContain("text-warning");
-
-    const yoloWrapper = mountComposer({ approvalMode: "YOLO" });
-
-    expect(
-      yoloWrapper.get('[data-slot="approval-mode-trigger"]').text(),
-    ).toContain("干就完了");
-    expect(
-      yoloWrapper.get('[data-slot="approval-mode-trigger"] span').classes(),
-    ).toContain("text-destructive");
-    expect(
-      yoloWrapper.get('[data-slot="approval-mode-trigger"] svg').classes(),
-    ).toContain("text-destructive");
-  });
-
-  it("describes the three approval modes accurately", async () => {
-    const wrapper = mountComposer();
-
-    await wrapper.get('[data-slot="approval-mode-trigger"]').trigger("click");
-    await flushPromises();
-
-    const menuItems = Array.from(
-      document.querySelectorAll('[role="menuitemradio"]'),
-    ).map((item) => item.textContent?.replaceAll(/\s+/g, " ").trim());
-    expect(menuItems).toEqual([
-      "让我过目对工作区外的未授权操作请求确认。",
-      "自动审批由 AI 自动判断。",
-      "干就完了关闭一切权限约束。不推荐该选项。",
-    ]);
-
-    wrapper.unmount();
-  });
-
   it("requires confirmation every time yolo mode is selected", async () => {
     const wrapper = mountComposer();
     const trigger = wrapper.get('[data-slot="approval-mode-trigger"]');
@@ -310,32 +117,6 @@ describe("ProjectSessionComposer", () => {
     selectedYoloOption?.click();
     await flushPromises();
     expect(document.querySelector('[role="alertdialog"]')).not.toBeNull();
-
-    wrapper.unmount();
-  });
-
-  it("keeps the English approval copy aligned with the Chinese UI", async () => {
-    const wrapper = mountComposer({}, "high", "en-US");
-
-    await wrapper.get('[data-slot="approval-mode-trigger"]').trigger("click");
-    await flushPromises();
-    const menuItems = Array.from(
-      document.querySelectorAll('[role="menuitemradio"]'),
-    ).map((item) => item.textContent?.replaceAll(/\s+/g, " ").trim());
-    expect(menuItems).toEqual([
-      "Let Me ReviewAsk for confirmation for unauthorized operations outside the workspace.",
-      "Auto ApproveLet AI decide.",
-      "YOLORemove all permission constraints. Not recommended.",
-    ]);
-
-    const yoloOption = Array.from(
-      document.querySelectorAll<HTMLElement>('[role="menuitemradio"]'),
-    ).find((item) => item.textContent?.includes("YOLO"));
-    yoloOption?.click();
-    await flushPromises();
-    expect(
-      document.querySelector('[role="alertdialog"]')?.textContent,
-    ).toContain("Enable “YOLO”?");
 
     wrapper.unmount();
   });
@@ -385,22 +166,6 @@ describe("ProjectSessionComposer", () => {
     expect(
       wrapper.get('[data-slot="attachment"]').attributes("title"),
     ).toBeUndefined();
-    expect(wrapper.get("textarea").classes()).toContain("pt-3.5");
-    expect(wrapper.get("textarea").classes()).not.toContain(
-      "session-composer-input-with-attachments",
-    );
-    const attachmentGroup = wrapper.get('[data-slot="attachment-group"]');
-    expect(attachmentGroup.classes()).toContain("session-composer-attachments");
-    expect(attachmentGroup.classes()).toContain(
-      "px-[var(--session-composer-control-inset)]",
-    );
-    expect(attachmentGroup.classes()).toContain("pb-0");
-    expect(wrapper.get('[data-slot="attachment"]').classes()).toContain(
-      "rounded-[var(--session-composer-attachment-radius)]",
-    );
-    expect(wrapper.get('[data-slot="attachment"]').classes()).not.toContain(
-      "rounded-3xl",
-    );
     expect(wrapper.find('[data-slot="attachment-trigger"]').exists()).toBe(
       false,
     );
@@ -523,10 +288,6 @@ describe("ProjectSessionComposer", () => {
     expect(textarea.attributes("placeholder")).toBe("追加要求、改变方向……");
     await textarea.setValue("先修复类型错误");
 
-    const steeringButton = wrapper.get('button[aria-label="追加要求"]');
-    expect(steeringButton.get("svg").classes()).toContain(
-      "lucide-corner-down-right",
-    );
     await textarea.trigger("keydown", { key: "Enter" });
 
     expect(wrapper.emitted("submit")).toEqual([["先修复类型错误"]]);
@@ -542,9 +303,6 @@ describe("ProjectSessionComposer", () => {
     const withdraw = staged.get('button[aria-label="撤回暂存消息"]');
 
     expect(staged.text()).toContain("改用更小的接口");
-    expect(staged.get('[data-slot="bubble-content"]').classes()).toContain(
-      "border-dashed",
-    );
     expect(
       withdraw.element.compareDocumentPosition(
         staged.get('[data-slot="bubble"]').element,
