@@ -78,16 +78,21 @@ jobs:
       - name: Bump snapshot version
         run: bun run apps/desktop/scripts/bump-snapshot.mjs
 
-      # MakerDMG -> electron-installer-dmg -> appdmg -> ds-store -> macos-alias
-      # brings a host-side native addon (build/Release/volume.node) that only
-      # runs on the build machine during `make`. bun install does not compile
-      # gyp modules that lack an install/prebuild script, and electron-forge's
+      # MakerDMG -> electron-installer-dmg -> appdmg -> macos-alias, fs-xattr
+      # pulls in host-side native addons (volume.node, xattr.node) that only run
+      # on the build machine during `make`. bun install never compiles gyp
+      # modules that lack an install/prebuild script, and electron-forge's
       # rebuild pass only covers the packaged app's runtime native deps — so we
-      # build the addon explicitly here, pinned to a modern Python.
-      - name: Build native DMG-maker addon
+      # build every appdmg-chain addon explicitly here, pinned to a modern
+      # Python. Compiling every run keeps the build independent of whether the
+      # runner happens to have stale compiled artifacts cached.
+      - name: Build native DMG-maker addons
         run: |
-          cd node_modules/macos-alias
-          bunx node-gyp rebuild --python="$(command -v python3)"
+          for pkg in macos-alias fs-xattr; do
+            pushd "node_modules/$pkg"
+            bunx node-gyp rebuild --python="$(command -v python3)"
+            popd
+          done
 
       - name: Build ${{ matrix.arch }} DMG
         working-directory: apps/desktop
