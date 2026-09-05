@@ -1,25 +1,40 @@
 <script setup lang="ts">
-import { FolderOpen, FolderPlus, RefreshCw, Trash2 } from "@lucide/vue";
+import { FolderOpen, FolderPlus, Trash2 } from "@lucide/vue";
 import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DialogFooter } from "@/components/ui/dialog";
 import {
   Field,
-  FieldDescription,
   FieldGroup,
   FieldLabel,
   FieldTitle,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import type {
   PineProject,
-  ProjectFolderAccess,
   ProjectFolderInput,
   ProjectMutationInput,
 } from "@/shared/projects";
-import ProjectFolderItem from "./ProjectFolderItem.vue";
 
 interface Props {
   isSaving?: boolean;
@@ -42,6 +57,7 @@ const { t } = useI18n();
 const name = ref("");
 const folders = ref<EditorProjectFolder[]>([]);
 const defaultFolderId = ref("");
+const originalFolderNames = new Map<string, string>();
 
 const defaultFolder = computed(() =>
   folders.value.find((folder) => folder.id === defaultFolderId.value),
@@ -64,6 +80,7 @@ const canSubmit = computed(
 );
 
 function reset(): void {
+  originalFolderNames.clear();
   name.value = props.project?.name ?? "";
   folders.value = props.project?.folders.map((folder) => ({ ...folder })) ?? [];
   defaultFolderId.value = props.project?.defaultFolderId ?? "";
@@ -118,11 +135,32 @@ function updateFolderName(folder: EditorProjectFolder, name: string): void {
   folder.name = name;
 }
 
+function startRenamingFolder(folder: EditorProjectFolder): void {
+  originalFolderNames.set(folder.id, folder.name);
+}
+
+function finishRenamingFolder(folder: EditorProjectFolder): void {
+  folder.name =
+    folder.name.trim() || originalFolderNames.get(folder.id) || folder.name;
+  originalFolderNames.delete(folder.id);
+}
+
+function cancelRenamingFolder(
+  folder: EditorProjectFolder,
+  event: KeyboardEvent,
+): void {
+  folder.name = originalFolderNames.get(folder.id) ?? folder.name;
+  originalFolderNames.delete(folder.id);
+  (event.currentTarget as HTMLInputElement).blur();
+}
+
 function updateFolderAccess(
   folder: EditorProjectFolder,
-  access: ProjectFolderAccess,
+  access: unknown,
 ): void {
-  folder.access = access;
+  if (access === "read-only" || access === "read-write") {
+    folder.access = access;
+  }
 }
 
 function toFolderInput(folder: EditorProjectFolder): ProjectFolderInput {
@@ -147,110 +185,191 @@ watch(() => props.project, reset, { immediate: true });
 </script>
 
 <template>
-  <form class="flex min-h-0 flex-col gap-6" @submit.prevent="submit">
-    <FieldGroup>
-      <Field>
-        <FieldLabel for="project-name">
-          {{ t("projects.editor.nameLabel") }}
-        </FieldLabel>
-        <Input
-          id="project-name"
-          v-model="name"
-          maxlength="100"
-          autocomplete="off"
-          :placeholder="t('projects.editor.namePlaceholder')"
-        />
-      </Field>
+  <form class="flex min-h-0 flex-col" @submit.prevent="submit">
+    <ScrollArea class="min-h-0 flex-1">
+      <FieldGroup class="gap-5 px-6 py-5">
+        <Field>
+          <FieldLabel for="project-name">
+            {{ t("projects.editor.nameLabel") }}
+          </FieldLabel>
+          <Input
+            id="project-name"
+            v-model="name"
+            maxlength="100"
+            autocomplete="off"
+            :placeholder="t('projects.editor.namePlaceholder')"
+          />
+        </Field>
 
-      <Field>
-        <FieldTitle id="default-folder-label">
-          {{ t("projects.editor.defaultFolderLabel") }}
-        </FieldTitle>
-        <FieldDescription id="default-folder-description">
-          {{ t("projects.editor.defaultFolderDescription") }}
-        </FieldDescription>
+        <Field orientation="horizontal">
+          <FieldTitle id="default-folder-label" class="shrink-0">
+            {{ t("projects.editor.defaultFolderLabel") }}
+          </FieldTitle>
 
-        <ProjectFolderItem
-          v-if="defaultFolder"
-          :folder="defaultFolder"
-          :show-access="false"
-          data-testid="default-folder-row"
-          aria-labelledby="default-folder-label"
-          aria-describedby="default-folder-description"
-          @update:name="updateFolderName(defaultFolder, $event)"
-        >
-          <template #action>
+          <div
+            v-if="defaultFolder"
+            class="ml-auto flex min-w-0 items-center justify-end gap-3"
+            data-testid="default-folder-row"
+            aria-labelledby="default-folder-label"
+          >
+            <span class="truncate text-sm text-muted-foreground">
+              {{ defaultFolder.path }}
+            </span>
             <Button
               type="button"
               variant="outline"
               size="sm"
+              class="shrink-0"
               data-testid="change-default-folder"
               @click="chooseDefaultFolder"
             >
-              <RefreshCw data-icon="inline-start" />
+              <FolderOpen data-icon="inline-start" />
               {{ t("projects.editor.changeDefaultFolder") }}
             </Button>
-          </template>
-        </ProjectFolderItem>
+          </div>
 
-        <Button
-          v-else
-          type="button"
-          variant="outline"
-          class="w-full"
-          data-testid="choose-default-folder"
-          aria-describedby="default-folder-description"
-          @click="chooseDefaultFolder"
-        >
-          <FolderOpen data-icon="inline-start" />
-          {{ t("projects.editor.chooseDefaultFolder") }}
-        </Button>
-      </Field>
+          <div v-else class="ml-auto">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              data-testid="choose-default-folder"
+              @click="chooseDefaultFolder"
+            >
+              <FolderOpen data-icon="inline-start" />
+              {{ t("projects.editor.chooseDefaultFolder") }}
+            </Button>
+          </div>
+        </Field>
 
-      <Field>
-        <div class="flex items-center justify-between gap-4">
-          <FieldTitle>
-            {{ t("projects.editor.contextFoldersLabel") }}
-          </FieldTitle>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            data-testid="add-context-folders"
-            @click="addContextFolders"
+        <Field>
+          <div class="flex items-center justify-between gap-4">
+            <FieldTitle>
+              {{ t("projects.editor.contextFoldersLabel") }}
+            </FieldTitle>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              data-testid="add-context-folders"
+              @click="addContextFolders"
+            >
+              <FolderPlus data-icon="inline-start" />
+              {{ t("projects.editor.addContextFolders") }}
+            </Button>
+          </div>
+
+          <div
+            v-if="contextFolders.length > 0"
+            data-testid="context-folder-table"
+            class="overflow-hidden rounded-lg"
           >
-            <FolderPlus data-icon="inline-start" />
-            {{ t("projects.editor.addContextFolders") }}
-          </Button>
-        </div>
+            <Table class="table-fixed">
+              <TableHeader class="bg-muted">
+                <TableRow>
+                  <TableHead class="w-28 px-4 py-3">
+                    {{ t("projects.editor.folderName") }}
+                  </TableHead>
+                  <TableHead class="px-4 py-3">
+                    {{ t("projects.editor.folderPath") }}
+                  </TableHead>
+                  <TableHead class="w-32 px-4 py-3">
+                    {{ t("projects.editor.accessLabel") }}
+                  </TableHead>
+                  <TableHead class="w-12 px-2 py-3">
+                    <span class="sr-only">
+                      {{ t("projects.editor.actionsLabel") }}
+                    </span>
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody class="[&>tr:nth-child(even):not(:hover)]:bg-muted/30">
+                <TableRow
+                  v-for="folder in contextFolders"
+                  :key="folder.id"
+                  data-testid="context-folder-row"
+                >
+                  <TableCell class="px-4 py-3">
+                    <Input
+                      :id="`folder-name-${folder.id}`"
+                      :model-value="folder.name"
+                      data-testid="folder-name-input"
+                      class="h-8 w-full min-w-0"
+                      maxlength="100"
+                      :aria-label="t('projects.editor.folderName')"
+                      @update:model-value="
+                        updateFolderName(folder, String($event))
+                      "
+                      @focus="startRenamingFolder(folder)"
+                      @blur="finishRenamingFolder(folder)"
+                      @keydown.enter.prevent="finishRenamingFolder(folder)"
+                      @keydown.esc.prevent="
+                        cancelRenamingFolder(folder, $event)
+                      "
+                    />
+                  </TableCell>
+                  <TableCell class="min-w-0 px-4 py-3">
+                    <div class="flex min-w-0 items-center gap-2">
+                      <span class="min-w-0 truncate text-muted-foreground">
+                        {{ folder.path }}
+                      </span>
+                      <Badge
+                        v-if="folder.isAvailable === false"
+                        variant="destructive"
+                      >
+                        {{ t("projects.unavailable") }}
+                      </Badge>
+                    </div>
+                  </TableCell>
+                  <TableCell class="px-4 py-3">
+                    <Select
+                      :model-value="folder.access"
+                      @update:model-value="updateFolderAccess(folder, $event)"
+                    >
+                      <SelectTrigger
+                        size="sm"
+                        class="w-full"
+                        :aria-label="
+                          t('projects.editor.folderAccess', {
+                            name: folder.name,
+                          })
+                        "
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          <SelectItem value="read-only">
+                            {{ t("projects.access.readOnly") }}
+                          </SelectItem>
+                          <SelectItem value="read-write">
+                            {{ t("projects.access.readWrite") }}
+                          </SelectItem>
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                  </TableCell>
+                  <TableCell class="px-2 py-3">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      :aria-label="t('projects.editor.removeFolder')"
+                      :title="t('projects.editor.removeFolder')"
+                      @click="removeFolder(folder.id)"
+                    >
+                      <Trash2 />
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </div>
+        </Field>
+      </FieldGroup>
+    </ScrollArea>
 
-        <div v-if="contextFolders.length > 0" class="flex flex-col gap-2">
-          <ProjectFolderItem
-            v-for="folder in contextFolders"
-            :key="folder.id"
-            :folder="folder"
-            data-testid="context-folder-row"
-            @update:name="updateFolderName(folder, $event)"
-            @update:access="updateFolderAccess(folder, $event)"
-          >
-            <template #action>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                :aria-label="t('projects.editor.removeFolder')"
-                :title="t('projects.editor.removeFolder')"
-                @click="removeFolder(folder.id)"
-              >
-                <Trash2 />
-              </Button>
-            </template>
-          </ProjectFolderItem>
-        </div>
-      </Field>
-    </FieldGroup>
-
-    <DialogFooter>
+    <DialogFooter class="shrink-0 px-6 py-4">
       <Button type="button" variant="outline" @click="emit('cancel')">
         {{ t("common.cancel") }}
       </Button>

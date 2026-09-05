@@ -4,6 +4,7 @@ import { handleError } from "@/app/errors/errorHandler";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -50,11 +51,16 @@ async function save(input: ProjectMutationInput): Promise<void> {
 
 <template>
   <Dialog v-model:open="open">
-    <DialogContent class="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
-      <DialogHeader>
+    <DialogContent
+      class="max-h-[min(85vh,44rem)] gap-0 overflow-hidden p-0 sm:max-w-lg"
+    >
+      <DialogHeader class="px-6 pt-6 pb-4 pr-16">
         <DialogTitle>
           {{ project ? t("projects.editTitle") : t("projects.createTitle") }}
         </DialogTitle>
+        <DialogDescription>
+          {{ t("projects.editor.dialogDescription") }}
+        </DialogDescription>
       </DialogHeader>
       <ProjectEditor
         :key="project?.updatedAt ?? String(open)"

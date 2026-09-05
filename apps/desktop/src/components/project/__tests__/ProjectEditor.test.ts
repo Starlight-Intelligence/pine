@@ -30,7 +30,7 @@ function mountEditor(value: PineProject | null = project) {
 }
 
 describe("ProjectEditor", () => {
-  it("renders the selected default folder without a radio control", async () => {
+  it("renders the selected default folder without editable controls", async () => {
     const wrapper = mountEditor({
       ...project,
       folders: [{ ...project.folders[0], access: "read-only" }],
@@ -39,13 +39,9 @@ describe("ProjectEditor", () => {
     expect(wrapper.findAll('[data-testid="default-folder-row"]')).toHaveLength(
       1,
     );
-    expect(
-      wrapper.get('[data-testid="default-folder-row"]').attributes(),
-    ).toMatchObject({
-      "data-size": "sm",
-      "data-slot": "item",
-      "data-variant": "outline",
-    });
+    expect(wrapper.get('[data-testid="default-folder-row"]').text()).toContain(
+      project.folders[0].path,
+    );
     expect(wrapper.find('[role="radiogroup"]').exists()).toBe(false);
     expect(
       wrapper
@@ -55,10 +51,12 @@ describe("ProjectEditor", () => {
     ).toBe(false);
     expect(wrapper.text()).not.toContain("项目元数据");
 
-    const input = wrapper.get('[data-testid="folder-name-input"]');
-    await input.trigger("focus");
-    await input.setValue("Archives");
-    await input.trigger("blur");
+    expect(
+      wrapper
+        .get('[data-testid="default-folder-row"]')
+        .find('[data-testid="folder-name-input"]')
+        .exists(),
+    ).toBe(false);
     await wrapper.get("form").trigger("submit");
 
     expect(wrapper.emitted("submit")?.[0]).toEqual([
@@ -68,7 +66,7 @@ describe("ProjectEditor", () => {
           {
             access: "read-write",
             id: project.folders[0].id,
-            name: "Archives",
+            name: project.folders[0].name,
             path: project.folders[0].path,
           },
         ],
@@ -97,6 +95,9 @@ describe("ProjectEditor", () => {
     expect(wrapper.find('[data-testid="context-folder-row"]').exists()).toBe(
       true,
     );
+    expect(wrapper.find('[data-testid="context-folder-table"]').exists()).toBe(
+      true,
+    );
     await removeButton.trigger("click");
 
     expect(wrapper.find('[data-testid="context-folder-row"]').exists()).toBe(
@@ -104,6 +105,9 @@ describe("ProjectEditor", () => {
     );
     expect(wrapper.find('[data-testid="default-folder-row"]').exists()).toBe(
       true,
+    );
+    expect(wrapper.find('[data-testid="context-folder-table"]').exists()).toBe(
+      false,
     );
   });
 
@@ -127,5 +131,16 @@ describe("ProjectEditor", () => {
       .get('[data-testid="add-context-folders"]')
       .trigger("click");
     expect(pickProjectFolders).toHaveBeenNthCalledWith(2, { mode: "context" });
+  });
+
+  it("does not render a context folder list when none are configured", () => {
+    const wrapper = mountEditor();
+
+    expect(wrapper.find('[data-testid="context-folder-row"]').exists()).toBe(
+      false,
+    );
+    expect(wrapper.find('[data-testid="context-folder-table"]').exists()).toBe(
+      false,
+    );
   });
 });
