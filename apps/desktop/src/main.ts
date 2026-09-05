@@ -20,6 +20,7 @@ import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import { ProjectRuntimeRegistry } from "./main/projectRuntime";
+import { TinyFishCredentialStore } from "./main/tinyfishCredentials";
 import {
   readProjectFilePreview,
   serveProjectMedia,
@@ -86,6 +87,12 @@ import {
   type PickProjectFoldersResult,
   type ProjectResult,
 } from "./shared/projects";
+import {
+  GET_TINYFISH_CREDENTIAL_STATUS_CHANNEL,
+  SET_TINYFISH_API_KEY_CHANNEL,
+  type SetTinyFishApiKeyResult,
+  type TinyFishCredentialStatus,
+} from "./shared/tinyfish";
 import {
   DELETE_SESSION_CHANNEL,
   LOAD_SESSION_MESSAGES_CHANNEL,
@@ -259,6 +266,7 @@ let agentHost: AgentProcessHost | null = null;
 const modelRecommendations = new ModelRecommendationService();
 let projectRuntimes: ProjectRuntimeRegistry | null = null;
 let projectRepository: ProjectRepository | null = null;
+let tinyFishCredentialStore: TinyFishCredentialStore | null = null;
 
 const ProjectFolderInputSchema = z.object({
   access: z.enum(["read-only", "read-write"]),
@@ -410,6 +418,9 @@ const ListProjectDirectoryRequestSchema = z.object({
 const SetSidebarVibrancyRequestSchema = z.object({
   enabled: z.boolean(),
 });
+const SetTinyFishApiKeyRequestSchema = z.object({
+  apiKey: z.string().trim().min(1).max(4_096),
+});
 const InspectAttachmentsRequestSchema = z.object({
   paths: z.array(z.string().min(1).max(4_096)).max(100),
 });
@@ -455,6 +466,13 @@ function getProjectRepository(): ProjectRepository {
 function getProjectRuntimes(): ProjectRuntimeRegistry {
   if (!projectRuntimes) throw new Error("Project runtime is not ready.");
   return projectRuntimes;
+}
+
+function getTinyFishCredentialStore(): TinyFishCredentialStore {
+  if (!tinyFishCredentialStore) {
+    throw new Error("TinyFish credential storage is not ready.");
+  }
+  return tinyFishCredentialStore;
 }
 
 /** macOS dock bounce id for the pending approval attention request. */
@@ -552,6 +570,24 @@ ipcMain.handle(CLOSE_WINDOW_CHANNEL, (event): void => {
 });
 
 ipcMain.handle(GET_APP_VERSION_CHANNEL, (): string => app.getVersion());
+
+ipcMain.handle(
+  GET_TINYFISH_CREDENTIAL_STATUS_CHANNEL,
+  (): TinyFishCredentialStatus => ({
+    configured: getTinyFishCredentialStore().isConfigured(),
+  }),
+);
+
+ipcMain.handle(
+  SET_TINYFISH_API_KEY_CHANNEL,
+  async (_event, request: unknown): Promise<SetTinyFishApiKeyResult> => {
+    const { apiKey } = SetTinyFishApiKeyRequestSchema.parse(request);
+    const store = getTinyFishCredentialStore();
+    await store.setApiKey(apiKey);
+    await projectRuntimes?.setTinyFishApiKey(store.getApiKey());
+    return { configured: store.isConfigured() };
+  },
+);
 
 ipcMain.handle(OPEN_EXTERNAL_URL_CHANNEL, async (_event, url: unknown) => {
   await shell.openExternal(ProviderAuthUrlSchema.parse(url));
@@ -1037,11 +1073,15 @@ ipcMain.handle(
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
-app.on("ready", () => {
+async function initializeApp(): Promise<void> {
   // Dev runs inside Electron.app, so it cannot use Pine's bundle asset catalog.
   // Preview Apple's generated compatibility image here. Packaged apps retain
   // the native Icon Composer resource; never override it with dock.setIcon().
   if (!app.isPackaged) app.dock?.setIcon(appIconPath);
+  tinyFishCredentialStore = new TinyFishCredentialStore(
+    path.join(app.getPath("userData"), "tinyfish-api-key"),
+  );
+  await tinyFishCredentialStore.load();
   agentHost = AgentProcessHost.createDefault();
   projectsRootPath = path.join(app.getPath("userData"), PROJECTS_DIRECTORY);
   projectRepository = new ProjectRepository(projectsRootPath);
@@ -1050,6 +1090,7 @@ app.on("ready", () => {
   projectRuntimes = new ProjectRuntimeRegistry(
     agentHost,
     path.join(app.getPath("userData"), "agent"),
+    () => tinyFishCredentialStore?.getApiKey(),
   );
   agentHost.subscribe((agentEvent) => {
     if (isProviderAuthEvent(agentEvent)) {
@@ -1085,6 +1126,10 @@ app.on("ready", () => {
     webContents.fromId(ownerId)?.send(SESSION_EVENT_CHANNEL, agentEvent);
   });
   createWindow();
+}
+
+app.on("ready", () => {
+  void initializeApp();
 });
 
 app.on("will-quit", () => {

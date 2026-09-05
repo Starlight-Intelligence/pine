@@ -78,6 +78,16 @@ describe("normalizeGeneratedTitle", () => {
     expect(normalizeGeneratedTitle(" ")).toBeUndefined();
     expect([...normalizeGeneratedTitle("a".repeat(80))!]).toHaveLength(60);
   });
+
+  it("preserves complete Chinese, English, and mixed-language titles", () => {
+    for (const title of [
+      "编码任务与操作任务的区别",
+      "循环变换器与 GPT-6 新模型对比",
+      "Improve TinyFish web search support for Pine",
+    ]) {
+      expect(normalizeGeneratedTitle(title)).toBe(title);
+    }
+  });
 });
 
 describe("titleFromAssistantMessage", () => {
@@ -136,6 +146,23 @@ describe("toolNamesForApprovalMode", () => {
         "auto-approve",
       ),
     ).toEqual(tools);
+  });
+
+  it("only exposes TinyFish tools when a credential is configured", () => {
+    const activeTools = [
+      "read",
+      "bash",
+      "edit",
+      "write",
+      "web_search",
+      "web_fetch",
+    ];
+    expect(
+      toolNamesForApprovalMode(activeTools, "auto-approve", false),
+    ).toEqual(["read", "bash", "edit", "write"]);
+    expect(toolNamesForApprovalMode(activeTools, "auto-approve", true)).toEqual(
+      [...activeTools],
+    );
   });
 });
 

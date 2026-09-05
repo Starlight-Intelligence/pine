@@ -337,15 +337,15 @@ describe("createPineToolDefinitions", () => {
       "/attachment/",
     );
     expect(profile).toContain('(subpath "/pine/project/tmp")');
+    expect(profile).toContain('(subpath "/opt/local")');
+    expect(profile).toContain('(subpath "/opt/homebrew")');
     expect(profile).toContain("(deny default)");
     expect(profile).not.toContain("(allow file-read*)");
-    for (const broadRoot of [
-      "/",
-      "/System",
-      "/Users",
-      "/private/tmp",
+    expect(profile.split("(allow file-write*")[1]).not.toContain("/opt/local");
+    expect(profile.split("(allow file-write*")[1]).not.toContain(
       "/opt/homebrew",
-    ]) {
+    );
+    for (const broadRoot of ["/", "/System", "/Users", "/private/tmp"]) {
       expect(profile).not.toContain(`(subpath "${broadRoot}")`);
     }
   });
@@ -448,6 +448,25 @@ describe("createPineToolDefinitions", () => {
           expect.arrayContaining([
             expect.objectContaining({
               text: expect.stringContaining("python-ok"),
+            }),
+          ]),
+        );
+      });
+
+      it("runs a MacPorts shell with its dynamic libraries", async () => {
+        const macPortsBash = await realpath("/opt/local/bin/bash").catch(
+          () => null,
+        );
+        if (!macPortsBash) return;
+        const { run } = await setup();
+        const result = await run(
+          `${quote(macPortsBash)} -c 'printf macports-bash-ok'`,
+        );
+        expect(result.content).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              type: "text",
+              text: expect.stringContaining("macports-bash-ok"),
             }),
           ]),
         );
@@ -587,6 +606,11 @@ describe("createPineToolDefinitions", () => {
         ),
       ).toBe(true);
       expect(matchSandboxDenial("Error: EACCES: access denied")).toBe(true);
+      expect(
+        matchSandboxDenial(
+          "Reason: tried: '/opt/local/lib/libncurses.6.dylib' (blocked by sandbox)",
+        ),
+      ).toBe(true);
     });
 
     it("ignores ordinary command failures", () => {

@@ -21,19 +21,30 @@ const modelPickerStub = {
     '<div data-model-picker :data-open="open" :data-purpose="purpose" />',
 };
 const setSidebarVibrancy = vi.fn().mockResolvedValue({ applied: true });
+const getTinyFishCredentialStatus = vi
+  .fn()
+  .mockResolvedValue({ configured: false });
+const setTinyFishApiKey = vi.fn().mockResolvedValue({ configured: true });
 
 function installPineApi(platform: string | undefined): void {
   const pineWindow = window as unknown as {
     pine?: {
       platform: string;
       setSidebarVibrancy: typeof setSidebarVibrancy;
+      getTinyFishCredentialStatus: typeof getTinyFishCredentialStatus;
+      setTinyFishApiKey: typeof setTinyFishApiKey;
     };
   };
   if (platform === undefined) {
     delete pineWindow.pine;
     return;
   }
-  pineWindow.pine = { platform, setSidebarVibrancy };
+  pineWindow.pine = {
+    platform,
+    setSidebarVibrancy,
+    getTinyFishCredentialStatus,
+    setTinyFishApiKey,
+  };
 }
 
 function mountDialog() {
@@ -65,6 +76,10 @@ describe("PinePreferencesDialog", () => {
     document.documentElement.classList.remove("sidebar-vibrancy");
     document.documentElement.lang = "zh-CN";
     setSidebarVibrancy.mockClear();
+    getTinyFishCredentialStatus.mockClear();
+    setTinyFishApiKey.mockClear();
+    getTinyFishCredentialStatus.mockResolvedValue({ configured: false });
+    setTinyFishApiKey.mockResolvedValue({ configured: true });
     installPineApi(undefined);
   });
 
@@ -116,6 +131,24 @@ describe("PinePreferencesDialog", () => {
 
     expect(wrapper.text()).toContain("GLM 4.5 Air");
     expect(wrapper.text()).not.toContain("未选择任何模型");
+  });
+
+  it("saves a TinyFish key and changes the action label", async () => {
+    installPineApi("linux");
+    const { wrapper } = mountDialog();
+
+    await wrapper
+      .get('[data-testid="pine-tinyfish-credential-button"]')
+      .trigger("click");
+    await wrapper.get('input[type="password"]').setValue("tinyfish-secret");
+    await wrapper.get("form").trigger("submit");
+
+    await vi.waitFor(() =>
+      expect(setTinyFishApiKey).toHaveBeenCalledWith({
+        apiKey: "tinyfish-secret",
+      }),
+    );
+    expect(wrapper.text()).toContain("更改密钥");
   });
 
   it("opens the shared model picker in utility mode", async () => {

@@ -58,6 +58,7 @@ import {
   type UserApprovalRequest,
 } from "./gate";
 import { createPineToolDefinitions, PineAttachedPathAccess } from "./tools";
+import { TINYFISH_TOOL_NAMES } from "./tinyfishTools";
 import {
   readPineAgentSettings,
   writeUtilityModelSelection,
@@ -65,17 +66,19 @@ import {
 
 const JUDGE_TIMEOUT_MS = 60_000;
 const TITLE_TIMEOUT_MS = 30_000;
+const MAX_GENERATED_TITLE_LENGTH = 60;
 
 const TITLE_TOOL: Tool = {
   name: "submit_title",
   description:
-    "Submit the concise conversation title. Call this exactly once and do not answer in plain text.",
+    "Submit a short, high-level conversation title. Call this exactly once and do not answer in plain text.",
   parameters: Type.Object(
     {
       title: Type.String({
-        description: "A concise title in the requested language.",
+        description:
+          "A concise, informative title in the requested language. Preserve complete meaning and names that identify the topic; use at most 60 characters.",
         minLength: 1,
-        maxLength: 60,
+        maxLength: MAX_GENERATED_TITLE_LENGTH,
       }),
     },
     { additionalProperties: false },
@@ -204,6 +207,8 @@ interface LiveAgentSession {
   turn: GateTurnContext;
   /** Paths directly attached by the user; read-only for file tools. */
   attachedPaths: PineAttachedPathAccess;
+  availableToolNames: string[];
+  tinyFishApiKey?: string;
   locale: "en-US" | "zh-CN";
 }
 
@@ -253,11 +258,20 @@ function sessionSummary(session: AgentSession): PineSessionSummary {
 export function toolNamesForApprovalMode(
   activeToolNames: readonly string[],
   approvalMode: PineApprovalMode,
+  tinyFishEnabled = true,
 ): string[] {
-  const withoutBash = activeToolNames.filter((name) => name !== "bash");
-  if (approvalMode === "YOLO") return withoutBash;
-  if (withoutBash.length !== activeToolNames.length) {
-    return [...activeToolNames];
+  const networkTools = activeToolNames.filter((name) =>
+    TINYFISH_TOOL_NAMES.includes(name as (typeof TINYFISH_TOOL_NAMES)[number]),
+  );
+  const withoutNetwork = activeToolNames.filter(
+    (name) =>
+      !TINYFISH_TOOL_NAMES.includes(
+        name as (typeof TINYFISH_TOOL_NAMES)[number],
+      ),
+  );
+  const withoutBash = withoutNetwork.filter((name) => name !== "bash");
+  if (approvalMode === "YOLO") {
+    return tinyFishEnabled ? [...withoutBash, ...networkTools] : withoutBash;
   }
   const readIndex = withoutBash.indexOf("read");
   const privilegedIndex = withoutBash.indexOf("privileged_bash");
@@ -267,11 +281,12 @@ export function toolNamesForApprovalMode(
       : privilegedIndex === -1
         ? withoutBash.length
         : privilegedIndex;
-  return [
+  const result = [
     ...withoutBash.slice(0, insertionIndex),
     "bash",
     ...withoutBash.slice(insertionIndex),
   ];
+  return tinyFishEnabled ? [...result, ...networkTools] : result;
 }
 
 function textFromMessageContent(content: unknown): string {
@@ -350,7 +365,7 @@ export function normalizeGeneratedTitle(value: string): string | undefined {
     ?.replace(/[.!?。！？]+$/, "")
     .trim();
   if (!title) return undefined;
-  return [...title].slice(0, 60).join("");
+  return [...title].slice(0, MAX_GENERATED_TITLE_LENGTH).join("");
 }
 
 export function titleFromAssistantMessage(
@@ -773,6 +788,10 @@ export class PineAgentRuntime {
       gate: undefined as never,
       turn: {},
       attachedPaths,
+      availableToolNames: [],
+      ...(location.tinyFishApiKey
+        ? { tinyFishApiKey: location.tinyFishApiKey }
+        : {}),
       locale: "en-US",
     };
     const resourceLoader = new DefaultResourceLoader({
@@ -809,8 +828,10 @@ export class PineAgentRuntime {
       {
         getApprovalMode: () => live.approvalMode,
         getGate: () => live.gate,
+        getTinyFishApiKey: () => live.tinyFishApiKey,
       },
     );
+    live.availableToolNames = customTools.map((tool) => tool.name);
 
     const { session } = await createAgentSession({
       cwd: location.cwd,
@@ -823,7 +844,11 @@ export class PineAgentRuntime {
       // Keep the SDK's active-tool list derived from the actual definitions.
       // A parallel static allowlist previously registered privileged_bash but
       // silently hid it from the model.
-      tools: customTools.map((tool) => tool.name),
+      tools: toolNamesForApprovalMode(
+        live.availableToolNames,
+        live.approvalMode,
+        live.tinyFishApiKey !== undefined,
+      ),
     });
     live.session = session;
     // Pine presents every staged steering message together, so inject the
@@ -878,8 +903,9 @@ export class PineAgentRuntime {
   private syncApprovalModeTools(live: LiveAgentSession): void {
     const activeToolNames = live.session.getActiveToolNames();
     const nextToolNames = toolNamesForApprovalMode(
-      activeToolNames,
+      live.availableToolNames,
       live.approvalMode,
+      live.tinyFishApiKey !== undefined,
     );
     if (
       nextToolNames.length === activeToolNames.length &&
@@ -888,6 +914,16 @@ export class PineAgentRuntime {
       return;
     }
     live.session.setActiveToolsByName(nextToolNames);
+  }
+
+  setTinyFishApiKey(apiKey: string | undefined): { updated: boolean } {
+    const normalized = apiKey?.trim() || undefined;
+    for (const live of this.liveSessions.values()) {
+      if (normalized) live.tinyFishApiKey = normalized;
+      else delete live.tinyFishApiKey;
+      this.syncApprovalModeTools(live);
+    }
+    return { updated: true };
   }
 
   /** Cross-process round trip: renderer answers, worker resumes. */
@@ -1122,7 +1158,7 @@ export class PineAgentRuntime {
         live.locale === "zh-CN" ? "Simplified Chinese" : "English";
       const signal = AbortSignal.timeout(TITLE_TIMEOUT_MS);
       const context: Context = {
-        systemPrompt: `Generate a concise conversation title in ${language}. Capture the user's task and use at most 12 words. Call submit_title exactly once with { "title": string }; do not answer in plain text.`,
+        systemPrompt: `Generate a concise, informative conversation title in ${language}. Capture the primary user goal or topic so the conversation is easy to recognize later. Prefer a short, natural phrase that preserves the complete meaning; do not sacrifice clarity or truncate key terms for brevity. Use at most ${MAX_GENERATED_TITLE_LENGTH} characters. Keep model names, product names, filenames, and technical terms when they are central to the topic. Omit incidental details and unnecessary URLs. Do not invent outcomes or use promotional wording. Call submit_title exactly once with { "title": string }; do not answer in plain text.`,
         messages: [
           {
             role: "user",

@@ -24,6 +24,8 @@ export interface AgentSessionLocation {
   cwd: string;
   folders: AgentFolderGrant[];
   sessionsRoot: string;
+  /** In-memory TinyFish credential; never written to a session file. */
+  tinyFishApiKey?: string;
   /** Initial permission mode for the session. YOLO bypasses all Pine sandbox,
    * folder, and approval controls; omitted defaults to `auto-approve`. */
   approvalMode?: PineApprovalMode;
@@ -137,6 +139,12 @@ export type AgentWorkerRequest =
   | {
       id: string;
       type: "runtime:dispose";
+    }
+  | {
+      id: string;
+      type: "runtime:set-tinyfish-api-key";
+      /** Undefined clears the in-memory key and hides network tools. */
+      tinyFishApiKey?: string;
     };
 
 export type AgentWorkerRequestInput = AgentWorkerRequest extends infer TRequest

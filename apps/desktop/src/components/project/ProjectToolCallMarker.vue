@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { AlertCircleIcon, CheckIcon, ShieldBanIcon } from "@lucide/vue";
-import { computed, type Component } from "vue";
+import { computed, ref, type Component, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { Marker, MarkerContent, MarkerIcon } from "@/components/ui/marker";
 import type { PineToolCall } from "@/shared/sessions";
@@ -23,6 +23,7 @@ const props = defineProps<{
   awaitingApproval?: boolean;
 }>();
 const { t } = useI18n();
+const MAX_WEB_PAGE_TITLE_LENGTH = 24;
 
 const kindIcon: Component = TOOL_KIND_ICON[toolKind(props.toolCall.name)];
 
@@ -69,6 +70,229 @@ function firstKey(record: Record<string, unknown>, keys: readonly string[]) {
     if (value !== undefined && value !== null) return value;
   }
   return undefined;
+}
+
+function stringArray(record: Record<string, unknown>, key: string): string[] {
+  const value = record[key];
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
+}
+
+function webUrlLabel(value: string): string {
+  try {
+    const url = new URL(value);
+    const path = url.pathname === "/" ? "" : url.pathname;
+    return compactInline(`${url.protocol}//${url.host}${path}`, 72);
+  } catch {
+    return t("project.transcript.toolParams.invalidUrl");
+  }
+}
+
+function toolOutputText(value: unknown): string | undefined {
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) {
+    const text = value
+      .map((part) => toolOutputText(part))
+      .filter((part): part is string => part !== undefined)
+      .join("\n");
+    return text || undefined;
+  }
+  const record = inputRecord(value);
+  if (typeof record.text === "string") return record.text;
+  if (record.content !== undefined) return toolOutputText(record.content);
+  return undefined;
+}
+
+function tinyFishResponseFromOutput(output: unknown): Record<string, unknown> {
+  const direct = inputRecord(output);
+  if (Array.isArray(direct.results)) return direct;
+
+  const text = toolOutputText(output);
+  if (!text) return {};
+  const startTag = "<tinyfish_web_data>";
+  const endTag = "</tinyfish_web_data>";
+  const start = text.indexOf(startTag);
+  const jsonStart = start >= 0 ? start + startTag.length : 0;
+  const end = text.indexOf(endTag, jsonStart);
+  const serialized = text.slice(jsonStart, end >= 0 ? end : undefined).trim();
+  try {
+    return inputRecord(JSON.parse(serialized));
+  } catch {
+    return {};
+  }
+}
+
+function pageTitleFromTinyFishText(output: unknown): string | undefined {
+  const text = toolOutputText(output);
+  if (!text) return undefined;
+  const titleMatch = text.match(/"title"\s*:\s*"((?:\\.|[^"\\])*)"/u);
+  if (!titleMatch) return undefined;
+  try {
+    const title = JSON.parse(`"${titleMatch[1]}"`) as unknown;
+    return typeof title === "string" && title.trim()
+      ? compactInline(title, MAX_WEB_PAGE_TITLE_LENGTH)
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function webFetchPageTitle(output: unknown): string | undefined {
+  const details = inputRecord(inputRecord(output).details);
+  const detailTitle = firstString(details, ["pageTitle"]);
+  if (detailTitle) {
+    return compactInline(detailTitle, MAX_WEB_PAGE_TITLE_LENGTH);
+  }
+
+  const response = tinyFishResponseFromOutput(output);
+  const firstResult = Array.isArray(response.results)
+    ? response.results.find(
+        (result): result is Record<string, unknown> =>
+          typeof result === "object" &&
+          result !== null &&
+          !Array.isArray(result),
+      )
+    : undefined;
+  const title = firstResult && firstString(firstResult, ["title"]);
+  return title
+    ? compactInline(title, MAX_WEB_PAGE_TITLE_LENGTH)
+    : pageTitleFromTinyFishText(output);
+}
+
+function webFetchFaviconDataUrl(output: unknown): string | undefined {
+  const details = inputRecord(inputRecord(output).details);
+  const faviconDataUrl = firstString(details, ["faviconDataUrl"]);
+  return faviconDataUrl &&
+    faviconDataUrl.length <= 64 * 1024 &&
+    /^data:image\/(?:gif|jpeg|png|webp|x-icon|vnd\.microsoft\.icon);base64,[\w+/]*={0,2}$/u.test(
+      faviconDataUrl,
+    )
+    ? faviconDataUrl
+    : undefined;
+}
+
+function formatRecency(minutes: number): string {
+  const totalMinutes = Number.isFinite(minutes)
+    ? Math.max(0, Math.round(minutes))
+    : 0;
+  const days = Math.floor(totalMinutes / (24 * 60));
+  const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
+  const remainingMinutes = totalMinutes % 60;
+  const parts: string[] = [];
+
+  if (days > 0) {
+    parts.push(
+      t("project.transcript.toolParams.searchRecencyUnits.days", {
+        count: days,
+      }),
+    );
+  }
+  if (hours > 0) {
+    parts.push(
+      t("project.transcript.toolParams.searchRecencyUnits.hours", {
+        count: hours,
+      }),
+    );
+  }
+  if (remainingMinutes > 0 || parts.length === 0) {
+    parts.push(
+      t("project.transcript.toolParams.searchRecencyUnits.minutes", {
+        count: remainingMinutes,
+      }),
+    );
+  }
+
+  return t("project.transcript.toolParams.searchRecency", {
+    value: parts.join(" "),
+  });
+}
+
+function searchDomainTypeLabel(value: string): string {
+  const key = {
+    web: "web",
+    news: "news",
+    research_paper: "researchPaper",
+  }[value];
+  return key ? t(`project.transcript.toolParams.searchTypes.${key}`) : value;
+}
+
+function webSearchTarget(input: Record<string, unknown>): string | undefined {
+  const query = firstString(input, ["query"]);
+  if (!query) return undefined;
+
+  const mainParts: string[] = [];
+  if (typeof input.recency_minutes === "number") {
+    mainParts.push(formatRecency(input.recency_minutes));
+  }
+  mainParts.push(query);
+
+  const qualifiers: string[] = [];
+  const domainType = firstString(input, ["domain_type"]);
+  if (domainType) {
+    mainParts.push(
+      t("project.transcript.toolParams.searchDomainTypeSuffix", {
+        value: searchDomainTypeLabel(domainType),
+      }),
+    );
+  }
+  const includedDomains = stringArray(input, "include_domains");
+  if (includedDomains.length > 0) {
+    qualifiers.push(
+      t("project.transcript.toolParams.searchIncludedDomain", {
+        value: includedDomains[0],
+      }),
+    );
+    if (includedDomains.length > 1) {
+      qualifiers.push(
+        t("project.transcript.toolParams.searchMoreSites", {
+          count: includedDomains.length - 1,
+        }),
+      );
+    }
+  }
+  if (typeof input.page === "number" && input.page > 0) {
+    qualifiers.push(
+      t("project.transcript.toolParams.searchPage", {
+        value: Math.round(input.page),
+      }),
+    );
+  }
+  return compactInline([mainParts.join(" "), ...qualifiers].join(" · "), 120);
+}
+
+function webFetchTarget(
+  input: Record<string, unknown>,
+  output: unknown,
+): string | undefined {
+  const urls = stringArray(input, "urls");
+  if (urls.length === 0) return undefined;
+
+  const firstUrl = webFetchPageTitle(output) ?? webUrlLabel(urls[0]);
+  const target =
+    urls.length > 1
+      ? `${firstUrl} ${t("project.transcript.toolParams.fetchMoreUrls", {
+          count: urls.length - 1,
+        })}`
+      : firstUrl;
+  const qualifiers: string[] = [];
+  const highlights = input.highlights;
+  if (typeof highlights === "object" && highlights !== null) {
+    const highlightQuery = firstString(highlights as Record<string, unknown>, [
+      "query",
+    ]);
+    if (highlightQuery) {
+      qualifiers.push(
+        t("project.transcript.toolParams.fetchHighlights", {
+          value: compactInline(highlightQuery, 48),
+        }),
+      );
+    }
+  }
+  return compactInline(
+    qualifiers.length > 0 ? `${target} · ${qualifiers.join(" · ")}` : target,
+    120,
+  );
 }
 
 /**
@@ -133,15 +357,27 @@ const presentation = computed(() => {
   const path = firstString(input, ["path", "filePath", "file_path"]);
   const command = firstString(input, ["command", "cmd"]);
   const query = firstString(input, ["pattern", "query", "search"]);
+  const purpose =
+    kind === "search" || kind === "fetch"
+      ? firstString(input, ["purpose"])
+      : undefined;
+  const compactPurpose = purpose ? compactInline(purpose, 96) : undefined;
+  const faviconDataUrl =
+    kind === "fetch"
+      ? webFetchFaviconDataUrl(props.toolCall.output)
+      : undefined;
   const suffix = kind === "read" ? readRangeSuffix(input) : "";
   const target =
     kind === "bash" && command
       ? compactInline(command)
       : kind === "search" && query
-        ? compactInline(query)
-        : path
-          ? `${filename(path)}${suffix}`
-          : props.toolCall.name;
+        ? (webSearchTarget(input) ?? compactInline(query))
+        : kind === "fetch"
+          ? (webFetchTarget(input, props.toolCall.output) ??
+            props.toolCall.name)
+          : path
+            ? `${filename(path)}${suffix}`
+            : props.toolCall.name;
   // Review holds replace the tense label entirely: the reader must see that
   // the call is gated, not that it is running.
   const state = isDenied.value
@@ -171,6 +407,8 @@ const presentation = computed(() => {
       operation: undefined,
       separator: "",
       target,
+      purpose: compactPurpose,
+      faviconDataUrl,
       after: "",
     };
   }
@@ -183,9 +421,19 @@ const presentation = computed(() => {
       kind === "bash" && description && command ? `${description}` : undefined,
     separator: t("project.transcript.tools.operationSeparator"),
     target,
+    purpose: compactPurpose,
+    faviconDataUrl,
     after: t(`${key}.after`),
   };
 });
+
+const faviconError = ref(false);
+watch(
+  () => presentation.value.faviconDataUrl,
+  () => {
+    faviconError.value = false;
+  },
+);
 
 const isActive = computed(
   () =>
@@ -209,8 +457,9 @@ const fullText = computed(() => {
   const operation = presentation.value.operation;
   const separator = presentation.value.separator;
   const target = presentation.value.target;
+  const purpose = presentation.value.purpose;
   const after = presentation.value.after;
-  return `${before}${operation ?? ""}${operation ? separator : ""}${target}${after}`;
+  return `${before}${operation ?? ""}${operation ? separator : ""}${target}${purpose ? ` ${purpose}` : ""}${after}`;
 });
 </script>
 
@@ -259,9 +508,23 @@ const fullText = computed(() => {
         <span v-if="presentation.operation" class="font-medium"
           >{{ presentation.operation }}{{ presentation.separator }}</span
         >
+        <img
+          v-if="presentation.faviconDataUrl && !faviconError"
+          data-tool-favicon
+          aria-hidden="true"
+          alt=""
+          :src="presentation.faviconDataUrl"
+          class="mx-0.5 inline-block size-4 shrink-0 rounded-sm object-contain align-[-0.2em]"
+          @error="faviconError = true"
+        />
         <code class="font-mono text-sm font-normal">{{
           presentation.target
         }}</code
+        ><span
+          v-if="presentation.purpose"
+          data-tool-purpose
+          class="ml-1 font-semibold"
+          >{{ presentation.purpose }}</span
         ><span
           v-if="editDiffCount && !isDenied"
           data-edit-diff

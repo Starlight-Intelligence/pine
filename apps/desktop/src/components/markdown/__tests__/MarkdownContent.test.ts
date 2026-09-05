@@ -1,19 +1,56 @@
 import { flushPromises, mount } from "@vue/test-utils";
 import { nextTick } from "vue";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createPinia, setActivePinia } from "pinia";
+import { createAppI18n } from "@/app/i18n";
 import MarkdownContent from "../MarkdownContent.vue";
+
+const passthroughStub = { template: "<div><slot /></div>" };
+const alertDialogStub = {
+  name: "AlertDialogStub",
+  props: ["open"],
+  emits: ["update:open"],
+  template: '<div data-alert-dialog :data-open="open"><slot /></div>',
+};
+const alertDialogActionStub = {
+  name: "AlertDialogActionStub",
+  emits: ["click"],
+  template:
+    '<button v-bind="$attrs" @click="$emit(\'click\', $event)"><slot /></button>',
+};
+const alertDialogCancelStub = {
+  name: "AlertDialogCancelStub",
+  emits: ["click"],
+  template:
+    '<button v-bind="$attrs" @click="$emit(\'click\', $event)"><slot /></button>',
+};
+
+function mountMarkdown(props: { source: string; final?: boolean } | string) {
+  return mount(MarkdownContent, {
+    props: typeof props === "string" ? { source: props } : props,
+    global: {
+      plugins: [createAppI18n("zh-CN")],
+      stubs: {
+        AlertDialog: alertDialogStub,
+        AlertDialogAction: alertDialogActionStub,
+        AlertDialogCancel: alertDialogCancelStub,
+        AlertDialogContent: passthroughStub,
+        AlertDialogDescription: passthroughStub,
+        AlertDialogFooter: passthroughStub,
+        AlertDialogHeader: passthroughStub,
+        AlertDialogTitle: passthroughStub,
+      },
+    },
+  });
+}
 
 describe("MarkdownContent", () => {
   beforeEach(() => setActivePinia(createPinia()));
 
   it("renders common Markdown structures", () => {
-    const wrapper = mount(MarkdownContent, {
-      props: {
-        source:
-          "## Result\n\nA **strong** result with `code`.\n\n- first\n- second",
-      },
-    });
+    const wrapper = mountMarkdown(
+      "## Result\n\nA **strong** result with `code`.\n\n- first\n- second",
+    );
 
     expect(wrapper.get("h2").text()).toBe("Result");
     expect(wrapper.get("strong").text()).toBe("strong");
@@ -25,20 +62,16 @@ describe("MarkdownContent", () => {
   });
 
   it("escapes raw HTML so it is never rendered as an element", () => {
-    const wrapper = mount(MarkdownContent, {
-      props: {
-        source: '<script data-test="unsafe">alert(1)</script>',
-      },
-    });
+    const wrapper = mountMarkdown(
+      '<script data-test="unsafe">alert(1)</script>',
+    );
 
     expect(wrapper.find("script").exists()).toBe(false);
     expect(wrapper.text()).toContain('<script data-test="unsafe">');
   });
 
   it("prevents links from navigating the app window", () => {
-    const wrapper = mount(MarkdownContent, {
-      props: { source: "[Documentation](https://example.com)" },
-    });
+    const wrapper = mountMarkdown("[Documentation](https://example.com)");
 
     expect(wrapper.get("a").attributes()).toEqual(
       expect.objectContaining({
@@ -49,9 +82,106 @@ describe("MarkdownContent", () => {
     );
   });
 
-  it("renders streamed markdown and commits the tail on completion", async () => {
+  it("asks for confirmation before opening an external link", async () => {
+    const openExternalUrl = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(window, "pine", {
+      configurable: true,
+      value: { openExternalUrl },
+    });
+    const wrapper = mountMarkdown("[Documentation](https://example.com/docs)");
+
+    await wrapper.get("a").trigger("click");
+
+    expect(wrapper.get("[data-alert-dialog]").attributes("data-open")).toBe(
+      "true",
+    );
+    expect(wrapper.text()).toContain("https://example.com/docs");
+    expect(openExternalUrl).not.toHaveBeenCalled();
+
+    await wrapper.get('[data-testid="confirm-external-link"]').trigger("click");
+
+    expect(openExternalUrl).toHaveBeenCalledWith("https://example.com/docs");
+    expect(wrapper.get("[data-alert-dialog]").attributes("data-open")).toBe(
+      "false",
+    );
+    wrapper.unmount();
+  });
+
+  it("opens the confirmed URL through the real dialog and cancels without opening", async () => {
+    const openExternalUrl = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(window, "pine", {
+      configurable: true,
+      value: { openExternalUrl },
+    });
     const wrapper = mount(MarkdownContent, {
-      props: { source: "# Hello\n\nFirst paragraph", final: false },
+      attachTo: document.body,
+      props: { source: "[Docs](https://example.com/docs)", final: true },
+      global: { plugins: [createAppI18n("zh-CN")] },
+    });
+    try {
+      await wrapper.get("a").trigger("click");
+      await flushPromises();
+      const cancel = document.querySelector<HTMLButtonElement>(
+        '[data-slot="alert-dialog-cancel"]',
+      );
+      expect(cancel).not.toBeNull();
+      cancel!.click();
+      await flushPromises();
+      expect(openExternalUrl).not.toHaveBeenCalled();
+
+      await wrapper.get("a").trigger("click");
+      await flushPromises();
+      const confirm = document.querySelector<HTMLButtonElement>(
+        '[data-testid="confirm-external-link"]',
+      );
+      expect(confirm).not.toBeNull();
+      confirm!.click();
+      await flushPromises();
+      expect(openExternalUrl).toHaveBeenCalledExactlyOnceWith(
+        "https://example.com/docs",
+      );
+      expect(document.querySelector('[role="alertdialog"]')).toBeNull();
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
+  it("does not open non-http links", async () => {
+    const openExternalUrl = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(window, "pine", {
+      configurable: true,
+      value: { openExternalUrl },
+    });
+    const wrapper = mountMarkdown("[Unsupported](mailto:person@example.com)");
+
+    await wrapper.get("a").trigger("click");
+
+    expect(openExternalUrl).not.toHaveBeenCalled();
+    expect(wrapper.get("[data-alert-dialog]").attributes("data-open")).toBe(
+      "false",
+    );
+    wrapper.unmount();
+  });
+
+  it("uses https when the renderer auto-completes a schemeless URL", async () => {
+    const openExternalUrl = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(window, "pine", {
+      configurable: true,
+      value: { openExternalUrl },
+    });
+    const wrapper = mountMarkdown("See example.com/docs");
+
+    await wrapper.get("a").trigger("click");
+    await wrapper.get('[data-testid="confirm-external-link"]').trigger("click");
+
+    expect(openExternalUrl).toHaveBeenCalledWith("https://example.com/docs");
+    wrapper.unmount();
+  });
+
+  it("renders streamed markdown and commits the tail on completion", async () => {
+    const wrapper = mountMarkdown({
+      source: "# Hello\n\nFirst paragraph",
+      final: false,
     });
 
     // A closed heading renders immediately even while the stream is open.
@@ -70,9 +200,7 @@ describe("MarkdownContent", () => {
   });
 
   it("renders a fenced code block with a copy button", async () => {
-    const wrapper = mount(MarkdownContent, {
-      props: { source: "```ts\nconst x: number = 1;\n```" },
-    });
+    const wrapper = mountMarkdown("```ts\nconst x: number = 1;\n```");
     // The code text is rendered by shiki asynchronously; the container and its
     // copy button are present synchronously, so assert those.
     await flushPromises();
@@ -82,12 +210,10 @@ describe("MarkdownContent", () => {
   });
 
   it("renders rich Markdown and column alignment in shadcn table cells", () => {
-    const wrapper = mount(MarkdownContent, {
-      props: {
-        source:
-          "| Name | Count | Details |\n| :--- | ---: | :---: |\n| **Pine** | 2 | [Docs](https://example.com) and `code` |\n| <img src=x onerror=alert(1)> | 3 | Plain text |",
-        final: true,
-      },
+    const wrapper = mountMarkdown({
+      source:
+        "| Name | Count | Details |\n| :--- | ---: | :---: |\n| **Pine** | 2 | [Docs](https://example.com) and `code` |\n| <img src=x onerror=alert(1)> | 3 | Plain text |",
+      final: true,
     });
 
     const table = wrapper.get('[data-slot="table"]');
@@ -108,9 +234,7 @@ describe("MarkdownContent", () => {
 
   it("appends streamed table rows without replacing existing content", async () => {
     const source = "| Name | Count |\n| --- | --- |\n| Pine | 1 |\n";
-    const wrapper = mount(MarkdownContent, {
-      props: { source, final: false },
-    });
+    const wrapper = mountMarkdown({ source, final: false });
     const firstRow = wrapper.get("tbody tr").element;
     await wrapper.setProps({ source: `${source}| Oak | 2 |\n`, final: true });
     await nextTick();

@@ -12,7 +12,10 @@ Pine 的普通 shell 是具备明确数据边界的本地开发环境。策略�
   这意味着模型可能看到祖先目录中的文件名；不是隐藏所有文件名的隔离模型。
 - **运行环境**：系统库、应用安装目录、开发工具、框架、系统级配置和工具选择目录只读。
   不为单个 Python/Xcode 版本增加启动器绕行，也不把整个 `/System`、用户 HOME
-  或任意 PATH 目录视为隐式读取授权。
+  或任意 PATH 目录视为隐式读取授权。标准 MacPorts (`/opt/local`) 和 Homebrew
+  (`/opt/homebrew`，以及 Intel Homebrew 的标准 Cellar/opt/bin/lib/share 子目录)
+  前缀作为只读运行时树授权，覆盖启动器与其分离的动态库；用户 HOME 中的
+  pyenv、nvm、uv 等工具链仍需共享目录或 `privileged_bash`。
 - **临时存储**：项目临时目录供 shell、子进程和文件工具共用。macOS 的用户临时目录
   也属于运行环境，可读写；系统服务可能用原生 API 定位它而不遵循 TMPDIR。
   该目录可能含其他应用的临时数据，因此它不是项目间隔离的存储。

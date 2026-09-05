@@ -100,6 +100,9 @@ async function handleRequest(request: AgentWorkerRequest): Promise<void> {
     case "runtime:dispose":
       result = await runtime.dispose();
       break;
+    case "runtime:set-tinyfish-api-key":
+      result = runtime.setTinyFishApiKey(request.tinyFishApiKey);
+      break;
   }
 
   parentPort.postMessage({

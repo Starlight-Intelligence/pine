@@ -6,8 +6,9 @@ function escapeSandboxString(value: string): string {
 
 // Runtime installation trees only. In particular, /System includes the Data
 // volume and must NOT be granted wholesale. Neither HOME nor arbitrary PATH
-// entries are implicit read grants. Other toolchains require shared folders or
-// privileged_bash instead of silently widening the filesystem boundary.
+// entries are implicit read grants. Standard package-manager prefixes are
+// explicitly included because their launchers and dynamic libraries live in
+// separate directories (for example, MacPorts bash -> /opt/local/lib).
 const MACOS_RUNTIME_DIRECTORIES = [
   "/bin",
   "/sbin",
@@ -26,8 +27,17 @@ const MACOS_RUNTIME_DIRECTORIES = [
   "/Library/Preferences",
   "/Applications",
   "/private/var/select",
-  "/opt/homebrew/Cellar",
+  // Standard read-only runtime prefixes. These are installation trees, not
+  // user data directories; allowing only their read side keeps the shell
+  // usable without expanding its write boundary.
+  "/opt/local",
+  "/opt/homebrew",
   "/usr/local/Cellar",
+  "/usr/local/opt",
+  "/usr/local/bin",
+  "/usr/local/sbin",
+  "/usr/local/lib",
+  "/usr/local/share",
   "/private/var/db/dyld",
   "/private/var/db/com.apple.dyld",
   "/private/var/db/timezone",

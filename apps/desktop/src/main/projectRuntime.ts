@@ -91,6 +91,8 @@ export class ProjectRuntimeRegistry {
   constructor(
     private readonly agentHost: AgentHost,
     private readonly agentDir: string,
+    private readonly getTinyFishApiKey: () => string | undefined = () =>
+      undefined,
   ) {}
 
   async open(
@@ -420,6 +422,10 @@ export class ProjectRuntimeRegistry {
     return this.agentHost.selectUtilityModel(this.agentDir, request);
   }
 
+  setTinyFishApiKey(apiKey: string | undefined): Promise<{ updated: boolean }> {
+    return this.agentHost.setTinyFishApiKey(apiKey);
+  }
+
   ownerOfSession(sessionId: string): number | undefined {
     for (const [webContentsId, runtime] of this.runtimes) {
       if (this.activeSessionId(runtime) === sessionId) return webContentsId;
@@ -524,6 +530,7 @@ export class ProjectRuntimeRegistry {
   }
 
   private location(runtime: ProjectRuntime) {
+    const tinyFishApiKey = this.getTinyFishApiKey();
     const defaultFolder = this.getFolder(
       runtime.project,
       runtime.project.defaultFolderId,
@@ -539,6 +546,7 @@ export class ProjectRuntimeRegistry {
           path: folderPath,
         })),
       sessionsRoot: runtime.dataPaths.sessionsRoot,
+      ...(tinyFishApiKey ? { tinyFishApiKey } : {}),
     };
   }
 }

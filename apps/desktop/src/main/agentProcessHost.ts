@@ -81,6 +81,7 @@ export interface AgentHost {
     agentDir: string,
     selection: PineUtilityModelSelection,
   ): Promise<{ updated: boolean }>;
+  setTinyFishApiKey(apiKey: string | undefined): Promise<{ updated: boolean }>;
   subscribe(listener: (event: PineRuntimeEvent) => void): () => void;
   /** Resolve a pending user-approval round trip inside the agent worker. */
   respondApproval(requestId: string, decision: GateDecision): void;
@@ -241,6 +242,13 @@ export class AgentProcessHost implements AgentHost {
       type: "models:select-utility",
       agentDir,
       selection,
+    });
+  }
+
+  setTinyFishApiKey(apiKey: string | undefined): Promise<{ updated: boolean }> {
+    return this.request({
+      type: "runtime:set-tinyfish-api-key",
+      ...(apiKey ? { tinyFishApiKey: apiKey } : {}),
     });
   }
 

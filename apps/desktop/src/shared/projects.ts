@@ -48,6 +48,11 @@ import type {
   SearchSessionsResult,
 } from "./sessions";
 import type { PineWindowApi } from "./window";
+import type {
+  SetTinyFishApiKeyRequest,
+  SetTinyFishApiKeyResult,
+  TinyFishCredentialStatus,
+} from "./tinyfish";
 
 export const PROJECTS_DIRECTORY = "projects" as const;
 export const PROJECT_METADATA_FILE = "project.json" as const;
@@ -147,6 +152,10 @@ export interface PineDesktopApi extends PineWindowApi {
   ) => Promise<PickAttachmentsResult>;
   listProjects: () => Promise<ListProjectsResult>;
   getModelCatalog: () => Promise<PineModelCatalog>;
+  getTinyFishCredentialStatus: () => Promise<TinyFishCredentialStatus>;
+  setTinyFishApiKey: (
+    request: SetTinyFishApiKeyRequest,
+  ) => Promise<SetTinyFishApiKeyResult>;
   getPathForFile: (file: File) => string;
   inspectAttachments: (
     request: InspectAttachmentsRequest,

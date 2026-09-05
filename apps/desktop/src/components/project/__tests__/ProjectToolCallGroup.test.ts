@@ -1,5 +1,5 @@
 import { mount } from "@vue/test-utils";
-import { ShieldBanIcon } from "@lucide/vue";
+import { GlobeIcon, ShieldBanIcon } from "@lucide/vue";
 import { describe, expect, it } from "vitest";
 import { createAppI18n } from "@/app/i18n";
 import type { PineToolCall } from "@/shared/sessions";
@@ -128,6 +128,27 @@ describe("ProjectToolCallGroup", () => {
     expect(
       wrapper.get('[data-slot="marker"]').findComponent({ name: "Spinner" }),
     ).not.toBeUndefined();
+  });
+
+  it("summarizes web fetches with a globe icon", () => {
+    const wrapper = mountGroup({
+      toolCalls: [
+        {
+          id: "t-fetch",
+          input: { urls: ["https://example.com/docs"] },
+          name: "web_fetch",
+          status: "complete",
+        },
+      ],
+    });
+
+    expect(wrapper.get('button[data-slot="marker"]').text()).toContain(
+      "抓取了 1 个网页",
+    );
+    expect(
+      wrapper.get("[data-tool-icons]").findComponent(GlobeIcon).exists(),
+    ).toBe(true);
+    wrapper.unmount();
   });
 
   it("shows icons in actual call order, before the label", () => {

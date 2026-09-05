@@ -7,6 +7,12 @@ export default {
     save: "保存",
     saving: "正在保存",
   },
+  markdown: {
+    externalLinkTitle: "打开外部链接？",
+    externalLinkDescription: "确认后将在默认浏览器中打开以下 URL：",
+    openExternalLink: "打开链接",
+    externalLinkOpenFailed: "无法在浏览器中打开该链接。",
+  },
   preferences: {
     title: "Pine 设置",
     open: "打开 Pine 设置",
@@ -22,6 +28,14 @@ export default {
     utilityModel: "标题生成和自动批准模型",
     selectUtilityModel: "选择模型",
     noUtilityModelSelected: "未选择任何模型",
+    tinyFish: "TinyFish 网络工具",
+    tinyFishDescription: "配置 API 密钥后，AI 才能使用网络搜索和网页抓取。",
+    addTinyFishApiKey: "添加密钥",
+    changeTinyFishApiKey: "更改密钥",
+    tinyFishDialogTitle: "设置 TinyFish API 密钥",
+    tinyFishApiKeyLabel: "API 密钥",
+    tinyFishApiKeyPlaceholder: "输入 TinyFish API 密钥",
+    saveTinyFishApiKey: "保存密钥",
   },
   models: {
     favorites: "收藏的模型",
@@ -293,6 +307,10 @@ export default {
           active: "正在搜索 {count} 次",
           complete: "搜索了 {count} 次",
         },
+        fetch: {
+          active: "正在抓取 {count} 个网页",
+          complete: "抓取了 {count} 个网页",
+        },
         write: {
           active: "正在写入 {count} 个文件",
           complete: "写入了 {count} 个文件",
@@ -304,7 +322,28 @@ export default {
         generic: "工具",
         read: "读取",
         search: "搜索",
+        fetch: "网页抓取",
         write: "写入",
+      },
+      toolParams: {
+        invalidUrl: "无效 URL",
+        searchDomainTypeSuffix: "的{value}",
+        searchTypes: {
+          web: "网页",
+          news: "新闻",
+          researchPaper: "研究论文",
+        },
+        searchRecency: "近 {value}",
+        searchRecencyUnits: {
+          days: "{count} 天",
+          hours: "{count} 小时",
+          minutes: "{count} 分钟",
+        },
+        searchIncludedDomain: "站点 {value}",
+        searchMoreSites: "另 {count} 个站点",
+        searchPage: "第 {value} 页",
+        fetchMoreUrls: "以及另 {count} 个网页",
+        fetchHighlights: "重点：{value}",
       },
       toolDetails: {
         title: "工具调用详情",
@@ -376,6 +415,11 @@ export default {
           error: { before: "搜索 ", after: " 失败" },
           running: { before: "正在搜索 ", after: "" },
         },
+        fetch: {
+          complete: { before: "已抓取 ", after: "" },
+          error: { before: "抓取 ", after: " 失败" },
+          running: { before: "正在抓取 ", after: "" },
+        },
         write: {
           complete: { before: "已写入 ", after: "" },
           error: { before: "写入 ", after: " 失败" },
@@ -412,6 +456,10 @@ export default {
     providerDisconnect: {
       title: "无法解绑模型服务",
       description: "凭据未被删除，请稍后重试",
+    },
+    tinyFishCredentials: {
+      title: "无法保存 TinyFish 密钥",
+      description: "请检查系统安全凭据存储是否可用，然后重试",
     },
     projectList: { title: "无法读取项目", description: "请稍后重试" },
     projectCreate: {

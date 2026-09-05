@@ -1,5 +1,10 @@
 import { mount } from "@vue/test-utils";
-import { AlertCircleIcon, ShieldBanIcon } from "@lucide/vue";
+import {
+  AlertCircleIcon,
+  GlobeIcon,
+  SearchIcon,
+  ShieldBanIcon,
+} from "@lucide/vue";
 import { describe, expect, it } from "vitest";
 import { createAppI18n } from "@/app/i18n";
 import ProjectToolCallMarker from "../ProjectToolCallMarker.vue";
@@ -169,6 +174,157 @@ describe("ProjectToolCallDialog", () => {
     });
     await wrapper.vm.$nextTick();
     expect(wrapper.get("[data-write-lines]").text()).toContain("已写入 4 行");
+    wrapper.unmount();
+  });
+
+  it("shows TinyFish search parameters with a search icon", () => {
+    const wrapper = mount(ProjectToolCallMarker, {
+      attachTo: document.body,
+      props: {
+        toolCall: {
+          id: "call-web-search-1",
+          name: "web_search",
+          status: "running",
+          input: {
+            query: "latest Pine release",
+            purpose: "用于补充页面信息",
+            domain_type: "news",
+            recency_minutes: 1_501,
+            include_domains: ["example.com", "docs.example.com"],
+            page: 2,
+          },
+        },
+      },
+      global: {
+        plugins: [createAppI18n("zh-CN")],
+      },
+    });
+
+    expect(wrapper.findComponent(SearchIcon).exists()).toBe(true);
+    const content = wrapper.get('[data-slot="marker-content"]');
+    expect(content.text()).toContain("正在搜索");
+    expect(content.text()).toContain(
+      "近 1 天 1 小时 1 分钟 latest Pine release 的新闻",
+    );
+    const purpose = wrapper.get("[data-tool-purpose]");
+    expect(purpose.text()).toBe("用于补充页面信息");
+    expect(purpose.classes()).toContain("font-semibold");
+    expect(content.text()).toContain("站点 example.com");
+    expect(content.text()).toContain("另 1 个站点");
+    expect(content.text()).toContain("第 2 页");
+    wrapper.unmount();
+  });
+
+  it("shows TinyFish fetch parameters with a globe icon", () => {
+    const wrapper = mount(ProjectToolCallMarker, {
+      attachTo: document.body,
+      props: {
+        toolCall: {
+          id: "call-web-fetch-1",
+          name: "web_fetch",
+          status: "running",
+          input: {
+            urls: ["https://example.com/docs", "https://example.com/faq"],
+            purpose: "查看苹果官网首页展示的最新产品信息",
+            highlights: {
+              query: "pricing and limits",
+            },
+          },
+        },
+      },
+      global: {
+        plugins: [createAppI18n("zh-CN")],
+      },
+    });
+
+    expect(wrapper.findComponent(GlobeIcon).exists()).toBe(true);
+    const content = wrapper.get('[data-slot="marker-content"]');
+    expect(content.text()).toContain("正在抓取");
+    expect(content.text()).toContain("https://example.com/docs");
+    expect(content.text()).toContain("以及另 1 个网页");
+    expect(content.text()).not.toContain("格式");
+    expect(content.text()).toContain("重点：pricing and limits");
+    const purpose = wrapper.get("[data-tool-purpose]");
+    expect(purpose.text()).toBe("查看苹果官网首页展示的最新产品信息");
+    expect(purpose.classes()).toContain("font-semibold");
+    wrapper.unmount();
+  });
+
+  it("uses the returned page title and favicon after a fetch completes", () => {
+    const wrapper = mount(ProjectToolCallMarker, {
+      attachTo: document.body,
+      props: {
+        toolCall: {
+          id: "call-web-fetch-title-1",
+          name: "web_fetch",
+          status: "complete",
+          input: {
+            urls: [
+              "https://deploymentsafety.openai.com/gpt-6-astra",
+              "https://example.com",
+            ],
+            purpose: "查看 GPT-6 Astra 页面信息",
+          },
+          output: {
+            details: {
+              pageTitle:
+                "GPT-6 Astra System Card - OpenAI Deployment Safety Hub",
+              faviconDataUrl: "data:image/png;base64,iVBORw==",
+            },
+          },
+        },
+      },
+      global: {
+        plugins: [createAppI18n("zh-CN")],
+      },
+    });
+
+    const content = wrapper.get('[data-slot="marker-content"]');
+    expect(content.text()).toContain("GPT-6 Astra System Card…");
+    expect(content.text()).not.toContain(
+      "https://deploymentsafety.openai.com/gpt-6-astra",
+    );
+    expect(content.text()).toContain("以及另 1 个网页");
+    expect(wrapper.get("[data-tool-favicon]").attributes("src")).toBe(
+      "data:image/png;base64,iVBORw==",
+    );
+    wrapper.unmount();
+  });
+
+  it("extracts a title from the TinyFish envelope when details are absent", () => {
+    const wrapper = mount(ProjectToolCallMarker, {
+      attachTo: document.body,
+      props: {
+        toolCall: {
+          id: "call-web-fetch-envelope-1",
+          name: "web_fetch",
+          status: "complete",
+          input: {
+            urls: ["https://deploymentsafety.openai.com/gpt-6-astra"],
+          },
+          output: {
+            content: [
+              {
+                type: "text",
+                text: `<tinyfish_web_data>\n{
+  "results": [
+    {
+      "url": "[https://deploymentsafety.openai.com/gpt-6-astra](https://deploymentsafety.openai.com/gpt-6-astra)",
+      "title": "GPT-6 Astra System Card - OpenAI Deployment Safety Hub",
+`,
+              },
+            ],
+          },
+        },
+      },
+      global: {
+        plugins: [createAppI18n("zh-CN")],
+      },
+    });
+
+    const content = wrapper.get('[data-slot="marker-content"]');
+    expect(content.text()).toContain("GPT-6 Astra System Card…");
+    expect(content.text()).not.toContain("https://deploymentsafety.openai.com");
     wrapper.unmount();
   });
 });

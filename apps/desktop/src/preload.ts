@@ -105,6 +105,13 @@ import {
   type SetSidebarVibrancyRequest,
   type SetSidebarVibrancyResult,
 } from "./shared/window";
+import {
+  GET_TINYFISH_CREDENTIAL_STATUS_CHANNEL,
+  SET_TINYFISH_API_KEY_CHANNEL,
+  type SetTinyFishApiKeyRequest,
+  type SetTinyFishApiKeyResult,
+  type TinyFishCredentialStatus,
+} from "./shared/tinyfish";
 
 const pineApi: PineDesktopApi = {
   readProjectFilePreview: (request) =>
@@ -157,6 +164,8 @@ const pineApi: PineDesktopApi = {
     ipcRenderer.invoke(LIST_PROJECTS_CHANNEL),
   getModelCatalog: (): Promise<PineModelCatalog> =>
     ipcRenderer.invoke(GET_MODEL_CATALOG_CHANNEL),
+  getTinyFishCredentialStatus: (): Promise<TinyFishCredentialStatus> =>
+    ipcRenderer.invoke(GET_TINYFISH_CREDENTIAL_STATUS_CHANNEL),
   getPathForFile: (file: File): string => webUtils.getPathForFile(file),
   inspectAttachments: (
     request: InspectAttachmentsRequest,
@@ -194,6 +203,10 @@ const pineApi: PineDesktopApi = {
     ipcRenderer.invoke(SELECT_UTILITY_MODEL_CHANNEL, request),
   openProviderAuthUrl: (url: string): Promise<void> =>
     ipcRenderer.invoke(OPEN_PROVIDER_AUTH_URL_CHANNEL, url),
+  setTinyFishApiKey: (
+    request: SetTinyFishApiKeyRequest,
+  ): Promise<SetTinyFishApiKeyResult> =>
+    ipcRenderer.invoke(SET_TINYFISH_API_KEY_CHANNEL, request),
   onProviderAuthEvent: (listener: ProviderAuthEventListener): (() => void) => {
     const handler = (
       _event: Electron.IpcRendererEvent,

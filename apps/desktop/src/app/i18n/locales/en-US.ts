@@ -7,6 +7,13 @@ export default {
     save: "Save",
     saving: "Saving",
   },
+  markdown: {
+    externalLinkTitle: "Open external link?",
+    externalLinkDescription:
+      "After you confirm, this URL will open in your default browser:",
+    openExternalLink: "Open link",
+    externalLinkOpenFailed: "Could not open the link in your browser.",
+  },
   preferences: {
     title: "Pine Settings",
     open: "Open Pine settings",
@@ -23,6 +30,15 @@ export default {
     utilityModel: "Title generation and Auto Approve model",
     selectUtilityModel: "Choose model",
     noUtilityModelSelected: "No model selected",
+    tinyFish: "TinyFish web tools",
+    tinyFishDescription:
+      "Add an API key to let AI use web search and page fetching.",
+    addTinyFishApiKey: "Add key",
+    changeTinyFishApiKey: "Change key",
+    tinyFishDialogTitle: "Set TinyFish API key",
+    tinyFishApiKeyLabel: "API key",
+    tinyFishApiKeyPlaceholder: "Enter your TinyFish API key",
+    saveTinyFishApiKey: "Save key",
   },
   models: {
     favorites: "Favorites",
@@ -305,6 +321,10 @@ export default {
           active: "Searching {count} times",
           complete: "Searched {count} times",
         },
+        fetch: {
+          active: "Fetching {count} web pages",
+          complete: "Fetched {count} web pages",
+        },
         write: {
           active: "Writing {count} files",
           complete: "Wrote {count} files",
@@ -316,7 +336,28 @@ export default {
         generic: "tool",
         read: "read",
         search: "search",
+        fetch: "web fetch",
         write: "write",
+      },
+      toolParams: {
+        invalidUrl: "invalid URL",
+        searchDomainTypeSuffix: "{value}",
+        searchTypes: {
+          web: "web",
+          news: "news",
+          researchPaper: "research papers",
+        },
+        searchRecency: "last {value}",
+        searchRecencyUnits: {
+          days: "{count}d",
+          hours: "{count}h",
+          minutes: "{count}m",
+        },
+        searchIncludedDomain: "site {value}",
+        searchMoreSites: "{count} more sites",
+        searchPage: "page {value}",
+        fetchMoreUrls: "and {count} more web pages",
+        fetchHighlights: "highlights: {value}",
       },
       toolDetails: {
         title: "Tool call details",
@@ -388,6 +429,11 @@ export default {
           error: { before: "Couldn’t search for ", after: "" },
           running: { before: "Searching for ", after: "" },
         },
+        fetch: {
+          complete: { before: "Fetched ", after: "" },
+          error: { before: "Couldn’t fetch ", after: "" },
+          running: { before: "Fetching ", after: "" },
+        },
         write: {
           complete: { before: "Wrote ", after: "" },
           error: { before: "Couldn’t write ", after: "" },
@@ -424,6 +470,11 @@ export default {
     providerDisconnect: {
       title: "Unable to disconnect provider",
       description: "Credentials were not deleted. Try again in a moment",
+    },
+    tinyFishCredentials: {
+      title: "Unable to save TinyFish key",
+      description:
+        "Check that the system secure credential store is available, then try again",
     },
     projectList: {
       title: "Unable to load Projects",

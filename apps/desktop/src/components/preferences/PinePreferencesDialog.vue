@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import { handleError } from "@/app/errors/errorHandler";
 import { SettingsIcon } from "@lucide/vue";
 import { storeToRefs } from "pinia";
-import { ref, watch } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { isAppLocale, persistAppLocale } from "@/app/i18n";
 import ModelPickerDialog from "@/components/models/ModelPickerDialog.vue";
@@ -9,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -17,8 +19,10 @@ import {
   Field,
   FieldDescription,
   FieldGroup,
+  FieldLabel,
   FieldTitle,
 } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useModelsStore } from "@/stores/models";
@@ -32,10 +36,63 @@ const { supportsSidebarVibrancy, themePreference } =
 const { utilitySelectedModel } = storeToRefs(modelsStore);
 const isOpen = ref(false);
 const isUtilityModelPickerOpen = ref(false);
+const isTinyFishCredentialDialogOpen = ref(false);
+const isTinyFishCredentialConfigured = ref(false);
+const tinyFishApiKey = ref("");
+const isSavingTinyFishApiKey = ref(false);
+const canSaveTinyFishApiKey = computed(
+  () => tinyFishApiKey.value.trim().length > 0 && !isSavingTinyFishApiKey.value,
+);
 
 watch(isOpen, (open) => {
-  if (open) void modelsStore.load();
+  if (!open) return;
+  void modelsStore.load();
+  void loadTinyFishCredentialStatus();
 });
+
+onMounted(() => {
+  void loadTinyFishCredentialStatus();
+});
+
+async function loadTinyFishCredentialStatus(): Promise<void> {
+  if (typeof window.pine?.getTinyFishCredentialStatus !== "function") return;
+  try {
+    const status = await window.pine.getTinyFishCredentialStatus();
+    isTinyFishCredentialConfigured.value = status.configured;
+  } catch (error) {
+    handleError(error, {
+      id: "tinyfish-credential-status",
+      title: t("errors.tinyFishCredentials.title"),
+      description: t("errors.tinyFishCredentials.description"),
+    });
+  }
+}
+
+function openTinyFishCredentialDialog(): void {
+  tinyFishApiKey.value = "";
+  isTinyFishCredentialDialogOpen.value = true;
+}
+
+async function saveTinyFishApiKey(): Promise<void> {
+  if (!canSaveTinyFishApiKey.value) return;
+  isSavingTinyFishApiKey.value = true;
+  try {
+    const result = await window.pine.setTinyFishApiKey({
+      apiKey: tinyFishApiKey.value.trim(),
+    });
+    isTinyFishCredentialConfigured.value = result.configured;
+    tinyFishApiKey.value = "";
+    isTinyFishCredentialDialogOpen.value = false;
+  } catch (error) {
+    handleError(error, {
+      id: "tinyfish-credential-save",
+      title: t("errors.tinyFishCredentials.title"),
+      description: t("errors.tinyFishCredentials.description"),
+    });
+  } finally {
+    isSavingTinyFishApiKey.value = false;
+  }
+}
 
 function updateLocale(value: unknown): void {
   if (typeof value !== "string" || !isAppLocale(value)) return;
@@ -141,6 +198,31 @@ function updateSidebarVibrancy(value: boolean): void {
             {{ t("preferences.selectUtilityModel") }}
           </Button>
         </Field>
+
+        <Field orientation="horizontal">
+          <div class="flex min-w-0 flex-1 flex-col gap-1">
+            <FieldTitle id="pine-tinyfish-credential-setting">
+              {{ t("preferences.tinyFish") }}
+            </FieldTitle>
+            <FieldDescription>
+              {{ t("preferences.tinyFishDescription") }}
+            </FieldDescription>
+          </div>
+          <Button
+            data-testid="pine-tinyfish-credential-button"
+            variant="outline"
+            size="sm"
+            aria-labelledby="pine-tinyfish-credential-setting"
+            @click="openTinyFishCredentialDialog"
+          >
+            {{
+              isTinyFishCredentialConfigured
+                ? t("preferences.changeTinyFishApiKey")
+                : t("preferences.addTinyFishApiKey")
+            }}
+          </Button>
+        </Field>
+
         <Field v-if="supportsSidebarVibrancy" orientation="horizontal">
           <div class="flex min-w-0 flex-1 flex-col gap-1">
             <FieldTitle id="pine-sidebar-vibrancy-setting">
@@ -158,6 +240,52 @@ function updateSidebarVibrancy(value: boolean): void {
           />
         </Field>
       </FieldGroup>
+    </DialogContent>
+  </Dialog>
+
+  <Dialog v-model:open="isTinyFishCredentialDialogOpen">
+    <DialogContent class="sm:max-w-md">
+      <form @submit.prevent="saveTinyFishApiKey">
+        <DialogHeader>
+          <DialogTitle>
+            {{ t("preferences.tinyFishDialogTitle") }}
+          </DialogTitle>
+        </DialogHeader>
+
+        <FieldGroup class="py-4">
+          <Field>
+            <FieldLabel for="tinyfish-api-key">
+              {{ t("preferences.tinyFishApiKeyLabel") }}
+            </FieldLabel>
+            <Input
+              id="tinyfish-api-key"
+              v-model="tinyFishApiKey"
+              type="password"
+              autocomplete="new-password"
+              :placeholder="t('preferences.tinyFishApiKeyPlaceholder')"
+              :disabled="isSavingTinyFishApiKey"
+            />
+          </Field>
+        </FieldGroup>
+
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            :disabled="isSavingTinyFishApiKey"
+            @click="isTinyFishCredentialDialogOpen = false"
+          >
+            {{ t("common.cancel") }}
+          </Button>
+          <Button type="submit" :disabled="!canSaveTinyFishApiKey">
+            {{
+              isSavingTinyFishApiKey
+                ? t("common.saving")
+                : t("preferences.saveTinyFishApiKey")
+            }}
+          </Button>
+        </DialogFooter>
+      </form>
     </DialogContent>
   </Dialog>
 

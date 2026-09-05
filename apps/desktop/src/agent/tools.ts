@@ -31,6 +31,10 @@ import { createMacOsBashSandboxProfile } from "./bash-sandbox";
 import { createBashEnvironment, resolveLoginPath } from "./bash-env";
 import type { ToolGate } from "./gate";
 import type { PineApprovalMode } from "../shared/agent";
+import {
+  createTinyFishToolDefinitions,
+  type TinyFishToolFactoryOptions,
+} from "./tinyfishTools";
 
 type AccessMode = "read" | "write";
 
@@ -242,14 +246,15 @@ export class SandboxDeniedError extends Error {
  * Recognizes sandbox denial evidence in captured command output. These
  * failures announce themselves in several dialects: zsh prints EPERM for
  * denied syscalls, LaunchServices reports blocked app launches with an
- * "LSOpenURLsWithCompletionHandler … error -54" message, and Apple Events
+ * "LSOpenURLsWithCompletionHandler … error -54" message, dyld reports
+ * blocked dynamic libraries, and Apple Events
  * that the sandbox cannot deliver surface as the -600 "Application isn't
  * running" error (natively a tell block would auto-launch the app instead).
  * The apostrophe in "isn't" is matched loosely because AppleScript emits a
  * Unicode right single quote.
  */
 export function matchSandboxDenial(output: string): boolean {
-  return /operation not permitted|permission denied|permission error|access denied|not authou?rized|not permitted|\bE(?:PERM|ACCES)\b|sandbox(?:_extension| violation| denied)|LSOpenURLsWithCompletionHandler|Application isn.t running\. \(-600\)|\((?:-54|-1743|-10004|-5000)\)/i.test(
+  return /operation not permitted|permission denied|permission error|access denied|not authou?rized|not permitted|\bE(?:PERM|ACCES)\b|blocked by sandbox|sandbox(?:_extension| violation| denied)|LSOpenURLsWithCompletionHandler|Application isn.t running\. \(-600\)|\((?:-54|-1743|-10004|-5000)\)/i.test(
     output,
   );
 }
@@ -507,6 +512,7 @@ function gateFileTool<TParams extends TSchema, TDetails, TState>(
 export interface PineToolPermissionContext {
   getApprovalMode(): PineApprovalMode;
   getGate(): ToolGate | null;
+  getTinyFishApiKey?: () => string | undefined;
 }
 
 export async function createPineToolDefinitions(
@@ -741,6 +747,13 @@ export async function createPineToolDefinitions(
         })
       : null;
 
+  const tinyFishTools: ToolDefinition[] = permissions?.getTinyFishApiKey
+    ? createTinyFishToolDefinitions({
+        getApiKey: permissions.getTinyFishApiKey,
+        outputDirectory: path.join(canonicalBashTemporaryDirectory, "web"),
+      } satisfies TinyFishToolFactoryOptions)
+    : [];
+
   return [
     {
       ...gatedReadTool,
@@ -751,5 +764,6 @@ export async function createPineToolDefinitions(
     gatedEditTool,
     gatedWriteTool,
     ...(privilegedBashTool ? [privilegedBashTool] : []),
+    ...tinyFishTools,
   ] as ToolDefinition[];
 }

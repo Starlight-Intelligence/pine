@@ -12,12 +12,24 @@ setCustomComponents("pine-chat", {
 </script>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import { storeToRefs } from "pinia";
 import MarkdownRender from "markstream-vue";
 import type { BaseNode } from "markstream-vue";
+import { useI18n } from "vue-i18n";
+import { toast } from "vue-sonner";
 import "markstream-vue/index.css";
 import { useAppearanceStore } from "@/stores/appearance";
+import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 defineProps<{
   /** Accumulated markdown source. Grows while a message streams. */
@@ -32,10 +44,79 @@ defineProps<{
 // do not track a `.dark` ancestor), so drive it from the app's color scheme.
 const { colorScheme } = storeToRefs(useAppearanceStore());
 const isDark = computed(() => colorScheme.value === "dark");
+const { t } = useI18n();
+const pendingExternalUrl = ref<string>();
+
+function normalizeExternalUrl(link: Element): string | undefined {
+  const rawHref = link.getAttribute("href")?.trim();
+  if (!rawHref) return undefined;
+
+  const renderedText = link.textContent?.trim();
+  const autoCompletedHttpUrl =
+    /^http:\/\//iu.test(rawHref) &&
+    renderedText === rawHref.slice("http://".length);
+  let candidate = autoCompletedHttpUrl
+    ? `https://${rawHref.slice("http://".length)}`
+    : rawHref;
+
+  if (candidate.startsWith("//")) {
+    candidate = `https:${candidate}`;
+  } else if (
+    !/^[a-z][a-z\d+.-]*:/iu.test(candidate) &&
+    !["/", "#", "?", "."].some((prefix) => candidate.startsWith(prefix))
+  ) {
+    candidate = `https://${candidate}`;
+  }
+
+  try {
+    const url = new URL(candidate);
+    if (
+      (url.protocol !== "http:" && url.protocol !== "https:") ||
+      !url.hostname
+    ) {
+      return undefined;
+    }
+    return url.href;
+  } catch {
+    return undefined;
+  }
+}
+
+function handleMarkdownClick(event: MouseEvent): void {
+  if (!(event.target instanceof Element)) return;
+  const link = event.target.closest("a");
+  if (!link) return;
+
+  event.preventDefault();
+  const url = normalizeExternalUrl(link);
+  if (!url) return;
+
+  pendingExternalUrl.value = url;
+}
+
+function handleExternalLinkDialogOpenChanged(open: boolean): void {
+  if (!open) pendingExternalUrl.value = undefined;
+}
+
+async function confirmExternalLink(): Promise<void> {
+  const url = pendingExternalUrl.value;
+  pendingExternalUrl.value = undefined;
+  if (!url) return;
+
+  try {
+    await window.pine.openExternalUrl(url);
+  } catch {
+    toast.error(t("markdown.externalLinkOpenFailed"));
+  }
+}
 </script>
 
 <template>
-  <div class="markdown-content" data-slot="markdown-content">
+  <div
+    class="markdown-content"
+    data-slot="markdown-content"
+    @click="handleMarkdownClick"
+  >
     <!--
       markstream-vue streams Markdown into the DOM as `content` grows (no per-token
       full re-render, no trailing-character lag). It styles every element through
@@ -56,6 +137,36 @@ const isDark = computed(() => colorScheme.value === "dark");
       :smooth-streaming="false"
       :is-dark="isDark"
     />
+
+    <AlertDialog
+      :open="pendingExternalUrl !== undefined"
+      @update:open="handleExternalLinkDialogOpenChanged"
+    >
+      <AlertDialogContent class="sm:max-w-lg">
+        <AlertDialogHeader>
+          <AlertDialogTitle>
+            {{ t("markdown.externalLinkTitle") }}
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            <span>{{ t("markdown.externalLinkDescription") }}</span>
+            <code
+              class="mt-2 block max-h-32 overflow-auto break-all rounded-md bg-muted px-3 py-2 text-xs"
+            >
+              {{ pendingExternalUrl }}
+            </code>
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>{{ t("common.cancel") }}</AlertDialogCancel>
+          <Button
+            data-testid="confirm-external-link"
+            @click="confirmExternalLink"
+          >
+            {{ t("markdown.openExternalLink") }}
+          </Button>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   </div>
 </template>
 
