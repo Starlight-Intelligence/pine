@@ -392,6 +392,22 @@ export const useSessionStore = defineStore("session", () => {
     }
   }
 
+  async function steer(
+    message: string,
+    approvalMode?: PineApprovalMode,
+  ): Promise<void> {
+    const sessionId = currentSessionId;
+    if (!sessionId) {
+      throw new Error("The running session is not ready for steering yet.");
+    }
+    await window.pine.promptSession({
+      message,
+      target: { kind: "session", sessionId },
+      approvalMode,
+      streamingBehavior: "steer",
+    });
+  }
+
   async function abort(): Promise<void> {
     await window.pine.abortSession();
   }
@@ -791,6 +807,7 @@ export const useSessionStore = defineStore("session", () => {
     searchResults,
     setApprovalMode,
     startDraft,
+    steer,
     steeringMessages,
   };
 });

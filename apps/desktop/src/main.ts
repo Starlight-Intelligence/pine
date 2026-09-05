@@ -1048,6 +1048,11 @@ app.on("ready", () => {
         percent: agentEvent.percent,
         cost: agentEvent.cost,
       });
+    } else if (agentEvent.type === "session-updated") {
+      projectRuntimes?.updateSessionSummary(
+        agentEvent.sessionId,
+        agentEvent.summary,
+      );
     } else if (agentEvent.type === "approval-request") {
       projectRuntimes?.trackApproval(agentEvent.requestId, ownerId);
       requestApprovalAttention(ownerId);

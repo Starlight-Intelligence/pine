@@ -66,7 +66,7 @@ function mountView() {
         ProjectSessionComposer: {
           props: ["attachments", "modelValue", "steeringMessages"],
           template:
-            '<div data-slot="composer-stub" :data-attachment-count="attachments?.length ?? 0" :data-draft="modelValue"><button v-if="steeringMessages?.length" data-slot="withdraw-steering-stub" @click="$emit(\'withdrawSteering\', steeringMessages[0])" /></div>',
+            '<div data-slot="composer-stub" :data-attachment-count="attachments?.length ?? 0" :data-draft="modelValue"><button data-slot="submit-steering-stub" @click="$emit(\'submit\', \'Change direction\')" /><button v-if="steeringMessages?.length" data-slot="withdraw-steering-stub" @click="$emit(\'withdrawSteering\', steeringMessages[0])" /></div>',
         },
         ProjectTranscriptMessage: true,
         ProjectTranscriptOutline: true,
@@ -77,6 +77,47 @@ function mountView() {
 }
 
 describe("ProjectSessionView file drop", () => {
+  it("steers a running session while its tab is still creating", async () => {
+    const { wrapper } = mountView();
+    const sessionStore = useSessionStore();
+    const contentTabsStore = useContentTabsStore();
+    const runningSession = {
+      id: "019cfe51-7166-79b9-a5b9-c652fcca9eab",
+      createdAt: "2026-07-14T00:00:00.000Z",
+      updatedAt: "2026-07-14T00:00:00.000Z",
+      messageCount: 1,
+    };
+    const promptSession = vi.fn().mockResolvedValue({
+      accepted: true,
+      session: runningSession,
+    });
+    window.pine.loadSessionMessages = vi.fn().mockResolvedValue({
+      hasMore: false,
+      messages: [],
+    });
+    window.pine.resumeSession = vi.fn().mockResolvedValue({
+      session: runningSession,
+    });
+    window.pine.promptSession = promptSession;
+    await sessionStore.resume(runningSession.id);
+    sessionStore.isRunning = true;
+    contentTabsStore.beginPrompt("session-1", "Initial prompt");
+    await flushPromises();
+
+    await wrapper.get('[data-slot="submit-steering-stub"]').trigger("click");
+    await flushPromises();
+
+    expect(promptSession).toHaveBeenCalledWith({
+      message: "Change direction",
+      target: { kind: "session", sessionId: runningSession.id },
+      approvalMode: "auto-approve",
+      streamingBehavior: "steer",
+    });
+    expect(contentTabsStore.tabs[0]).toEqual(
+      expect.objectContaining({ state: "creating" }),
+    );
+  });
+
   it("restores a dequeued steering message and its attachments to the composer", async () => {
     const { wrapper } = mountView();
     const sessionStore = useSessionStore();

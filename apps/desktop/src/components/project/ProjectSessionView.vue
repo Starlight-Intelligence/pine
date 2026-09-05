@@ -106,6 +106,17 @@ watch(approvalMode, (value) => {
 });
 
 function submit(message: string): void {
+  if (isRunning.value) {
+    draft.value = "";
+    void sessionStore.steer(message, approvalMode.value).catch(() => {
+      restoreComposerMessage(message);
+      toast.error(t("errors.sessionPrompt.title"), {
+        description: t("errors.sessionPrompt.description"),
+      });
+    });
+    return;
+  }
+
   const sessionId = props.sessionId;
   if (
     !contentTabsStore.beginPrompt(
@@ -117,12 +128,7 @@ function submit(message: string): void {
   }
   draft.value = "";
   void sessionStore
-    .prompt(
-      message,
-      sessionId,
-      approvalMode.value,
-      isRunning.value ? "steer" : undefined,
-    )
+    .prompt(message, sessionId, approvalMode.value)
     .then((session) => tabNavigation.bindSession(props.tabId, session))
     .catch(() => {
       tabNavigation.failPrompt(props.tabId);
@@ -132,15 +138,19 @@ function submit(message: string): void {
     });
 }
 
+function restoreComposerMessage(message: string): void {
+  const parsed = parseAttachmentMessage(message);
+  draft.value = [parsed.prompt, draft.value]
+    .filter((value) => value.trim())
+    .join("\n\n");
+  contentTabsStore.addAttachments(props.tabId, parsed.attachments);
+}
+
 async function withdrawSteering(message: string): Promise<void> {
   try {
     const restored = await sessionStore.dequeueSteering(message);
     if (!restored) return;
-    const parsed = parseAttachmentMessage(restored);
-    draft.value = [parsed.prompt, draft.value]
-      .filter((value) => value.trim())
-      .join("\n\n");
-    contentTabsStore.addAttachments(props.tabId, parsed.attachments);
+    restoreComposerMessage(restored);
   } catch {
     toast.error(t("project.composer.withdrawSteeringFailed"));
   }

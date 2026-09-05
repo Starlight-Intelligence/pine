@@ -358,44 +358,56 @@ export class PineAgentRuntime {
     await live.attachedPaths.grant(attachedPaths);
     live.turn.lastUserPrompt = message;
     live.gate?.resetTurn();
-    let accepted = false;
-
     this.options.emit({ type: "run-state", sessionId, state: "running" });
-    try {
-      await live.session.prompt(message, {
-        ...(streamingBehavior ? { streamingBehavior } : {}),
-        preflightResult: (success) => {
-          accepted = success;
-        },
-        source: "interactive",
-      });
-      return {
+    return new Promise<AgentWorkerPromptResult>((resolve, reject) => {
+      let responseSettled = false;
+      const result = (accepted: boolean): AgentWorkerPromptResult => ({
         accepted,
         session: sessionSummary(live.session),
         ...(live.session.sessionFile
           ? { sessionFile: live.session.sessionFile }
           : {}),
+      });
+      const settleAccepted = (): void => {
+        if (responseSettled) return;
+        responseSettled = true;
+        resolve(result(true));
       };
-    } catch (error) {
-      const message = toErrorMessage(error);
-      this.options.emit({
-        type: "session-error",
-        sessionId,
-        errorId: randomUUID(),
-        message,
-      });
-      this.options.emit({
-        type: "run-state",
-        sessionId,
-        state: "failed",
-        error: message,
-      });
-      throw error;
-    } finally {
-      if (live.session.isIdle) {
-        this.options.emit({ type: "run-state", sessionId, state: "idle" });
-      }
-    }
+
+      void live.session
+        .prompt(message, {
+          ...(streamingBehavior ? { streamingBehavior } : {}),
+          preflightResult: (success) => {
+            if (success) settleAccepted();
+          },
+          source: "interactive",
+        })
+        .then(settleAccepted)
+        .catch((error: unknown) => {
+          const errorMessage = toErrorMessage(error);
+          this.options.emit({
+            type: "session-error",
+            sessionId,
+            errorId: randomUUID(),
+            message: errorMessage,
+          });
+          this.options.emit({
+            type: "run-state",
+            sessionId,
+            state: "failed",
+            error: errorMessage,
+          });
+          if (!responseSettled) {
+            responseSettled = true;
+            reject(error instanceof Error ? error : new Error(errorMessage));
+          }
+        })
+        .finally(() => {
+          if (live.session.isIdle) {
+            this.options.emit({ type: "run-state", sessionId, state: "idle" });
+          }
+        });
+    });
   }
 
   /** Remove one still-queued steering message without disturbing its siblings. */

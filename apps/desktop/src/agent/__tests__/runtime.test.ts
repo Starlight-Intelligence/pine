@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import type { Api, Model } from "@earendil-works/pi-ai";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   attachedPathsFromSessionEntries,
   judgeStreamOptions,
@@ -150,6 +150,57 @@ describe("parseJudgeRulings", () => {
 });
 
 describe("PineAgentRuntime", () => {
+  it("returns the session as soon as prompt preflight succeeds", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "pine-agent-runtime-"));
+    temporaryDirectories.push(root);
+    const location = {
+      agentDir: path.join(root, "agent"),
+      cwd: path.join(root, "source"),
+      folders: [
+        {
+          access: "read-write" as const,
+          path: path.join(root, "source"),
+        },
+      ],
+      sessionsRoot: path.join(root, "sessions"),
+    };
+    await mkdir(location.cwd, { recursive: true });
+    const runtime = new PineAgentRuntime({ emit: () => undefined });
+
+    try {
+      const created = await runtime.createSession(location);
+      const liveSessions = (
+        runtime as unknown as {
+          liveSessions: Map<string, { session: AgentSession }>;
+        }
+      ).liveSessions;
+      const agentSession = liveSessions.get(created.session.id)?.session;
+      expect(agentSession).toBeDefined();
+      let finishRun: (() => void) | undefined;
+      const running = new Promise<void>((resolve) => {
+        finishRun = resolve;
+      });
+      vi.spyOn(agentSession!, "prompt").mockImplementation(
+        async (_message, options) => {
+          options?.preflightResult?.(true);
+          await running;
+        },
+      );
+
+      await expect(
+        runtime.prompt(created.session.id, "Start"),
+      ).resolves.toEqual(
+        expect.objectContaining({
+          accepted: true,
+          session: expect.objectContaining({ id: created.session.id }),
+        }),
+      );
+      finishRun?.();
+    } finally {
+      await runtime.dispose();
+    }
+  });
+
   it("dequeues one steering message while preserving the rest of both queues", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "pine-agent-runtime-"));
     temporaryDirectories.push(root);

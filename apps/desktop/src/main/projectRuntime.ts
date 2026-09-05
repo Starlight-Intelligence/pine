@@ -430,6 +430,18 @@ export class ProjectRuntimeRegistry {
     }
   }
 
+  updateSessionSummary(sessionId: string, summary: PineSessionSummary): void {
+    for (const runtime of this.runtimes.values()) {
+      if (
+        runtime.session.status === "active" &&
+        runtime.session.summary.id === sessionId
+      ) {
+        runtime.session.summary = summary;
+        return;
+      }
+    }
+  }
+
   /** Remember which window an approval request was routed to. */
   trackApproval(requestId: string, webContentsId: number): void {
     this.pendingApprovals.set(requestId, webContentsId);
