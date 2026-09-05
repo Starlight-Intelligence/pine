@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import type { Api, Model } from "@earendil-works/pi-ai";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -149,6 +150,53 @@ describe("parseJudgeRulings", () => {
 });
 
 describe("PineAgentRuntime", () => {
+  it("dequeues one steering message while preserving the rest of both queues", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "pine-agent-runtime-"));
+    temporaryDirectories.push(root);
+    const location = {
+      agentDir: path.join(root, "agent"),
+      cwd: path.join(root, "source"),
+      folders: [
+        {
+          access: "read-write" as const,
+          path: path.join(root, "source"),
+        },
+      ],
+      sessionsRoot: path.join(root, "sessions"),
+    };
+    await mkdir(location.cwd, { recursive: true });
+    const runtime = new PineAgentRuntime({ emit: () => undefined });
+
+    try {
+      const created = await runtime.createSession(location);
+      const liveSessions = (
+        runtime as unknown as {
+          liveSessions: Map<string, { session: AgentSession }>;
+        }
+      ).liveSessions;
+      const agentSession = liveSessions.get(created.session.id)?.session;
+      expect(agentSession).toBeDefined();
+      await agentSession?.steer("Keep this steering");
+      await agentSession?.steer("Restore this steering");
+      await agentSession?.followUp("Keep this follow-up");
+
+      await expect(
+        runtime.dequeueSteering(created.session.id, "Restore this steering"),
+      ).resolves.toEqual({
+        message: "Restore this steering",
+        removed: true,
+      });
+      expect(agentSession?.getSteeringMessages()).toEqual([
+        "Keep this steering",
+      ]);
+      expect(agentSession?.getFollowUpMessages()).toEqual([
+        "Keep this follow-up",
+      ]);
+    } finally {
+      await runtime.dispose();
+    }
+  });
+
   it("creates persistent SDK sessions in the project session directory", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "pine-agent-runtime-"));
     temporaryDirectories.push(root);

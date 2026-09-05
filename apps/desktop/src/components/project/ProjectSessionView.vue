@@ -12,6 +12,7 @@ import { toast } from "vue-sonner";
 import type { PineApprovalAction, PineApprovalMode } from "@/shared/agent";
 import {
   attachmentMessagePreview,
+  parseAttachmentMessage,
   type PineAttachment,
 } from "@/shared/attachments";
 import { PineCharacter } from "@/components/pine";
@@ -66,6 +67,7 @@ const isLoadingMessages = tabValue(liveState.isLoadingMessages);
 const isRunning = tabValue(liveState.isRunning);
 const messages = tabValue(liveState.messages);
 const pendingApprovals = tabValue(liveState.pendingApprovals);
+const steeringMessages = tabValue(liveState.steeringMessages);
 const reviewingToolCallIds = tabValue(liveState.reviewingToolCallIds);
 const draft = ref("");
 const attachments = computed<PineAttachment[]>({
@@ -115,7 +117,12 @@ function submit(message: string): void {
   }
   draft.value = "";
   void sessionStore
-    .prompt(message, sessionId, approvalMode.value)
+    .prompt(
+      message,
+      sessionId,
+      approvalMode.value,
+      isRunning.value ? "steer" : undefined,
+    )
     .then((session) => tabNavigation.bindSession(props.tabId, session))
     .catch(() => {
       tabNavigation.failPrompt(props.tabId);
@@ -123,6 +130,20 @@ function submit(message: string): void {
         description: t("errors.sessionPrompt.description"),
       });
     });
+}
+
+async function withdrawSteering(message: string): Promise<void> {
+  try {
+    const restored = await sessionStore.dequeueSteering(message);
+    if (!restored) return;
+    const parsed = parseAttachmentMessage(restored);
+    draft.value = [parsed.prompt, draft.value]
+      .filter((value) => value.trim())
+      .join("\n\n");
+    contentTabsStore.addAttachments(props.tabId, parsed.attachments);
+  } catch {
+    toast.error(t("project.composer.withdrawSteeringFailed"));
+  }
 }
 
 function respondToApproval(
@@ -283,9 +304,11 @@ async function handleDrop(event: DragEvent): Promise<void> {
         v-model:approvalMode="approvalMode"
         :is-running="isRunning"
         :pending-approval="pendingApproval"
+        :steering-messages="steeringMessages"
         @abort="abort"
         @respond="respondToApproval"
         @submit="submit"
+        @withdraw-steering="withdrawSteering"
       />
 
       <Empty

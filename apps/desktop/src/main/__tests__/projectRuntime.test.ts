@@ -22,6 +22,7 @@ const sessionSummary: PineSessionSummary = {
 function createAgentHost(): AgentHost {
   return {
     abort: vi.fn().mockResolvedValue({ aborted: false }),
+    dequeueSteering: vi.fn().mockResolvedValue({ removed: false }),
     createSession: vi.fn().mockResolvedValue({ session: sessionSummary }),
     disposeSession: vi.fn().mockResolvedValue({ disposed: true }),
     getModelCatalog: vi.fn().mockResolvedValue({ models: [], providers: [] }),
@@ -165,6 +166,38 @@ describe("ProjectRuntimeRegistry", () => {
             },
           ],
         }),
+      );
+    } finally {
+      await registry.dispose(1);
+    }
+  });
+
+  it("dequeues steering from the active agent session", async () => {
+    const agentHost = createAgentHost();
+    const dequeueSteering = vi
+      .spyOn(agentHost, "dequeueSteering")
+      .mockResolvedValue({ message: "Change direction", removed: true });
+    const registry = new ProjectRuntimeRegistry(agentHost, "/pine/agent");
+    const { dataRoot, project } = await createRuntimeFixture();
+
+    try {
+      await registry.open(1, project, {
+        attachmentsRoot: path.join(dataRoot, "attachments"),
+        cacheRoot: path.join(dataRoot, "cache"),
+        projectRoot: dataRoot,
+        sessionsRoot: path.join(dataRoot, "sessions"),
+      });
+      await registry.prompt(1, {
+        message: "Start",
+        target: { kind: "new" },
+      });
+
+      await expect(
+        registry.dequeueSteering(1, "Change direction"),
+      ).resolves.toEqual({ message: "Change direction", removed: true });
+      expect(dequeueSteering).toHaveBeenCalledWith(
+        sessionSummary.id,
+        "Change direction",
       );
     } finally {
       await registry.dispose(1);

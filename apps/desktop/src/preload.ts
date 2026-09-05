@@ -4,10 +4,13 @@ import { contextBridge, ipcRenderer, webUtils } from "electron";
 import {
   ABORT_SESSION_CHANNEL,
   APPROVAL_RESPONSE_CHANNEL,
+  DEQUEUE_STEERING_CHANNEL,
   PROMPT_SESSION_CHANNEL,
   SET_APPROVAL_MODE_CHANNEL,
   SESSION_EVENT_CHANNEL,
   type AbortSessionResult,
+  type DequeueSteeringRequest,
+  type DequeueSteeringResult,
   type PineAgentEvent,
   type PromptSessionRequest,
   type PromptSessionResult,
@@ -121,6 +124,10 @@ const pineApi: PineDesktopApi = {
     ipcRenderer.invoke(SET_SIDEBAR_VIBRANCY_CHANNEL, request),
   abortSession: (): Promise<AbortSessionResult> =>
     ipcRenderer.invoke(ABORT_SESSION_CHANNEL),
+  dequeueSteering: (
+    request: DequeueSteeringRequest,
+  ): Promise<DequeueSteeringResult> =>
+    ipcRenderer.invoke(DEQUEUE_STEERING_CHANNEL, request),
   closeProject: (): Promise<void> => ipcRenderer.invoke(CLOSE_PROJECT_CHANNEL),
   createProject: (request: CreateProjectRequest): Promise<ProjectResult> =>
     ipcRenderer.invoke(CREATE_PROJECT_CHANNEL, request),

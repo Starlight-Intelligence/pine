@@ -68,6 +68,12 @@ export type AgentWorkerRequest =
     }
   | {
       id: string;
+      type: "session:dequeue-steering";
+      sessionId: string;
+      message: string;
+    }
+  | {
+      id: string;
       type: "session:set-approval-mode";
       sessionId: string;
       approvalMode: PineApprovalMode;
@@ -148,6 +154,7 @@ export type AgentWorkerResult =
   | ProviderLoginResult
   | { accepted: boolean }
   | { aborted: boolean }
+  | { message?: string; removed: boolean }
   | { cancelled: boolean }
   | { disposed: boolean }
   | { updated: boolean };

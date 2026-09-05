@@ -31,10 +31,12 @@ import { ProjectRepository } from "./main/projects/projectRepository";
 import {
   ABORT_SESSION_CHANNEL,
   APPROVAL_RESPONSE_CHANNEL,
+  DEQUEUE_STEERING_CHANNEL,
   PROMPT_SESSION_CHANNEL,
   SET_APPROVAL_MODE_CHANNEL,
   SESSION_EVENT_CHANNEL,
   type AbortSessionResult,
+  type DequeueSteeringResult,
   type PromptSessionResult,
   type RespondApprovalRequest,
   type SetApprovalModeResult,
@@ -347,6 +349,9 @@ const PromptSessionRequestSchema = z.object({
   ]),
   streamingBehavior: z.enum(["follow-up", "steer"]).optional(),
   approvalMode: z.enum(["let-me-review", "auto-approve", "YOLO"]).optional(),
+});
+const DequeueSteeringRequestSchema = z.object({
+  message: z.string().min(1).max(100_000),
 });
 const RespondApprovalRequestSchema = z.object({
   requestId: z.uuid(),
@@ -959,6 +964,14 @@ ipcMain.handle(
   ABORT_SESSION_CHANNEL,
   async (event): Promise<AbortSessionResult> =>
     getProjectRuntimes().abort(event.sender.id),
+);
+
+ipcMain.handle(
+  DEQUEUE_STEERING_CHANNEL,
+  async (event, request: unknown): Promise<DequeueSteeringResult> => {
+    const { message } = DequeueSteeringRequestSchema.parse(request);
+    return getProjectRuntimes().dequeueSteering(event.sender.id, message);
+  },
 );
 
 ipcMain.handle(

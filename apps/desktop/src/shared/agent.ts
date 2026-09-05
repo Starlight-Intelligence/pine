@@ -2,6 +2,7 @@ import type { PineSessionSummary } from "./sessions";
 
 export const PROMPT_SESSION_CHANNEL = "sessions:prompt" as const;
 export const ABORT_SESSION_CHANNEL = "sessions:abort" as const;
+export const DEQUEUE_STEERING_CHANNEL = "sessions:dequeue-steering" as const;
 export const SET_APPROVAL_MODE_CHANNEL = "sessions:set-approval-mode" as const;
 export const SESSION_EVENT_CHANNEL = "sessions:event" as const;
 
@@ -104,6 +105,11 @@ export type PineAgentEvent =
       cost: number;
     }
   | {
+      type: "steering-queue";
+      sessionId: string;
+      messages: string[];
+    }
+  | {
       type: "approval-request";
       sessionId: string;
       requestId: string;
@@ -156,6 +162,15 @@ export interface PromptSessionResult {
 export interface AbortSessionResult {
   aborted: boolean;
   sessionId?: string;
+}
+
+export interface DequeueSteeringRequest {
+  message: string;
+}
+
+export interface DequeueSteeringResult {
+  message?: string;
+  removed: boolean;
 }
 
 export type SessionEventListener = (event: PineAgentEvent) => void;

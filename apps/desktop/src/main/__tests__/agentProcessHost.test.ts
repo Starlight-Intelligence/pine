@@ -126,6 +126,31 @@ describe("AgentProcessHost", () => {
     );
   });
 
+  it("sends typed steering dequeue requests", async () => {
+    const { host, process } = createHost();
+    const pending = host.dequeueSteering("session-1", "Change direction");
+    await vi.waitFor(() => expect(process.requests).toHaveLength(1));
+
+    expect(process.requests[0]).toEqual(
+      expect.objectContaining({
+        type: "session:dequeue-steering",
+        sessionId: "session-1",
+        message: "Change direction",
+      }),
+    );
+    process.emit("message", {
+      type: "response",
+      id: process.requests[0].id,
+      ok: true,
+      result: { message: "Change direction", removed: true },
+    });
+
+    await expect(pending).resolves.toEqual({
+      message: "Change direction",
+      removed: true,
+    });
+  });
+
   it("rejects pending work when the utility process exits", async () => {
     const { host, process } = createHost();
     const pending = host.abort("session-1");

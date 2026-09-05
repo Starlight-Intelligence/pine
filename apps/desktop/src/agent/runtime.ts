@@ -398,6 +398,24 @@ export class PineAgentRuntime {
     }
   }
 
+  /** Remove one still-queued steering message without disturbing its siblings. */
+  async dequeueSteering(
+    sessionId: string,
+    message: string,
+  ): Promise<{ message?: string; removed: boolean }> {
+    const live = this.getSession(sessionId);
+    const steering = [...live.session.getSteeringMessages()];
+    const index = steering.indexOf(message);
+    if (index < 0) return { removed: false };
+
+    const followUp = [...live.session.getFollowUpMessages()];
+    const [removed] = steering.splice(index, 1);
+    live.session.clearQueue();
+    for (const queued of steering) await live.session.steer(queued);
+    for (const queued of followUp) await live.session.followUp(queued);
+    return { message: removed, removed: true };
+  }
+
   async abort(sessionId: string): Promise<{ aborted: boolean }> {
     const live = this.getSession(sessionId);
     const aborted = !live.session.isIdle;
@@ -1025,6 +1043,13 @@ export class PineAgentRuntime {
           messageId: this.activeMessageIds.get(sessionId) ?? randomUUID(),
           message: toPineJsonValue(event.message),
           update: toPineJsonValue(event.assistantMessageEvent),
+        });
+        break;
+      case "queue_update":
+        this.options.emit({
+          type: "steering-queue",
+          sessionId,
+          messages: [...event.steering],
         });
         break;
       case "tool_execution_start":

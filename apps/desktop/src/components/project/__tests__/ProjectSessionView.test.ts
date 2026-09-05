@@ -6,6 +6,7 @@ import { useContentTabsStore } from "@/stores/contentTabs";
 import { createPinia, setActivePinia } from "pinia";
 import { describe, expect, it, vi } from "vitest";
 import { createAppI18n } from "@/app/i18n";
+import { serializeAttachmentMessage } from "@/shared/attachments";
 import ProjectSessionView from "../ProjectSessionView.vue";
 
 const activeTabId = ref("session-1");
@@ -63,9 +64,9 @@ function mountView() {
         MessageScrollerItem: slotStub,
         PineCharacter: true,
         ProjectSessionComposer: {
-          props: ["attachments"],
+          props: ["attachments", "modelValue", "steeringMessages"],
           template:
-            '<div data-slot="composer-stub" :data-attachment-count="attachments?.length ?? 0" />',
+            '<div data-slot="composer-stub" :data-attachment-count="attachments?.length ?? 0" :data-draft="modelValue"><button v-if="steeringMessages?.length" data-slot="withdraw-steering-stub" @click="$emit(\'withdrawSteering\', steeringMessages[0])" /></div>',
         },
         ProjectTranscriptMessage: true,
         ProjectTranscriptOutline: true,
@@ -76,6 +77,32 @@ function mountView() {
 }
 
 describe("ProjectSessionView file drop", () => {
+  it("restores a dequeued steering message and its attachments to the composer", async () => {
+    const { wrapper } = mountView();
+    const sessionStore = useSessionStore();
+    const attachment = {
+      extension: "md",
+      modifiedAt: "2026-09-02T12:00:00.000Z",
+      name: "notes.md",
+      path: "/tmp/notes.md",
+      size: 1_024,
+    };
+    const queued = serializeAttachmentMessage([attachment], "Change direction");
+    window.pine.dequeueSteering = vi.fn().mockResolvedValue({
+      message: queued,
+      removed: true,
+    });
+    sessionStore.steeringMessages = [queued];
+    await flushPromises();
+
+    await wrapper.get('[data-slot="withdraw-steering-stub"]').trigger("click");
+    await flushPromises();
+
+    const composer = wrapper.get('[data-slot="composer-stub"]');
+    expect(composer.attributes("data-draft")).toBe("Change direction");
+    expect(composer.attributes("data-attachment-count")).toBe("1");
+  });
+
   it("receives attachments for its own composer while in the background", async () => {
     const { wrapper } = mountView();
     const store = useContentTabsStore();

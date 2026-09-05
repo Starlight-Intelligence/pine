@@ -352,6 +352,15 @@ export class ProjectRuntimeRegistry {
     return { ...result, sessionId };
   }
 
+  async dequeueSteering(
+    webContentsId: number,
+    message: string,
+  ): Promise<{ message?: string; removed: boolean }> {
+    const runtime = this.get(webContentsId);
+    if (runtime.session.status !== "active") return { removed: false };
+    return this.agentHost.dequeueSteering(runtime.session.summary.id, message);
+  }
+
   async setApprovalMode(
     webContentsId: number,
     approvalMode: PineApprovalMode,

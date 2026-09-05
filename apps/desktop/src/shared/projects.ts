@@ -1,5 +1,7 @@
 import type {
   AbortSessionResult,
+  DequeueSteeringRequest,
+  DequeueSteeringResult,
   PromptSessionRequest,
   PromptSessionResult,
   RespondApprovalRequest,
@@ -126,6 +128,9 @@ export interface PineDesktopApi extends PineWindowApi {
     request: ProjectFilePreviewRequest,
   ) => Promise<ProjectFilePreview>;
   abortSession: () => Promise<AbortSessionResult>;
+  dequeueSteering: (
+    request: DequeueSteeringRequest,
+  ) => Promise<DequeueSteeringResult>;
   closeProject: () => Promise<void>;
   createProject: (request: CreateProjectRequest) => Promise<ProjectResult>;
   deleteProject: (request: ProjectIdRequest) => Promise<DeleteProjectResult>;

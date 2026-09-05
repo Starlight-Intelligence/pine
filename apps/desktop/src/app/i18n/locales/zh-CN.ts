@@ -182,6 +182,7 @@ export default {
     composer: {
       label: "会话消息",
       placeholder: "描述任务、明确需求……",
+      steeringPlaceholder: "追加要求、改变方向……",
       addAttachment: "添加附件",
       addFile: "添加文件",
       addFolder: "添加文件夹",
@@ -196,7 +197,10 @@ export default {
       dropAttachmentsTitle: "松手以添加附件",
       dropAttachmentsDescription: "可以一次添加多个文件或文件夹",
       send: "发送消息",
+      steer: "追加要求",
       stop: "停止回答",
+      withdrawSteering: "撤回暂存消息",
+      withdrawSteeringFailed: "无法撤回该暂存消息",
       model: "模型",
       selectModel: "选择模型",
       reasoningEffort: "推理强度",

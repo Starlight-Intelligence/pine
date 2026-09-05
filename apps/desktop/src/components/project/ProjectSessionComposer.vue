@@ -3,6 +3,7 @@ import type { Component } from "vue";
 import {
   ArrowUpIcon,
   ChevronDownIcon,
+  CornerDownRightIcon,
   FileIcon,
   FolderIcon,
   PlusIcon,
@@ -11,6 +12,7 @@ import {
   ShieldIcon,
   ShieldOffIcon,
   SquareIcon,
+  Undo2Icon,
 } from "@lucide/vue";
 import { storeToRefs } from "pinia";
 import { computed, onMounted, ref, useId } from "vue";
@@ -33,6 +35,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { Bubble, BubbleContent } from "@/components/ui/bubble";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -61,6 +64,7 @@ import {
 import { cn } from "@/lib/utils";
 import type { PineApprovalAction, PineApprovalMode } from "@/shared/agent";
 import {
+  attachmentMessagePreview,
   serializeAttachmentMessage,
   isPastedImageMimeType,
   type PineAttachment,
@@ -90,15 +94,17 @@ const emit = defineEmits<{
   abort: [];
   respond: [action: PineApprovalAction, guidance?: string];
   submit: [message: string];
+  withdrawSteering: [message: string];
 }>();
 
 const props = withDefaults(
   defineProps<{
     isRunning?: boolean;
+    steeringMessages?: readonly string[];
     /** When set, the approval questionnaire replaces the message input. */
     pendingApproval?: PinePendingApproval | null;
   }>(),
-  { isRunning: false },
+  { isRunning: false, steeringMessages: () => [] },
 );
 
 const message = defineModel<string>({ default: "" });
@@ -115,11 +121,13 @@ const isYoloConfirmationOpen = ref(false);
 const attachments = defineModel<PineAttachment[]>("attachments", {
   default: () => [],
 });
+const hasMessage = computed(
+  () => message.value.trim().length > 0 || attachments.value.length > 0,
+);
+const isSteering = computed(() => props.isRunning && hasMessage.value);
 const canSubmit = computed(
   () =>
-    props.isRunning ||
-    ((message.value.trim().length > 0 || attachments.value.length > 0) &&
-      selectedModel.value !== undefined),
+    props.isRunning || (hasMessage.value && selectedModel.value !== undefined),
 );
 const approvalModes = computed<ApprovalModeOption[]>(() => [
   {
@@ -178,10 +186,6 @@ function confirmYoloMode(): void {
 onMounted(() => void modelsStore.load());
 
 function submitMessage(): void {
-  if (props.isRunning) {
-    emit("abort");
-    return;
-  }
   const normalizedMessage = message.value.trim();
   if (!normalizedMessage && attachments.value.length === 0) return;
 
@@ -190,6 +194,14 @@ function submitMessage(): void {
     serializeAttachmentMessage(attachments.value, normalizedMessage),
   );
   attachments.value = [];
+}
+
+function handlePrimaryAction(): void {
+  if (props.isRunning && !hasMessage.value) {
+    emit("abort");
+    return;
+  }
+  submitMessage();
 }
 
 function mergeAttachments(selected: readonly PineAttachment[]): void {
@@ -338,88 +350,125 @@ function openModelPicker(): void {
       :approval="props.pendingApproval"
       @respond="(action, guidance) => emit('respond', action, guidance)"
     />
-    <InputGroup
-      v-else
-      class="session-composer-control flex-col items-stretch min-h-[var(--session-composer-control-height)] rounded-[var(--session-composer-control-radius)] has-[textarea]:rounded-[var(--session-composer-control-radius)]"
-    >
-      <ProjectAttachmentList
-        v-if="attachments.length > 0"
-        class="session-composer-attachments shrink-0 w-full px-[var(--session-composer-control-inset)] pt-[var(--session-composer-control-inset)] pb-0"
-        :attachments="attachments"
-        removable
-        surface="composer"
-        @remove="removeAttachment"
-      />
+    <template v-else>
+      <div
+        v-if="props.steeringMessages.length > 0"
+        class="mb-2 flex flex-col items-end gap-2"
+      >
+        <div
+          v-for="(steeringMessage, index) in props.steeringMessages"
+          :key="`${steeringMessage}-${index}`"
+          data-slot="staged-steering-message"
+          class="flex w-full items-center justify-end gap-2"
+        >
+          <Button
+            type="button"
+            size="icon-sm"
+            variant="ghost"
+            :aria-label="t('project.composer.withdrawSteering')"
+            @click="emit('withdrawSteering', steeringMessage)"
+          >
+            <Undo2Icon />
+          </Button>
+          <Bubble align="end" variant="outline">
+            <BubbleContent class="border-dashed whitespace-pre-wrap">
+              {{ attachmentMessagePreview(steeringMessage) }}
+            </BubbleContent>
+          </Bubble>
+        </div>
+      </div>
 
-      <div class="flex w-full items-center">
-        <InputGroupAddon class="self-end py-1.5 pl-2.5" align="inline-start">
-          <DropdownMenu>
-            <DropdownMenuTrigger as-child>
-              <InputGroupButton
-                data-slot="attachment-menu-trigger"
-                class="size-[var(--session-composer-action-size)] shrink-0 rounded-full"
-                size="icon-sm"
-                type="button"
-                variant="secondary"
-                :aria-label="t('project.composer.addAttachment')"
-              >
-                <PlusIcon />
-              </InputGroupButton>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" side="top">
-              <DropdownMenuGroup>
-                <DropdownMenuItem @select="pickAttachments('file')">
-                  <FileIcon />
-                  {{ t("project.composer.addFile") }}
-                </DropdownMenuItem>
-                <DropdownMenuItem @select="pickAttachments('directory')">
-                  <FolderIcon />
-                  {{ t("project.composer.addFolder") }}
-                </DropdownMenuItem>
-              </DropdownMenuGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </InputGroupAddon>
-
-        <InputGroupTextarea
-          :id="messageId"
-          v-model="message"
-          class="session-composer-input max-h-48 min-h-[var(--session-composer-control-height)] pt-3.5 pb-3.5 text-sm leading-5"
-          :placeholder="t('project.composer.placeholder')"
-          @keydown="handleKeydown"
-          @paste="handlePaste"
+      <InputGroup
+        class="session-composer-control flex-col items-stretch min-h-[var(--session-composer-control-height)] rounded-[var(--session-composer-control-radius)] has-[textarea]:rounded-[var(--session-composer-control-radius)]"
+      >
+        <ProjectAttachmentList
+          v-if="attachments.length > 0"
+          class="session-composer-attachments shrink-0 w-full px-[var(--session-composer-control-inset)] pt-[var(--session-composer-control-inset)] pb-0"
+          :attachments="attachments"
+          removable
+          surface="composer"
+          @remove="removeAttachment"
         />
 
-        <InputGroupAddon class="self-end py-1.5 pr-2.5" align="inline-end">
-          <Tooltip>
-            <TooltipTrigger as-child>
-              <InputGroupButton
-                class="size-[var(--session-composer-action-size)] shrink-0 rounded-full"
-                size="icon-sm"
-                variant="default"
-                :disabled="!canSubmit"
-                :aria-label="
-                  props.isRunning
-                    ? t('project.composer.stop')
-                    : t('project.composer.send')
-                "
-                @click="submitMessage"
-              >
-                <SquareIcon v-if="props.isRunning" />
-                <ArrowUpIcon v-else />
-              </InputGroupButton>
-            </TooltipTrigger>
-            <TooltipContent side="top">
-              {{
-                props.isRunning
-                  ? t("project.composer.stop")
-                  : t("project.composer.send")
-              }}
-            </TooltipContent>
-          </Tooltip>
-        </InputGroupAddon>
-      </div>
-    </InputGroup>
+        <div class="flex w-full items-center">
+          <InputGroupAddon class="self-end py-1.5 pl-2.5" align="inline-start">
+            <DropdownMenu>
+              <DropdownMenuTrigger as-child>
+                <InputGroupButton
+                  data-slot="attachment-menu-trigger"
+                  class="size-[var(--session-composer-action-size)] shrink-0 rounded-full"
+                  size="icon-sm"
+                  type="button"
+                  variant="secondary"
+                  :aria-label="t('project.composer.addAttachment')"
+                >
+                  <PlusIcon />
+                </InputGroupButton>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" side="top">
+                <DropdownMenuGroup>
+                  <DropdownMenuItem @select="pickAttachments('file')">
+                    <FileIcon />
+                    {{ t("project.composer.addFile") }}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem @select="pickAttachments('directory')">
+                    <FolderIcon />
+                    {{ t("project.composer.addFolder") }}
+                  </DropdownMenuItem>
+                </DropdownMenuGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </InputGroupAddon>
+
+          <InputGroupTextarea
+            :id="messageId"
+            v-model="message"
+            class="session-composer-input max-h-48 min-h-[var(--session-composer-control-height)] pt-3.5 pb-3.5 text-sm leading-5"
+            :placeholder="
+              props.isRunning
+                ? t('project.composer.steeringPlaceholder')
+                : t('project.composer.placeholder')
+            "
+            @keydown="handleKeydown"
+            @paste="handlePaste"
+          />
+
+          <InputGroupAddon class="self-end py-1.5 pr-2.5" align="inline-end">
+            <Tooltip>
+              <TooltipTrigger as-child>
+                <InputGroupButton
+                  class="size-[var(--session-composer-action-size)] shrink-0 rounded-full"
+                  size="icon-sm"
+                  variant="default"
+                  :disabled="!canSubmit"
+                  :aria-label="
+                    isSteering
+                      ? t('project.composer.steer')
+                      : props.isRunning
+                        ? t('project.composer.stop')
+                        : t('project.composer.send')
+                  "
+                  @click="handlePrimaryAction"
+                >
+                  <CornerDownRightIcon v-if="isSteering" />
+                  <SquareIcon v-else-if="props.isRunning" />
+                  <ArrowUpIcon v-else />
+                </InputGroupButton>
+              </TooltipTrigger>
+              <TooltipContent side="top">
+                {{
+                  isSteering
+                    ? t("project.composer.steer")
+                    : props.isRunning
+                      ? t("project.composer.stop")
+                      : t("project.composer.send")
+                }}
+              </TooltipContent>
+            </Tooltip>
+          </InputGroupAddon>
+        </div>
+      </InputGroup>
+    </template>
 
     <!-- While an approval is pending the card owns the whole composer area:
          the mode selector, context ring, and model picker are all moot
