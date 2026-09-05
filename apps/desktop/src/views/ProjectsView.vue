@@ -176,7 +176,7 @@ onMounted(() => {
           v-if="isMacOSPlatform"
           data-testid="macos-titlebar-logo"
           aria-hidden="true"
-          class="pointer-events-none size-8 shrink-0 fill-current text-muted-foreground select-none"
+          class="pointer-events-none ml-2 size-5 shrink-0 fill-current text-muted-foreground select-none"
         />
       </template>
       <template #trailing>

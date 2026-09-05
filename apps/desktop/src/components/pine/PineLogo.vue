@@ -1,6 +1,11 @@
 <template>
+  <!--
+    viewBox is cropped to the artwork's ink bounds (x 221.0-803.0,
+    y 206.4-817.6 in the original 1024 canvas) so the mark fills the element
+    box instead of floating inside the source file's baked-in padding.
+  -->
   <svg
-    viewBox="0 0 1024 1024"
+    viewBox="206.4 206.4 611.2 611.2"
     fill="currentColor"
     xmlns="http://www.w3.org/2000/svg"
   >

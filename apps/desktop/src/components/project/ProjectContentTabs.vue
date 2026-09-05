@@ -2,11 +2,13 @@
 import { MessageSquarePlusIcon, SquareTerminalIcon, XIcon } from "@lucide/vue";
 import { storeToRefs } from "pinia";
 import type { ComponentPublicInstance } from "vue";
-import { computed, nextTick, ref, useTemplateRef, watch } from "vue";
+import { computed, nextTick, onMounted, ref, useTemplateRef, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { handleError } from "@/app/errors/errorHandler";
 import { PineLogo } from "@/components/pine";
 import { Button } from "@/components/ui/button";
+import GitHubLogo from "@/components/window/GitHubLogo.vue";
+import { PINE_RELEASES_URL, PINE_REPOSITORY_URL } from "@/shared/window";
 import { Separator } from "@/components/ui/separator";
 import { useSidebar } from "@/components/ui/sidebar";
 import { useContentTabNavigation } from "@/composables/useContentTabNavigation";
@@ -23,6 +25,7 @@ import ProjectSessionView from "./ProjectSessionView.vue";
 import ProjectFilePreview from "./ProjectFilePreview.vue";
 import ProjectTabsOverflowMenu from "./ProjectTabsOverflowMenu.vue";
 import RetainedPanel from "./RetainedPanel.vue";
+import WindowShortcutHints from "@/components/window/WindowShortcutHints.vue";
 
 const { t } = useI18n();
 const { state: sidebarState, isMobile } = useSidebar();
@@ -31,6 +34,26 @@ const tabNavigation = useContentTabNavigation();
 const sessionStore = useSessionStore();
 const { activeTab: activeContentTab, activeTabId, tabs } = tabNavigation;
 const { activeSession } = storeToRefs(sessionStore);
+
+// App version is only surfaced as passive text in the empty state; a failure
+// to fetch it simply leaves the badge blank.
+const pineVersion = ref<string | null>(null);
+onMounted(() => {
+  window.pine
+    .getAppVersion()
+    .then((version) => {
+      pineVersion.value = version;
+    })
+    .catch(() => undefined);
+});
+
+function openRepository(): void {
+  void window.pine.openExternalUrl(PINE_REPOSITORY_URL);
+}
+
+function openReleases(): void {
+  void window.pine.openExternalUrl(PINE_RELEASES_URL);
+}
 const sessionTabs = computed(() =>
   tabs.value.filter((tab) => tab.kind === "session"),
 );
@@ -324,6 +347,17 @@ watch(activeSession, (session) => {
       <ProjectTabsOverflowMenu v-if="tabs.length" />
 
       <Button
+        v-if="!tabs.length"
+        class="window-no-drag pointer-events-auto"
+        variant="ghost"
+        size="icon-sm"
+        :aria-label="t('project.contentTabs.openRepository')"
+        @click="openRepository"
+      >
+        <GitHubLogo />
+      </Button>
+
+      <Button
         class="window-no-drag pointer-events-auto"
         variant="ghost"
         size="icon-sm"
@@ -362,12 +396,26 @@ watch(activeSession, (session) => {
       v-else
       role="region"
       :aria-label="t('project.contentTabs.emptyTitle')"
-      class="pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden p-8"
+      class="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-16 overflow-hidden p-8"
     >
       <PineLogo
         aria-hidden="true"
-        class="pointer-events-none size-full max-h-72 max-w-72 scale-[1.35] text-muted-foreground/10 select-none"
+        class="pointer-events-none size-64 text-muted-foreground/10 select-none"
       />
+      <WindowShortcutHints />
+      <div
+        class="pointer-events-none absolute inset-x-0 bottom-0 flex min-h-12 items-center justify-end pl-5 pr-2 py-2"
+      >
+        <Button
+          v-if="pineVersion"
+          data-testid="pine-version"
+          variant="outline"
+          class="pointer-events-auto"
+          @click="openReleases"
+        >
+          {{ t("project.contentTabs.version", { version: pineVersion }) }}
+        </Button>
+      </div>
     </div>
   </div>
 </template>

@@ -85,7 +85,8 @@ describe("ProjectsView", () => {
     const wrapper = await mountView([]);
     const logo = wrapper.get('[data-testid="macos-titlebar-logo"]');
 
-    expect(logo.classes()).toContain("size-8");
+    expect(logo.classes()).toContain("size-5");
+    expect(logo.classes()).toContain("ml-2");
     expect(logo.classes()).toContain("text-muted-foreground");
   });
 

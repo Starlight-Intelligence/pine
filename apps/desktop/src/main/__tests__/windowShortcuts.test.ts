@@ -15,7 +15,7 @@ describe("native close shortcut", () => {
     "intercepts Ctrl/Cmd+%s before the menu and ignores repeats and other shortcuts",
     (key, channel) => {
       const contents = Object.assign(new EventEmitter(), { send: vi.fn() });
-      installWindowShortcuts(contents as unknown as WebContents);
+      installWindowShortcuts(contents as unknown as WebContents, vi.fn());
       for (const modifiers of [{ control: true }, { meta: true }]) {
         const event = { preventDefault: vi.fn() };
         contents.emit("before-input-event", event, {
@@ -54,4 +54,46 @@ describe("native close shortcut", () => {
       expect(contents.send).toHaveBeenCalledTimes(2);
     },
   );
+
+  it("creates a new window instance on Ctrl/Cmd+N but ignores repeats and modifiers", () => {
+    const contents = Object.assign(new EventEmitter(), { send: vi.fn() });
+    const onCreateWindow = vi.fn();
+    installWindowShortcuts(contents as unknown as WebContents, onCreateWindow);
+
+    for (const modifiers of [{ control: true }, { meta: true }]) {
+      const event = { preventDefault: vi.fn() };
+      contents.emit("before-input-event", event, {
+        type: "keyDown",
+        key: "n",
+        ...modifiers,
+      });
+      expect(event.preventDefault).toHaveBeenCalledOnce();
+    }
+    expect(onCreateWindow).toHaveBeenCalledTimes(2);
+
+    const repeated = { preventDefault: vi.fn() };
+    contents.emit("before-input-event", repeated, {
+      type: "keyDown",
+      key: "n",
+      control: true,
+      isAutoRepeat: true,
+    });
+    expect(onCreateWindow).toHaveBeenCalledTimes(2);
+
+    for (const override of [
+      { shift: true },
+      { alt: true },
+      { control: false },
+    ]) {
+      const event = { preventDefault: vi.fn() };
+      contents.emit("before-input-event", event, {
+        type: "keyDown",
+        key: "n",
+        control: true,
+        ...override,
+      });
+      expect(event.preventDefault).not.toHaveBeenCalled();
+    }
+    expect(onCreateWindow).toHaveBeenCalledTimes(2);
+  });
 });

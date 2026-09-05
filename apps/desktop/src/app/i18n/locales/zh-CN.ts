@@ -186,6 +186,13 @@ export default {
       moreActions: "更多操作",
       closeTab: "关闭 {name}",
       tabListLabel: "已打开的内容",
+      version: "版本 {version}",
+      openRepository: "打开 GitHub 仓库",
+      shortcuts: {
+        newTab: "新建标签页",
+        closeTab: "关闭标签页",
+        newWindow: "创建新窗口",
+      },
     },
     composer: {
       label: "会话消息",
@@ -327,6 +334,7 @@ export default {
           awaitingApproval: "等待用户审批",
           autoApprovalDenied: "自动审批驳回",
           userApprovalDenied: "用户已拒绝",
+          sandboxDenied: "沙箱拒绝",
         },
         approvals: {
           awaitingApproval: "等待用户审批",
@@ -334,11 +342,13 @@ export default {
           autoDenied: "自动审批驳回",
           userApproved: "用户已批准",
           userDenied: "用户已驳回",
+          sandboxDenied: "沙箱拒绝",
         },
       },
       tools: {
         operationSeparator: "：",
         reviewing: "正在审核 {tool}：",
+        writeLines: "已写入 {count} 行",
         denied: "已拒绝 {tool}：",
         awaitingApproval: "等待确认 {tool}：",
         bash: {

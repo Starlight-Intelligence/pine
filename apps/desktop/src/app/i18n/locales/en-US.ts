@@ -193,6 +193,13 @@ export default {
       moreActions: "More actions",
       closeTab: "Close {name}",
       tabListLabel: "Open content",
+      version: "Version {version}",
+      openRepository: "Open GitHub repository",
+      shortcuts: {
+        newTab: "New tab",
+        closeTab: "Close tab",
+        newWindow: "New window",
+      },
     },
     composer: {
       label: "Session message",
@@ -339,6 +346,7 @@ export default {
           awaitingApproval: "Awaiting user approval",
           autoApprovalDenied: "Automatic approval denied",
           userApprovalDenied: "Denied by user",
+          sandboxDenied: "Denied by sandbox",
         },
         approvals: {
           awaitingApproval: "Awaiting user approval",
@@ -346,11 +354,13 @@ export default {
           autoDenied: "Automatically denied",
           userApproved: "Approved by user",
           userDenied: "Denied by user",
+          sandboxDenied: "Denied by sandbox",
         },
       },
       tools: {
         operationSeparator: ": ",
         reviewing: "Reviewing {tool}: ",
+        writeLines: "{count} lines written",
         denied: "Denied {tool}: ",
         awaitingApproval: "Awaiting your approval for this {tool}: ",
         bash: {

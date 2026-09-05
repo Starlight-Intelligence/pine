@@ -110,6 +110,8 @@ import {
   OPAQUE_WINDOW_BACKGROUND,
   SET_SIDEBAR_VIBRANCY_CHANNEL,
   CLOSE_WINDOW_CHANNEL,
+  GET_APP_VERSION_CHANNEL,
+  OPEN_EXTERNAL_URL_CHANNEL,
   TRANSPARENT_WINDOW_BACKGROUND,
   type SetSidebarVibrancyResult,
 } from "./shared/window";
@@ -516,7 +518,7 @@ const createWindow = () => {
     },
   });
   const webContentsId = mainWindow.webContents.id;
-  installWindowShortcuts(mainWindow.webContents);
+  installWindowShortcuts(mainWindow.webContents, createWindow);
 
   // Focus stops the approval attention request (Windows flashes until the
   // window is focused; macOS bounces until the app activates).
@@ -547,6 +549,12 @@ const createWindow = () => {
 
 ipcMain.handle(CLOSE_WINDOW_CHANNEL, (event): void => {
   BrowserWindow.fromWebContents(event.sender)?.close();
+});
+
+ipcMain.handle(GET_APP_VERSION_CHANNEL, (): string => app.getVersion());
+
+ipcMain.handle(OPEN_EXTERNAL_URL_CHANNEL, async (_event, url: unknown) => {
+  await shell.openExternal(ProviderAuthUrlSchema.parse(url));
 });
 
 ipcMain.handle(

@@ -4,6 +4,7 @@ import { computed, nextTick, onUnmounted } from "vue";
 import { createMemoryHistory, createRouter } from "vue-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createAppI18n } from "@/app/i18n";
+import { PINE_RELEASES_URL, PINE_REPOSITORY_URL } from "@/shared/window";
 import type { PineSessionSummary } from "@/shared/sessions";
 import { useSessionStore } from "@/stores/session";
 import { useContentTabsStore } from "@/stores/contentTabs";
@@ -60,6 +61,8 @@ async function mountTabs(withFile = false) {
   Object.defineProperty(window, "pine", {
     configurable: true,
     value: {
+      getAppVersion: vi.fn().mockResolvedValue("0.1.0"),
+      openExternalUrl: vi.fn().mockResolvedValue(undefined),
       readProjectFilePreview: vi.fn().mockResolvedValue({
         kind: "text",
         text: "const n = 1;",
@@ -547,9 +550,43 @@ describe("ProjectContentTabs", () => {
     expect(logo.find("path").exists()).toBe(true);
     expect(wrapper.find('[data-slot="empty"]').exists()).toBe(false);
     expect(wrapper.find('[role="tabpanel"]').exists()).toBe(false);
+    await flushPromises();
+    expect(wrapper.get('[data-testid="pine-version"]').text()).toBe(
+      "Version 0.1.0",
+    );
     await wrapper.get('button[aria-label="Add session tab"]').trigger("click");
     await flushPromises();
     expect(wrapper.find('[role="tabpanel"]').exists()).toBe(true);
+    wrapper.unmount();
+  });
+
+  it("opens the project repository in the system browser from the empty state", async () => {
+    const { wrapper } = await mountTabs();
+    await wrapper
+      .get('button[aria-label="Close New session"]')
+      .trigger("click");
+    await flushPromises();
+    const github = wrapper.get('button[aria-label="Open GitHub repository"]');
+    expect(github.find("svg").exists()).toBe(true);
+    await github.trigger("click");
+    await flushPromises();
+    expect(window.pine.openExternalUrl).toHaveBeenCalledWith(
+      PINE_REPOSITORY_URL,
+    );
+    wrapper.unmount();
+  });
+
+  it("opens the project releases page from the version button", async () => {
+    const { wrapper } = await mountTabs();
+    await wrapper
+      .get('button[aria-label="Close New session"]')
+      .trigger("click");
+    await flushPromises();
+    const version = wrapper.get('[data-testid="pine-version"]');
+    expect(version.element.tagName).toBe("BUTTON");
+    await version.trigger("click");
+    await flushPromises();
+    expect(window.pine.openExternalUrl).toHaveBeenCalledWith(PINE_RELEASES_URL);
     wrapper.unmount();
   });
 });
