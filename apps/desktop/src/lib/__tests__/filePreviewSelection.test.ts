@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { filePreviewSelection } from "../filePreviewSelection";
+import {
+  documentPreviewSelection,
+  filePreviewSelection,
+} from "../filePreviewSelection";
 
 afterEach(() => {
   document.body.replaceChildren();
@@ -20,6 +23,21 @@ function select(
 }
 
 describe("file preview selections", () => {
+  it("captures rendered document text without pretending it has source locations", () => {
+    const root = document.createElement("div");
+    root.innerHTML = "<p>First line<br>Second line</p>";
+    document.body.append(root);
+    const paragraph = root.querySelector("p")!;
+    select(paragraph.firstChild!, 0, paragraph.lastChild!, 11);
+
+    expect(documentPreviewSelection(root, "Selected content")).toEqual({
+      startLine: 1,
+      endLine: 1,
+      label: "Selected content",
+      text: "First lineSecond line",
+    });
+  });
+
   it.each(["\n", "\r\n", "\r"])(
     "counts source lines with %j line endings and excludes the next line at offset zero",
     (newline) => {

@@ -230,6 +230,20 @@ describe("ProjectContentTabs", () => {
     wrapper.unmount();
   });
 
+  it("uses the file tree icon resolver for file tabs", async () => {
+    const { wrapper, file } = await mountTabs(true);
+    const fileTab = wrapper.get(`[data-tab-id="${file!.id}"]`);
+
+    expect(fileTab.get('[data-icon="inline-start"]').classes()).toContain(
+      "lucide-file-code",
+    );
+    expect(
+      wrapper
+        .get('[data-tab-id="session-1"] [data-icon="inline-start"]')
+        .classes(),
+    ).toContain("lucide-square-terminal");
+  });
+
   it.each([
     { name: "right-clipped", left: 500, target: 520 },
     { name: "left-clipped", left: 20, target: 40 },

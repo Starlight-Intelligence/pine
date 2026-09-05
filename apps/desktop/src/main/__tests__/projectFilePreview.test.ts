@@ -81,6 +81,7 @@ describe("file preview", () => {
   it.each([
     ["image.PNG", "image"],
     ["clip.mp4", "video"],
+    ["document.PDF", "pdf"],
   ])(
     "returns a media URL for %s without reading the whole file",
     async (name, kind) => {
@@ -95,6 +96,27 @@ describe("file preview", () => {
       ).toMatchObject({ kind, url: "pine-project-media://preview/?test" });
     },
   );
+
+  it.each([
+    ["report.DOCX", "docx"],
+    ["legacy.XLS", "xls"],
+    ["budget.XLSX", "xlsx"],
+    ["slides.PPTX", "pptx"],
+  ])("returns an Office preview for %s", async (name, format) => {
+    const file = path.join(root, name);
+    await writeFile(file, "");
+    await truncate(file, MAX_TEXT_PREVIEW_BYTES * 10);
+    expect(
+      await readProjectFilePreview(
+        file,
+        "pine-project-media://preview/?office",
+      ),
+    ).toMatchObject({
+      kind: "office",
+      format,
+      url: "pine-project-media://preview/?office",
+    });
+  });
 });
 
 describe("media streaming", () => {
@@ -154,5 +176,48 @@ describe("media streaming", () => {
         )
       ).status,
     ).toBe(415);
+  });
+
+  it("serves PDF documents with their standard MIME type", async () => {
+    const file = path.join(root, "document.pdf");
+    await writeFile(file, "%PDF-1.7");
+    const response = await serveProjectMedia(
+      new Request("https://preview.test", {
+        headers: { Origin: "http://localhost:5173" },
+      }),
+      file,
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toBe("application/pdf");
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
+      "http://localhost:5173",
+    );
+    expect(await response.text()).toBe("%PDF-1.7");
+  });
+
+  it.each([
+    [
+      "report.docx",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ],
+    [
+      "budget.xlsx",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ],
+    ["legacy.xls", "application/vnd.ms-excel"],
+    [
+      "slides.pptx",
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    ],
+  ])("serves %s with its standard MIME type", async (name, mime) => {
+    const file = path.join(root, name);
+    await writeFile(file, "office");
+    const response = await serveProjectMedia(
+      new Request("https://preview.test"),
+      file,
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toBe(mime);
+    expect(await response.text()).toBe("office");
   });
 });

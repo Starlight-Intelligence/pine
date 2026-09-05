@@ -80,6 +80,8 @@ export interface AttachmentSelection {
   /** Inclusive, 1-based source line numbers. */
   startLine: number;
   endLine: number;
+  /** Human-readable location for selections that are not source lines. */
+  label?: string;
   text: string;
 }
 
@@ -155,6 +157,8 @@ function isAttachmentSelection(value: unknown): value is AttachmentSelection {
     typeof selection.endLine === "number" &&
     Number.isSafeInteger(selection.endLine) &&
     selection.endLine >= selection.startLine &&
+    (selection.label === undefined ||
+      (typeof selection.label === "string" && selection.label.length > 0)) &&
     typeof selection.text === "string" &&
     selection.text.length > 0
   );

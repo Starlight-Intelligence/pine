@@ -1,10 +1,5 @@
 <script setup lang="ts">
-import {
-  FileCode2Icon,
-  PlusIcon,
-  SquareTerminalIcon,
-  XIcon,
-} from "@lucide/vue";
+import { PlusIcon, SquareTerminalIcon, XIcon } from "@lucide/vue";
 import { storeToRefs } from "pinia";
 import type { ComponentPublicInstance } from "vue";
 import { computed, nextTick, ref, useTemplateRef, watch } from "vue";
@@ -16,6 +11,7 @@ import { Separator } from "@/components/ui/separator";
 import { useSidebar } from "@/components/ui/sidebar";
 import { useContentTabNavigation } from "@/composables/useContentTabNavigation";
 import { cn } from "@/lib/utils";
+import { fileIcon } from "@/lib/fileIcon";
 import {
   CONTENT_TAB_DRAG_TYPE,
   writeContentTabDrag,
@@ -154,7 +150,9 @@ function getTabLabel(tab: ProjectContentTab): string {
 }
 
 function tabIcon(tab: ProjectContentTab) {
-  return tab.kind === "session" ? SquareTerminalIcon : FileCode2Icon;
+  return tab.kind === "session"
+    ? SquareTerminalIcon
+    : fileIcon(tab.relativePath);
 }
 
 function shouldShowSeparator(index: number): boolean {

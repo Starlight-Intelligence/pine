@@ -30,11 +30,27 @@ describe("attachment messages", () => {
     ).toEqual({ attachments: [selected], prompt: "Review" });
   });
 
+  it("preserves a rendered-document selection label", () => {
+    const selected = {
+      ...attachment,
+      selection: {
+        startLine: 1,
+        endLine: 1,
+        label: "Selected content · Sheet1!A1:B2",
+        text: "Name\tValue",
+      },
+    };
+    expect(
+      parseAttachmentMessage(serializeAttachmentMessage([selected], "Review")),
+    ).toEqual({ attachments: [selected], prompt: "Review" });
+  });
+
   it.each([
     { startLine: 0, endLine: 2, text: "x" },
     { startLine: 4, endLine: 2, text: "x" },
     { startLine: 1.5, endLine: 2, text: "x" },
     { startLine: 1, endLine: 2, text: "" },
+    { startLine: 1, endLine: 2, label: "", text: "x" },
   ])("rejects invalid selection metadata: %j", (selection) => {
     const message = serializeAttachmentMessage(
       [{ ...attachment, selection }],

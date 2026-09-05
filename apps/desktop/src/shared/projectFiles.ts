@@ -33,10 +33,12 @@ export interface ProjectFileMetadata {
   size: number;
   modifiedAt: string;
 }
+export type OfficeDocumentFormat = "docx" | "xls" | "xlsx" | "pptx";
 export type ProjectFilePreview = ProjectFileMetadata &
   (
     | { kind: "text"; text: string; encoding: string }
-    | { kind: "image" | "video"; url: string }
+    | { kind: "image" | "video" | "pdf"; url: string }
+    | { kind: "office"; format: OfficeDocumentFormat; url: string }
     | { kind: "unsupported"; reason: "binary" | "too-large" }
   );
 

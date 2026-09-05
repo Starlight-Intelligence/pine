@@ -107,10 +107,11 @@ function formatFileSize(size: number): string {
         <AttachmentDescription>
           {{
             attachment.selection
-              ? t("project.composer.attachmentLines", {
+              ? (attachment.selection.label ??
+                t("project.composer.attachmentLines", {
                   startLine: attachment.selection.startLine,
                   endLine: attachment.selection.endLine,
-                })
+                }))
               : attachment.kind === "directory"
                 ? t("project.composer.folderAttachment")
                 : attachment.extension

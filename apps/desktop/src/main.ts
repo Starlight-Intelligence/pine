@@ -130,6 +130,7 @@ protocol.registerSchemesAsPrivileged([
       secure: true,
       stream: true,
       supportFetchAPI: true,
+      corsEnabled: true,
     },
     scheme: PROJECT_MEDIA_PROTOCOL,
   },

@@ -1,7 +1,10 @@
 import { open } from "node:fs/promises";
 import path from "node:path";
 import { Readable } from "node:stream";
-import type { ProjectFilePreview } from "../shared/projectFiles";
+import type {
+  OfficeDocumentFormat,
+  ProjectFilePreview,
+} from "../shared/projectFiles";
 
 export const MAX_TEXT_PREVIEW_BYTES = 2 * 1024 * 1024;
 const mediaTypes: Record<string, string> = {
@@ -19,6 +22,28 @@ const mediaTypes: Record<string, string> = {
   ".webm": "video/webm",
   ".ogv": "video/ogg",
   ".mov": "video/quicktime",
+  ".pdf": "application/pdf",
+};
+const officeTypes: Record<
+  string,
+  { format: OfficeDocumentFormat; mime: string }
+> = {
+  ".docx": {
+    format: "docx",
+    mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  },
+  ".xlsx": {
+    format: "xlsx",
+    mime: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  },
+  ".xls": {
+    format: "xls",
+    mime: "application/vnd.ms-excel",
+  },
+  ".pptx": {
+    format: "pptx",
+    mime: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  },
 };
 
 export async function readProjectFilePreview(
@@ -33,13 +58,21 @@ export async function readProjectFilePreview(
       size: metadata.size,
       modifiedAt: metadata.mtime.toISOString(),
     };
-    const mime = mediaTypes[path.extname(filePath).toLowerCase()];
+    const extension = path.extname(filePath).toLowerCase();
+    const office = officeTypes[extension];
+    const mime = mediaTypes[extension] ?? office?.mime;
     if (mime)
-      return {
-        ...info,
-        kind: mime.startsWith("image/") ? "image" : "video",
-        url: mediaUrl,
-      };
+      return office
+        ? { ...info, kind: "office", format: office.format, url: mediaUrl }
+        : {
+            ...info,
+            kind: mime.startsWith("image/")
+              ? "image"
+              : mime.startsWith("video/")
+                ? "video"
+                : "pdf",
+            url: mediaUrl,
+          };
     if (metadata.size > MAX_TEXT_PREVIEW_BYTES)
       return { ...info, kind: "unsupported", reason: "too-large" };
 
@@ -80,12 +113,13 @@ export async function readProjectFilePreview(
   }
 }
 
-/** Serves only media, with bounded streaming and byte ranges for video seeking. */
+/** Serves only preview assets, with bounded streaming and byte ranges. */
 export async function serveProjectMedia(
   request: Request,
   filePath: string,
 ): Promise<Response> {
-  const mime = mediaTypes[path.extname(filePath).toLowerCase()];
+  const extension = path.extname(filePath).toLowerCase();
+  const mime = mediaTypes[extension] ?? officeTypes[extension]?.mime;
   if (!mime) return new Response(null, { status: 415 });
   if (request.method !== "GET" && request.method !== "HEAD")
     return new Response(null, { status: 405 });
@@ -102,6 +136,14 @@ export async function serveProjectMedia(
       "Cache-Control": "no-store",
       "Content-Security-Policy": "default-src 'none'; sandbox",
     });
+    const origin = request.headers.get("origin");
+    if (
+      origin &&
+      (origin === "null" || /^http:\/\/localhost:\d+$/u.test(origin))
+    ) {
+      headers.set("Access-Control-Allow-Origin", origin);
+      headers.set("Vary", "Origin");
+    }
     let start = 0;
     let end = size - 1;
     const range = request.headers.get("range");

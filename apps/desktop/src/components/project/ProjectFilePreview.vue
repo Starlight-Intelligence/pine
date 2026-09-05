@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {
   computed,
+  defineAsyncComponent,
   onBeforeUnmount,
   ref,
   useId,
@@ -11,15 +12,18 @@ import { useI18n } from "vue-i18n";
 import { useEventListener } from "@vueuse/core";
 import { getMarkdown, parseMarkdownToStructure } from "markstream-vue";
 import {
+  ExternalLink,
   FileQuestion,
   FileWarning,
   Plus,
   Send,
   SquareTerminal,
 } from "@lucide/vue";
+import { handleError } from "@/app/errors/errorHandler";
 import CodeBlock from "@/components/markdown/CodeBlock.vue";
 import MarkdownContent from "@/components/markdown/MarkdownContent.vue";
 import { Switch } from "@/components/ui/switch";
+import { Slider } from "@/components/ui/slider";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import {
@@ -39,6 +43,7 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { useContentTabsStore } from "@/stores/contentTabs";
+import { useAppearanceStore } from "@/stores/appearance";
 import { useFileToSession } from "@/composables/useFileToSession";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -50,6 +55,13 @@ import type {
   ProjectFilePreviewRequest,
 } from "@/shared/projectFiles";
 
+const ProjectPdfPreview = defineAsyncComponent(
+  () => import("./ProjectPdfPreview.vue"),
+);
+const ProjectOfficePreview = defineAsyncComponent(
+  () => import("./ProjectOfficePreview.vue"),
+);
+
 const props = withDefaults(
   defineProps<{ file: ProjectFilePreviewRequest; active?: boolean }>(),
   { active: true },
@@ -58,6 +70,7 @@ const { t, locale } = useI18n();
 const preview = ref<ProjectFilePreview>();
 const viewMode = ref<"code" | "rendered">("rendered");
 const renderSwitchId = useId();
+const invertSwitchId = useId();
 const isMarkdown = computed(
   () =>
     preview.value?.kind === "text" &&
@@ -84,9 +97,10 @@ const menuOpen = ref(false);
 const menuSelection = ref<AttachmentSelection>();
 
 function updateSelection(): void {
+  if (preview.value?.kind !== "text") return;
   if (menuOpen.value) return;
   selectedRange.value =
-    props.active && content.value && preview.value?.kind === "text"
+    props.active && content.value
       ? filePreviewSelection(
           content.value,
           preview.value.text,
@@ -110,6 +124,7 @@ watch(viewMode, () => {
   menuSelection.value = undefined;
 });
 const tabsStore = useContentTabsStore();
+const appearanceStore = useAppearanceStore();
 const sessionTabs = computed(() =>
   tabsStore.tabs.filter((tab) => tab.kind === "session"),
 );
@@ -125,6 +140,18 @@ const mediaDetails = ref<{
   height: number;
   duration?: number;
 }>();
+const pageCount = ref<number>();
+const previewInverted = ref(false);
+const previewZoom = ref([100]);
+const appliedZoom = ref(100);
+const renderedZoom = ref(100);
+const canInvertPreview = computed(
+  () => preview.value?.kind === "pdf" || preview.value?.kind === "office",
+);
+const canZoomPreview = canInvertPreview;
+const zoom = computed(() => previewZoom.value[0] ?? 100);
+let zoomFrame: number | undefined;
+let pendingZoom = 100;
 const fileType = computed(() => {
   const name = fileName.value;
   const extension = name.includes(".") ? name.split(".").at(-1) : undefined;
@@ -167,6 +194,43 @@ function videoLoaded(): void {
   };
 }
 
+function scheduleZoom(value: number): void {
+  pendingZoom = value;
+  if (zoomFrame !== undefined) return;
+  zoomFrame = requestAnimationFrame(() => {
+    appliedZoom.value = pendingZoom;
+    zoomFrame = undefined;
+  });
+}
+
+function commitZoom(value: number[]): void {
+  const committed = value[0] ?? 100;
+  pendingZoom = committed;
+  if (zoomFrame !== undefined) {
+    cancelAnimationFrame(zoomFrame);
+    zoomFrame = undefined;
+  }
+  appliedZoom.value = committed;
+  renderedZoom.value = committed;
+}
+
+async function openWithDefaultApplication(): Promise<void> {
+  try {
+    await window.pine.operateProjectFile({
+      action: "open",
+      target: {
+        folderId: props.file.folderId,
+        relativePath: props.file.relativePath,
+      },
+    });
+  } catch (error) {
+    handleError(error, {
+      id: "project.preview.open-default",
+      title: t("project.preview.openDefaultFailed"),
+    });
+  }
+}
+
 watch(
   () =>
     [
@@ -185,6 +249,12 @@ watch(
     selectedRange.value = undefined;
     menuSelection.value = undefined;
     mediaDetails.value = undefined;
+    pageCount.value = undefined;
+    previewInverted.value = false;
+    previewZoom.value = [100];
+    appliedZoom.value = 100;
+    renderedZoom.value = 100;
+    pendingZoom = 100;
     failed.value = false;
     try {
       const result = await window.pine.readProjectFilePreview({
@@ -192,7 +262,12 @@ watch(
         folderId: props.file.folderId,
         relativePath: props.file.relativePath,
       });
-      if (active) preview.value = result;
+      if (active) {
+        preview.value = result;
+        previewInverted.value =
+          (result.kind === "pdf" || result.kind === "office") &&
+          appearanceStore.colorScheme === "dark";
+      }
     } catch {
       if (active) failed.value = true;
     }
@@ -207,7 +282,17 @@ watch(
     if (!active) selectedRange.value = undefined;
   },
 );
-onBeforeUnmount(() => video.value?.pause());
+watch(
+  () => appearanceStore.colorScheme,
+  (colorScheme) => {
+    if (canInvertPreview.value) previewInverted.value = colorScheme === "dark";
+  },
+);
+watch(zoom, scheduleZoom);
+onBeforeUnmount(() => {
+  video.value?.pause();
+  if (zoomFrame !== undefined) cancelAnimationFrame(zoomFrame);
+});
 </script>
 
 <template>
@@ -280,6 +365,30 @@ onBeforeUnmount(() => video.value?.pause());
         />
       </div>
     </ScrollArea>
+    <ProjectPdfPreview
+      v-else-if="preview.kind === 'pdf'"
+      class="min-h-0 flex-1"
+      :source="preview.url"
+      :inverted="previewInverted"
+      :zoom="appliedZoom"
+      :render-zoom="renderedZoom"
+      :selection-label="t('project.preview.selectedContent')"
+      @loaded="pageCount = $event"
+      @failed="failed = true"
+      @selection-change="selectedRange = $event"
+    />
+    <ProjectOfficePreview
+      v-else-if="preview.kind === 'office'"
+      class="min-h-0 flex-1"
+      :format="preview.format"
+      :source="preview.url"
+      :inverted="previewInverted"
+      :zoom="appliedZoom"
+      :render-zoom="renderedZoom"
+      :selection-label="t('project.preview.selectedContent')"
+      @failed="failed = true"
+      @selection-change="selectedRange = $event"
+    />
     <div
       v-else
       class="scroll-fade flex min-h-0 flex-1 items-center justify-center overflow-auto p-6"
@@ -305,7 +414,7 @@ onBeforeUnmount(() => video.value?.pause());
       />
     </div>
     <footer
-      class="mt-auto flex min-h-12 shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-t pl-5 pr-2 py-2 text-sm text-muted-foreground"
+      class="mt-auto flex min-h-12 shrink-0 flex-wrap items-center gap-x-4 gap-y-1 pl-5 pr-2 py-2 text-sm text-muted-foreground"
       :title="file.relativePath"
       :aria-label="t('project.preview.metadata')"
     >
@@ -320,24 +429,59 @@ onBeforeUnmount(() => video.value?.pause());
           >{{ mediaDetails.width }} × {{ mediaDetails.height }}</span
         >
         <span v-if="duration">{{ duration }}</span>
+        <span v-if="pageCount">{{
+          t("project.preview.pages", { count: pageCount })
+        }}</span>
       </template>
       <Skeleton v-else-if="!failed" class="h-3 w-40" />
+      <div v-if="canZoomPreview" class="flex items-center gap-2 pr-2">
+        <Slider
+          v-model="previewZoom"
+          class="w-28"
+          :min="50"
+          :max="200"
+          :step="10"
+          :aria-label="t('project.preview.zoom')"
+          :title="t('project.preview.zoomValue', { value: zoom })"
+          @value-commit="commitZoom"
+        />
+        <span class="w-10 text-right tabular-nums">{{ zoom }}%</span>
+      </div>
+      <div v-if="canInvertPreview" class="flex items-center gap-2">
+        <Switch
+          :id="invertSwitchId"
+          size="sm"
+          :model-value="previewInverted"
+          @update:model-value="previewInverted = $event"
+        />
+        <Label :for="invertSwitchId">{{
+          t("project.preview.invertColors")
+        }}</Label>
+      </div>
+      <div v-if="isMarkdown" class="flex items-center gap-2">
+        <Switch
+          :id="renderSwitchId"
+          size="sm"
+          :model-value="rendered"
+          @update:model-value="viewMode = $event ? 'rendered' : 'code'"
+        />
+        <Label :for="renderSwitchId">{{ t("project.preview.rendered") }}</Label>
+      </div>
       <div class="ml-auto flex items-center gap-3">
-        <div v-if="isMarkdown" class="flex items-center gap-2">
-          <Switch
-            :id="renderSwitchId"
-            size="sm"
-            :model-value="rendered"
-            @update:model-value="viewMode = $event ? 'rendered' : 'code'"
-          />
-          <Label :for="renderSwitchId">{{
-            t("project.preview.rendered")
-          }}</Label>
-        </div>
+        <Button
+          v-if="preview"
+          data-action="open-default"
+          variant="ghost"
+          size="sm"
+          @click="openWithDefaultApplication"
+        >
+          <ExternalLink data-icon="inline-start" />
+          {{ t("project.preview.openDefault") }}
+        </Button>
         <DropdownMenu :open="menuOpen" @update:open="updateMenu">
           <DropdownMenuTrigger as-child>
             <Button
-              variant="ghost"
+              variant="outline"
               :disabled="isSending"
               @pointerdown.prevent="updateSelection"
             >

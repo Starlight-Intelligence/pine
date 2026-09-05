@@ -4,6 +4,30 @@ import type { AttachmentSelection } from "@/shared/attachments";
 const excluded =
   '[data-slot="code-block-toolbar"], [aria-hidden="true"], button';
 
+/** Read a browser text selection contained by a rendered document preview. */
+export function documentPreviewSelection(
+  root: HTMLElement,
+  label: string,
+): AttachmentSelection | undefined {
+  const selection = window.getSelection();
+  if (!selection || selection.isCollapsed || !selection.rangeCount) return;
+  const range = selection.getRangeAt(0);
+  if (
+    !root.contains(range.startContainer) ||
+    !root.contains(range.endContainer)
+  ) {
+    return;
+  }
+  const text = range.toString();
+  if (!text.trim()) return;
+  return {
+    startLine: 1,
+    endLine: text.replace(/\r\n|\r/g, "\n").split("\n").length,
+    label,
+    text,
+  };
+}
+
 /** Read only selections contained in this preview, excluding gutters and controls. */
 export function filePreviewSelection(
   root: HTMLElement,

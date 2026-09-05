@@ -3,16 +3,61 @@ import { createPinia, setActivePinia } from "pinia";
 import { createMemoryHistory, createRouter } from "vue-router";
 import { useContentTabsStore } from "@/stores/contentTabs";
 import { useProjectStore } from "@/stores/project";
+import { useAppearanceStore } from "@/stores/appearance";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createAppI18n } from "@/app/i18n";
 import { codeToHtml } from "@/lib/codeHighlight";
+import { Slider } from "@/components/ui/slider";
 import type { ProjectFilePreview as Preview } from "@/shared/projectFiles";
 import ProjectFilePreview from "../ProjectFilePreview.vue";
+import ProjectOfficePreview from "../ProjectOfficePreview.vue";
+import ProjectPdfPreview from "../ProjectPdfPreview.vue";
 
 vi.mock("@/lib/codeHighlight", () => ({
   codeToHtml: vi
     .fn()
     .mockResolvedValue('<pre class="shiki"><code>highlighted</code></pre>'),
+}));
+vi.mock("vue-pdf-embed/dist/index.essential.mjs", () => ({
+  GlobalWorkerOptions: { workerSrc: "" },
+  default: {
+    name: "VuePdfEmbed",
+    props: {
+      source: { type: String, required: true },
+      width: Number,
+      textLayer: Boolean,
+    },
+    emits: ["loaded", "loading-failed", "rendering-failed"],
+    template:
+      '<div data-pdf-engine="vue-pdf-embed"><span>PDF selected text</span></div>',
+  },
+}));
+vi.mock("@vue-office/docx", () => ({
+  default: {
+    name: "VueOfficeDocx",
+    props: ["src"],
+    emits: ["error", "cellSelected", "cellsSelected", "switchSheet"],
+    template:
+      '<div data-office-engine="docx" :data-source="src"><span>Document selected text</span></div>',
+  },
+}));
+vi.mock("@vue-office/excel", () => ({
+  default: {
+    name: "VueOfficeExcel",
+    props: ["src", "options"],
+    emits: ["error", "cellSelected", "cellsSelected", "switchSheet"],
+    template:
+      '<div data-office-engine="excel" :data-source="src" :data-legacy-xls="options?.xls || undefined" />',
+  },
+}));
+vi.mock("@vue-office/pptx", () => ({
+  default: {
+    name: "VueOfficePptx",
+    props: ["src"],
+    emits: ["error", "cellSelected", "cellsSelected", "switchSheet"],
+    template:
+      '<div data-office-engine="pptx" :data-source="src"><span>Document selected text</span></div>',
+  },
 }));
 const info = { size: 2048, modifiedAt: "2026-09-04T12:00:00Z" };
 const file = { projectId: "p1", folderId: "f1", relativePath: "src/main.py" };
@@ -26,7 +71,10 @@ function render(read: (request: unknown) => Promise<Preview>) {
   });
   Object.defineProperty(window, "pine", {
     configurable: true,
-    value: { readProjectFilePreview: read },
+    value: {
+      readProjectFilePreview: read,
+      operateProjectFile: vi.fn().mockResolvedValue(undefined),
+    },
   });
   const wrapper = mount(ProjectFilePreview, {
     props: { file },
@@ -264,7 +312,7 @@ describe("ProjectFilePreview", () => {
       .fn()
       .mockResolvedValue({ attachments: [attachment] });
     await flushPromises();
-    await wrapper.get("footer button").trigger("click");
+    await wrapper.get('footer button[aria-haspopup="menu"]').trigger("click");
     await flushPromises();
     const choices = Array.from(document.querySelectorAll('[role="menuitem"]'));
     expect(choices.map((item) => item.textContent?.trim())).toEqual([
@@ -277,7 +325,7 @@ describe("ProjectFilePreview", () => {
     expect(store.attachmentsFor(draft.id)).toEqual([attachment]);
     expect(store.attachmentsFor("session-1")).toEqual([]);
     expect(store.fallbackActiveTabId).toBe(draft.id);
-    await wrapper.get("footer button").trigger("click");
+    await wrapper.get('footer button[aria-haspopup="menu"]').trigger("click");
     await flushPromises();
     const separator = document.querySelector(
       '[data-slot="dropdown-menu-separator"]',
@@ -353,6 +401,177 @@ describe("ProjectFilePreview", () => {
     await video.trigger("error");
     expect(wrapper.text()).toContain("Unable to preview file");
   });
+
+  it("renders PDF documents with the PDF library and reports page count", async () => {
+    const wrapper = render(
+      vi.fn().mockResolvedValue({
+        ...info,
+        kind: "pdf",
+        url: "pine-project-media://preview/document",
+      }),
+    );
+    useAppearanceStore().colorScheme = "dark";
+    await flushPromises();
+    const pdfPreview = wrapper.findComponent(ProjectPdfPreview);
+    const pdf = pdfPreview.findComponent({ name: "VuePdfEmbed" });
+    expect(pdf.exists()).toBe(true);
+    expect(pdf.props()).toMatchObject({
+      source: "pine-project-media://preview/document",
+      textLayer: true,
+    });
+    expect(pdfPreview.props("inverted")).toBe(true);
+    const invertSwitch = wrapper.get('[role="switch"]');
+    expect(invertSwitch.attributes("aria-checked")).toBe("true");
+    expect(wrapper.get("footer label").text()).toBe("Invert colors");
+    const slider = wrapper.findComponent(Slider);
+    expect(slider.exists()).toBe(true);
+    expect(slider.attributes("aria-label")).toBe("Zoom");
+    slider.vm.$emit("update:modelValue", [150]);
+    await flushPromises();
+    expect(pdfPreview.props("renderZoom")).toBe(100);
+    slider.vm.$emit("valueCommit", [150]);
+    await flushPromises();
+    expect(pdfPreview.props("zoom")).toBe(150);
+    expect(pdfPreview.props("renderZoom")).toBe(150);
+    expect(wrapper.get("footer").text()).toContain("150%");
+    await invertSwitch.trigger("click");
+    expect(pdfPreview.props("inverted")).toBe(false);
+    pdf.vm.$emit("loaded", { numPages: 3 });
+    await flushPromises();
+    expect(wrapper.get("footer").text()).toContain("3 pages");
+    const pdfText = pdf.get("span").element.firstChild!;
+    selectText(pdfText, 0, pdfText, "PDF selected text".length);
+    await pdfPreview.get(".scroll-fade").trigger("pointerup");
+    expect(pdfPreview.emitted("selectionChange")?.at(-1)?.[0]).toEqual({
+      startLine: 1,
+      endLine: 1,
+      label: "Selected content",
+      text: "PDF selected text",
+    });
+    expect(wrapper.get('button[aria-haspopup="menu"]').text()).toContain(
+      "Send selection to tab",
+    );
+    await wrapper.get('[data-action="open-default"]').trigger("click");
+    expect(window.pine.operateProjectFile).toHaveBeenCalledWith({
+      action: "open",
+      target: { folderId: "f1", relativePath: "src/main.py" },
+    });
+    pdf.vm.$emit("rendering-failed", new Error("invalid PDF"));
+    await flushPromises();
+    expect(wrapper.text()).toContain("Unable to preview file");
+  });
+
+  it.each([
+    ["docx", "docx"],
+    ["xls", "excel"],
+    ["xlsx", "excel"],
+    ["pptx", "pptx"],
+  ] as const)(
+    "renders %s documents with vue-office",
+    async (format, engine) => {
+      const source = "pine-project-media://preview/" + format;
+      const wrapper = render(
+        vi.fn().mockResolvedValue({
+          ...info,
+          kind: "office",
+          format,
+          url: source,
+        }),
+      );
+      useAppearanceStore().colorScheme = "dark";
+      await vi.waitFor(() => {
+        expect(wrapper.findComponent(ProjectOfficePreview).exists()).toBe(true);
+      });
+      const officePreview = wrapper.findComponent(ProjectOfficePreview);
+      if (format === "xls" || format === "xlsx") {
+        expect(
+          officePreview.find('[data-slot="office-preview-sizer"]').exists(),
+        ).toBe(false);
+      } else {
+        expect(
+          officePreview.get('[data-slot="office-preview-sizer"]').classes(),
+        ).toContain("max-w-[var(--session-content-max-width)]");
+      }
+      expect(officePreview.props("inverted")).toBe(true);
+      const slider = wrapper.findComponent(Slider);
+      slider.vm.$emit("update:modelValue", [130]);
+      slider.vm.$emit("valueCommit", [130]);
+      await flushPromises();
+      expect(officePreview.props("zoom")).toBe(130);
+      expect(officePreview.props("renderZoom")).toBe(130);
+      const invertSwitch = wrapper.get('[role="switch"]');
+      expect(invertSwitch.attributes("aria-checked")).toBe("true");
+      await invertSwitch.trigger("click");
+      expect(officePreview.props("inverted")).toBe(false);
+      await vi.waitFor(() => {
+        const viewer = officePreview.find(`[data-office-engine="${engine}"]`);
+        expect(viewer.exists()).toBe(true);
+        expect(viewer.attributes("data-source")).toBe(source);
+        expect(viewer.attributes("data-legacy-xls")).toBe(
+          format === "xls" ? "true" : undefined,
+        );
+      });
+      if (format === "xls" || format === "xlsx") {
+        const excel = officePreview.findComponent({ name: "VueOfficeExcel" });
+        expect(excel.element.getAttribute("style") ?? "").not.toContain("zoom");
+        const options = excel.props("options") as {
+          transformData: (value: unknown) => unknown;
+        };
+        const workbook = [
+          {
+            name: "Sheet1",
+            cols: { 0: { width: 80 } },
+            styles: [{ font: { size: 10 } }],
+            rows: {
+              0: {
+                height: 20,
+                cells: { 0: { text: "Name" }, 1: { text: "Value" } },
+              },
+              1: { cells: { 0: { text: "Pine" }, 1: { text: 42 } } },
+            },
+          },
+        ];
+        options.transformData(workbook);
+        expect(workbook[0].rows[0].height).toBe(26);
+        expect(workbook[0].cols[0].width).toBe(104);
+        expect(workbook[0].styles[0].font.size).toBe(13);
+        excel.vm.$emit("cellsSelected", {
+          startRowIndex: 0,
+          startColumnIndex: 0,
+          endRowIndex: 1,
+          endColumnIndex: 1,
+        });
+        await flushPromises();
+        expect(officePreview.emitted("selectionChange")?.at(-1)?.[0]).toEqual({
+          startLine: 1,
+          endLine: 2,
+          label: "Selected content · Sheet1!A1:B2",
+          text: "Name\tValue\nPine\t42",
+        });
+      } else {
+        const documentText = officePreview.get("span").element.firstChild!;
+        selectText(
+          documentText,
+          0,
+          documentText,
+          "Document selected text".length,
+        );
+        await officePreview.get(".scroll-fade").trigger("pointerup");
+        expect(officePreview.emitted("selectionChange")?.at(-1)?.[0]).toEqual({
+          startLine: 1,
+          endLine: 1,
+          label: "Selected content",
+          text: "Document selected text",
+        });
+      }
+      expect(wrapper.get('button[aria-haspopup="menu"]').text()).toContain(
+        "Send selection to tab",
+      );
+      officePreview.vm.$emit("failed");
+      await flushPromises();
+      expect(wrapper.text()).toContain("Unable to preview file");
+    },
+  );
 
   it("pauses background video without resetting its playback position", async () => {
     const wrapper = render(

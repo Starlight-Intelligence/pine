@@ -55,6 +55,27 @@ describe("ProjectAttachmentList", () => {
     },
   );
 
+  it("shows a rendered-document location instead of source lines", () => {
+    const wrapper = mountList({
+      attachments: [
+        {
+          ...fileAttachment,
+          selection: {
+            startLine: 1,
+            endLine: 2,
+            label: "选中内容 · Sheet1!A1:B2",
+            text: "名称\t值",
+          },
+        },
+      ],
+      surface: "composer",
+    });
+
+    expect(wrapper.get('[data-slot="attachment-description"]').text()).toBe(
+      "选中内容 · Sheet1!A1:B2",
+    );
+  });
+
   it("renders image attachments with the official image variant", () => {
     const wrapper = mountList({
       attachments: [imageAttachment, fileAttachment],
