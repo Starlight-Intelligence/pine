@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { createAppI18n } from "@/app/i18n";
 import ProjectToolCallMarker from "../ProjectToolCallMarker.vue";
 
-function mountMarker(decidedBy: "judge" | "user" | null = "judge") {
+function mountMarker(decidedBy: "judge" | "user" | "sandbox" | null = "judge") {
   return mount(ProjectToolCallMarker, {
     attachTo: document.body,
     props: {
@@ -74,6 +74,22 @@ describe("ProjectToolCallDialog", () => {
     },
   );
 
+  it("labels sandbox denials as sandbox-rejected warnings", async () => {
+    const wrapper = mountMarker("sandbox");
+    expect(wrapper.findComponent(ShieldBanIcon).exists()).toBe(true);
+    expect(wrapper.findComponent(AlertCircleIcon).exists()).toBe(false);
+    await wrapper.get('button[data-slot="marker"]').trigger("click");
+    expect(document.body.textContent).toContain("沙箱拒绝");
+    const badges = document.body.querySelectorAll(
+      '[data-slot="dialog-content"] [data-slot="badge"]',
+    );
+    for (const badge of badges) {
+      expect(badge.classList).toContain("text-warning");
+      expect(badge.classList).not.toContain("text-destructive");
+    }
+    wrapper.unmount();
+  });
+
   it("keeps execution failures destructive", async () => {
     const wrapper = mountMarker(null);
     expect(wrapper.findComponent(AlertCircleIcon).exists()).toBe(true);
@@ -118,6 +134,41 @@ describe("ProjectToolCallDialog", () => {
     expect(dialogText).toContain("First paragraph\n\nSecond paragraph");
     expect(dialogText).not.toContain("\\n\\n");
     expect(dialogText).toContain("1.3 秒");
+    wrapper.unmount();
+  });
+
+  it("shows a live line count for an in-progress write", async () => {
+    const wrapper = mount(ProjectToolCallMarker, {
+      attachTo: document.body,
+      props: {
+        toolCall: {
+          id: "call-write-1",
+          name: "write",
+          status: "running",
+          input: {
+            path: "src/main.ts",
+            content: "line1\nline2\nline3",
+          },
+        },
+      },
+      global: {
+        plugins: [createAppI18n("zh-CN")],
+      },
+    });
+    const count = wrapper.get("[data-write-lines]");
+    expect(count.text()).toContain("已写入 3 行");
+    // The content argument grows as the model streams it.
+    await wrapper.setProps({
+      toolCall: {
+        ...wrapper.props("toolCall"),
+        input: {
+          path: "src/main.ts",
+          content: "line1\nline2\nline3\nline4",
+        },
+      },
+    });
+    await wrapper.vm.$nextTick();
+    expect(wrapper.get("[data-write-lines]").text()).toContain("已写入 4 行");
     wrapper.unmount();
   });
 });

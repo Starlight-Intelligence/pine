@@ -10,7 +10,7 @@ export type PineToolCallStatus = "pending" | "running" | "complete" | "error";
 
 export interface PineToolCallApproval {
   state: "reviewing" | "awaiting-user" | "approved" | "denied";
-  decidedBy?: "user" | "judge";
+  decidedBy?: "user" | "judge" | "sandbox";
   reason?: string;
 }
 

@@ -115,6 +115,17 @@ const editDiffCount = computed(() =>
     : undefined,
 );
 
+// The write tool streams its `content` argument as the model generates it, so
+// counting the newlines already in the argument shows a live "lines written"
+// progress count that climbs as the file is composed.
+const writeLineCount = computed(() => {
+  if (toolKind(props.toolCall.name) !== "write") return undefined;
+  const content = inputRecord(props.toolCall.input).content;
+  return typeof content === "string" && content
+    ? content.split("\n").length
+    : undefined;
+});
+
 const presentation = computed(() => {
   const kind = toolKind(props.toolCall.name);
   const input = inputRecord(props.toolCall.input);
@@ -262,6 +273,13 @@ const fullText = computed(() => {
           <span class="font-mono text-xs font-normal text-destructive"
             >-{{ editDiffCount.removed }}</span
           ></span
+        ><span
+          v-if="writeLineCount && !isDenied"
+          data-write-lines
+          class="ml-1 font-mono text-xs font-normal text-emerald-600 dark:text-emerald-400"
+          >{{
+            t("project.transcript.tools.writeLines", { count: writeLineCount })
+          }}</span
         ><span v-if="presentation.after">{{ presentation.after }}</span>
       </MarkerContent>
     </Marker>

@@ -1,6 +1,10 @@
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { PineAgentEvent, PineJsonValue } from "@/shared/agent";
+import {
+  SANDBOX_DENIED_MESSAGE,
+  type PineAgentEvent,
+  type PineJsonValue,
+} from "@/shared/agent";
 import type { PineContextUsage, PineSessionSummary } from "@/shared/sessions";
 import { useSessionStore } from "../session";
 
@@ -874,5 +878,70 @@ describe("session store", () => {
       decidedBy: "judge",
       reason: "Use a safer command.",
     });
+  });
+
+  it("reclassifies a sandbox-denied tool result as a denial", async () => {
+    let listener: ((event: PineAgentEvent) => void) | undefined;
+    Object.defineProperty(window, "pine", {
+      configurable: true,
+      value: {
+        onSessionEvent: vi.fn((nextListener) => {
+          listener = nextListener;
+          return () => undefined;
+        }),
+        promptSession: vi.fn().mockResolvedValue({ session }),
+      },
+    });
+    const store = useSessionStore();
+    store.connectAgentEvents();
+    await store.prompt("Run it", session.id);
+
+    listener?.({
+      type: "message-end",
+      sessionId: session.id,
+      messageId: "assistant-sandbox-denied",
+      message: {
+        role: "assistant",
+        timestamp: 1_784_000_000_000,
+        content: [
+          {
+            type: "toolCall",
+            id: "call-bash",
+            name: "bash",
+            arguments: { command: "ps" },
+          },
+        ],
+      },
+    });
+    listener?.({
+      type: "tool-start",
+      sessionId: session.id,
+      toolCallId: "call-bash",
+      toolName: "bash",
+      payload: { command: "ps" },
+    });
+    listener?.({
+      type: "tool-end",
+      sessionId: session.id,
+      toolCallId: "call-bash",
+      toolName: "bash",
+      payload: {
+        content: [
+          {
+            type: "text",
+            text: `${SANDBOX_DENIED_MESSAGE} Use privileged_bash for this operation.`,
+          },
+        ],
+      },
+      isError: true,
+    });
+
+    const block = store.messages[0]?.blocks[0];
+    expect(block?.type === "toolCall" && block.toolCall).toEqual(
+      expect.objectContaining({
+        status: "error",
+        approval: { state: "denied", decidedBy: "sandbox" },
+      }),
+    );
   });
 });

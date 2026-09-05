@@ -1,11 +1,12 @@
 import { acceptHMRUpdate, defineStore } from "pinia";
 import { ref, shallowRef } from "vue";
-import type {
-  PineAgentEvent,
-  PineApprovalAction,
-  PineApprovalMode,
-  PineApprovalTrigger,
-  PineJsonValue,
+import {
+  isSandboxDeniedPayload,
+  type PineAgentEvent,
+  type PineApprovalAction,
+  type PineApprovalMode,
+  type PineApprovalTrigger,
+  type PineJsonValue,
 } from "@/shared/agent";
 import type {
   PineContentBlock,
@@ -668,6 +669,18 @@ export const useSessionStore = defineStore("session", () => {
               ? ("error" as const)
               : ("complete" as const)
             : ("running" as const),
+        // A deterministic sandbox rejection of an ordinary bash call is a
+        // denial (warning), not a runtime execution failure (destructive).
+        ...(event.type === "tool-end" &&
+        event.isError &&
+        isSandboxDeniedPayload(event.payload)
+          ? {
+              approval: {
+                state: "denied" as const,
+                decidedBy: "sandbox" as const,
+              },
+            }
+          : {}),
         ...(event.type === "tool-start" && event.payload !== undefined
           ? { input: event.payload }
           : {}),

@@ -34,13 +34,17 @@ type StatusKey =
   | "reviewing"
   | "awaitingApproval"
   | "autoApprovalDenied"
-  | "userApprovalDenied";
+  | "userApprovalDenied"
+  | "sandboxDenied";
 
 const statusKey = computed<StatusKey>(() => {
   if (isDenied.value) {
-    return props.toolCall.approval?.decidedBy === "judge"
+    const decidedBy = props.toolCall.approval?.decidedBy;
+    return decidedBy === "judge"
       ? "autoApprovalDenied"
-      : "userApprovalDenied";
+      : decidedBy === "sandbox"
+        ? "sandboxDenied"
+        : "userApprovalDenied";
   }
   if (props.reviewing || props.toolCall.approval?.state === "reviewing") {
     return "reviewing";
@@ -68,6 +72,9 @@ const approvalKey = computed(() => {
   if (approval.state === "awaiting-user") return "awaitingApproval";
   if (approval.decidedBy === "judge") {
     return approval.state === "approved" ? "autoApproved" : "autoDenied";
+  }
+  if (approval.decidedBy === "sandbox") {
+    return "sandboxDenied";
   }
   return approval.state === "approved" ? "userApproved" : "userDenied";
 });

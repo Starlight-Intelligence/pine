@@ -43,6 +43,40 @@ export interface SetApprovalModeResult {
 
 export const APPROVAL_RESPONSE_CHANNEL = "sessions:approval-response" as const;
 
+/**
+ * Stable marker that a bash call was blocked by the project sandbox rather
+ * than failing at runtime. The renderer uses it to reclassify these calls as
+ * denials (warning) instead of execution failures (destructive).
+ */
+export const SANDBOX_DENIED_MESSAGE =
+  "The project sandbox denied this command." as const;
+
+/**
+ * True when a tool-end error payload reflects a deterministic sandbox denial.
+ * The payload shape varies (a bare message string, an object with
+ * error/message/text, or a nested `content` block like the bash result
+ * `{ content: [{ type: "text", text }] }`), so any string value inside is
+ * checked for the denial marker.
+ */
+export function isSandboxDeniedPayload(
+  payload: PineJsonValue | undefined,
+): boolean {
+  return containsDenialMarker(payload);
+}
+
+function containsDenialMarker(value: unknown): boolean {
+  if (typeof value === "string") {
+    return value.includes(SANDBOX_DENIED_MESSAGE);
+  }
+  if (Array.isArray(value)) {
+    return value.some(containsDenialMarker);
+  }
+  if (value && typeof value === "object") {
+    return Object.values(value).some(containsDenialMarker);
+  }
+  return false;
+}
+
 export type PineJsonValue =
   | boolean
   | number
