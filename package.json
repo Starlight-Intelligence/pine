@@ -2,7 +2,7 @@
   "name": "pine",
   "type": "module",
   "private": true,
-  "license": "GPL-3.0-only",
+  "license": "AGPL-3.0-or-later",
   "workspaces": [
     "apps/*",
     "packages/*"

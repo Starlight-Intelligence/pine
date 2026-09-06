@@ -24,7 +24,7 @@
     "name": "Xinyuan Weng",
     "email": "kw@kev1nweng.space"
   },
-  "license": "GPL-3.0-only",
+  "license": "AGPL-3.0-or-later",
   "dependencies": {
     "@earendil-works/pi-agent-core": "0.80.10",
     "@earendil-works/pi-ai": "0.80.10",

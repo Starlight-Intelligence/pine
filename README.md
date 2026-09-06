@@ -21,7 +21,7 @@ Pine 是这些人的桌面 harness：
 - **办公文件是一等公民**。文本、图片、视频、PDF、DOCX、XLS/XLSX、PPTX 都能在工作区内直接预览和编辑，Agent 操作的正是你看到的文件。
 - **看得见、管得住**。Agent 的每次读取、思考、工具调用和文件修改都完整呈现在会话 transcript 中；执行前可以审批、拒绝或给指引，随时中止。
 - **本地优先**。项目、会话和文件都留在你的电脑上；模型连接（API key / OAuth）由你自己配置，Pine 不做中转。
-- **界面向 Codex 这类优秀的 Agent 体验看齐**，并且完全开源（GPL-3.0-only）——这套「普通人可用的 Agent 桌面工作区」不该是闭源产品独有的。
+- **界面向 Codex 这类优秀的 Agent 体验看齐**，并且完全开源（AGPL-3.0）——这套「普通人可用的 Agent 桌面工作区」不该是闭源产品独有的。
 
 一句话概括使用方式：
 
@@ -113,4 +113,4 @@ bun run check
 
 ## License
 
-Pine is free software licensed under the [GNU General Public License v3.0 only](./LICENSE).
+Pine is free software licensed under the [GNU Affero General Public License v3.0](./LICENSE).
