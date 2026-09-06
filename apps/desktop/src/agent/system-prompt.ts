@@ -29,6 +29,18 @@ Use $TMPDIR for scratch files and quote paths, which may contain spaces. The she
 
 Project-specific instructions and reusable skills may appear later in this prompt. Follow them when relevant, while treating the user's current request as the goal to satisfy.`;
 
+/**
+ * Append low-frequency temporal context after the complete system prompt.
+ * Keeping the date to year-month avoids invalidating the prompt cache daily.
+ */
+export function systemPromptWithCurrentMonth(
+  systemPrompt: string,
+  date = new Date(),
+): string {
+  const yearMonth = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+  return `${systemPrompt}\n\n## Current time context\nThe current year and month are ${yearMonth}. Use this as approximate temporal context; do not infer an exact day from it.`;
+}
+
 export const PINE_YOLO_SYSTEM_PROMPT = `## YOLO mode
 
 YOLO mode is active. Ordinary bash is unavailable. For every shell command while this mode remains active, call privileged_bash directly.

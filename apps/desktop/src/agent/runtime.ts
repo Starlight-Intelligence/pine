@@ -44,6 +44,7 @@ import {
 } from "./protocol";
 import {
   PINE_SYSTEM_PROMPT,
+  systemPromptWithCurrentMonth,
   systemPromptForApprovalMode,
 } from "./system-prompt";
 import {
@@ -804,11 +805,15 @@ export class PineAgentRuntime {
           name: "pine-approval-mode",
           factory: (pi) => {
             pi.on("before_agent_start", (event) => {
-              const systemPrompt = systemPromptForApprovalMode(
-                event.systemPrompt,
-                live.approvalMode,
-              );
-              return systemPrompt ? { systemPrompt } : undefined;
+              const approvalSystemPrompt =
+                systemPromptForApprovalMode(
+                  event.systemPrompt,
+                  live.approvalMode,
+                ) ?? event.systemPrompt;
+              return {
+                systemPrompt:
+                  systemPromptWithCurrentMonth(approvalSystemPrompt),
+              };
             });
           },
         },
