@@ -125,7 +125,9 @@ describe("ProjectToolCallDialog", () => {
       },
     });
     const count = wrapper.get("[data-write-lines]");
-    expect(count.text()).toContain("已写入 3 行");
+    expect(count.text()).toBe("（3 行）");
+    expect(count.classes()).toContain("text-sm");
+    expect(count.classes()).not.toContain("text-xs");
     // The content argument grows as the model streams it.
     await wrapper.setProps({
       toolCall: {
@@ -137,7 +139,7 @@ describe("ProjectToolCallDialog", () => {
       },
     });
     await wrapper.vm.$nextTick();
-    expect(wrapper.get("[data-write-lines]").text()).toContain("已写入 4 行");
+    expect(wrapper.get("[data-write-lines]").text()).toBe("（4 行）");
     wrapper.unmount();
   });
 

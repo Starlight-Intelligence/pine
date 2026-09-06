@@ -387,7 +387,7 @@ export default {
       tools: {
         operationSeparator: "：",
         reviewing: "正在审核 {tool}：",
-        writeLines: "已写入 {count} 行",
+        writeLines: "（{count} 行）",
         denied: "已拒绝 {tool}：",
         awaitingApproval: "等待确认 {tool}：",
         bash: {

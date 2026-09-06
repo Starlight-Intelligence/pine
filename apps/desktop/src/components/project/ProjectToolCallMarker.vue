@@ -539,7 +539,7 @@ const fullText = computed(() => {
         ><span
           v-if="writeLineCount && !isDenied"
           data-write-lines
-          class="ml-1 font-mono text-xs font-normal text-emerald-600 dark:text-emerald-400"
+          class="ml-1 font-mono text-sm font-normal text-emerald-600 dark:text-emerald-400"
           >{{
             t("project.transcript.tools.writeLines", { count: writeLineCount })
           }}</span

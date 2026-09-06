@@ -401,7 +401,7 @@ export default {
       tools: {
         operationSeparator: ": ",
         reviewing: "Reviewing {tool}: ",
-        writeLines: "{count} lines written",
+        writeLines: "({count} lines)",
         denied: "Denied {tool}: ",
         awaitingApproval: "Awaiting your approval for this {tool}: ",
         bash: {
