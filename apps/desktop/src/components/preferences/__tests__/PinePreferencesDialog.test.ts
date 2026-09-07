@@ -19,11 +19,18 @@ const modelPickerStub = {
   template:
     '<div data-model-picker :data-open="open" :data-purpose="purpose" />',
 };
+const userProfileStub = {
+  props: ["open"],
+  emits: ["update:open"],
+  template: '<div data-user-profile-dialog :data-open="open" />',
+};
 const setSidebarVibrancy = vi.fn().mockResolvedValue({ applied: true });
 const getTinyFishCredentialStatus = vi
   .fn()
   .mockResolvedValue({ configured: false });
 const setTinyFishApiKey = vi.fn().mockResolvedValue({ configured: true });
+const getUserProfile = vi.fn();
+const setUserProfile = vi.fn().mockResolvedValue({ updated: true });
 
 function installPineApi(platform: string | undefined): void {
   const pineWindow = window as unknown as {
@@ -32,6 +39,8 @@ function installPineApi(platform: string | undefined): void {
       setSidebarVibrancy: typeof setSidebarVibrancy;
       getTinyFishCredentialStatus: typeof getTinyFishCredentialStatus;
       setTinyFishApiKey: typeof setTinyFishApiKey;
+      getUserProfile: typeof getUserProfile;
+      setUserProfile: typeof setUserProfile;
     };
   };
   if (platform === undefined) {
@@ -43,6 +52,8 @@ function installPineApi(platform: string | undefined): void {
     setSidebarVibrancy,
     getTinyFishCredentialStatus,
     setTinyFishApiKey,
+    getUserProfile,
+    setUserProfile,
   };
 }
 
@@ -61,6 +72,7 @@ function mountDialog() {
         DialogTitle: passthroughStub,
         DialogTrigger: passthroughStub,
         ModelPickerDialog: modelPickerStub,
+        UserProfileDialog: userProfileStub,
       },
     },
   });
@@ -77,6 +89,15 @@ describe("PinePreferencesDialog", () => {
     setSidebarVibrancy.mockClear();
     getTinyFishCredentialStatus.mockClear();
     setTinyFishApiKey.mockClear();
+    getUserProfile.mockReset();
+    getUserProfile.mockResolvedValue({
+      communicationStyle: "calm-professional",
+      customInstructions: "",
+      nickname: "",
+      personalDetails: "",
+      technicalBackground: "enthusiast",
+    });
+    setUserProfile.mockClear();
     getTinyFishCredentialStatus.mockResolvedValue({ configured: false });
     setTinyFishApiKey.mockResolvedValue({ configured: true });
     installPineApi(undefined);
@@ -145,6 +166,19 @@ describe("PinePreferencesDialog", () => {
     await selectButton?.trigger("click");
 
     expect(picker.attributes("data-open")).toBe("true");
+  });
+
+  it("opens the user profile editor", async () => {
+    const { wrapper } = mountDialog();
+    const editor = wrapper.get("[data-user-profile-dialog]");
+
+    expect(editor.attributes("data-open")).toBe("false");
+
+    await wrapper
+      .get('[data-testid="pine-user-profile-edit-button"]')
+      .trigger("click");
+
+    expect(editor.attributes("data-open")).toBe("true");
   });
 
   it("applies and persists language and theme selections", async () => {

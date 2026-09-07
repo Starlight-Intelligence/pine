@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   PINE_YOLO_SYSTEM_PROMPT,
   PINE_SYSTEM_PROMPT,
+  systemPromptWithUserProfile,
   systemPromptWithCurrentMonth,
   systemPromptForApprovalMode,
 } from "../system-prompt";
+import { createDefaultPineUserProfile } from "../../shared/userProfile";
 
 describe("systemPromptWithCurrentMonth", () => {
   it("appends the current year and month after the stable prompt prefix", () => {
@@ -20,6 +22,34 @@ describe("systemPromptWithCurrentMonth", () => {
     ).toBe(true);
     expect(prompt).toContain("The current year and month are 2026-09.");
     expect(prompt).not.toContain("2026-09-06");
+  });
+});
+
+describe("systemPromptWithUserProfile", () => {
+  it("adds the selected style, technical background, and user-authored context", () => {
+    const prompt = systemPromptWithUserProfile("base prompt", {
+      communicationStyle: "warm-friendly",
+      customInstructions: "Always lead with the conclusion.",
+      nickname: "小 Pine",
+      personalDetails: "正在学习桌面应用开发。",
+      technicalBackground: "professional-user",
+    });
+
+    expect(prompt).toContain("## User profile");
+    expect(prompt).toContain("Preferred name: 小 Pine");
+    expect(prompt).toContain("Always lead with the conclusion.");
+    expect(prompt).toContain("technically sophisticated solutions");
+    expect(prompt).toContain("system-level personalization preferences");
+  });
+
+  it("uses the product defaults for a new profile", () => {
+    const prompt = systemPromptWithUserProfile(
+      "base prompt",
+      createDefaultPineUserProfile(),
+    );
+
+    expect(prompt).toContain("Use concise, direct language");
+    expect(prompt).toContain("Act like a textbook when useful");
   });
 });
 

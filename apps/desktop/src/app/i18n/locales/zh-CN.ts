@@ -36,6 +36,38 @@ export default {
     tinyFishApiKeyLabel: "API 密钥",
     tinyFishApiKeyPlaceholder: "输入 TinyFish API 密钥",
     saveTinyFishApiKey: "保存密钥",
+    userProfile: "用户画像",
+    userProfileDescription: "告诉 Pine 如何称呼你，以及你希望它如何与你协作。",
+    userProfileDialogTitle: "编辑用户画像",
+    userProfileDialogDescription: "这些偏好会用于 Pine 的后续对话和工作过程。",
+    userProfileNicknameLabel: "昵称",
+    userProfileNicknamePlaceholder: "Pine 应该如何称呼你？",
+    userProfileNicknameDescription: "Pine 会在合适的时候使用这个称呼。",
+    userProfileStyleLabel: "语言风格",
+    userProfileStyleCalm: "冷静专业",
+    userProfileStyleWarm: "热情亲和",
+    userProfileStyleCalmDescription:
+      "说话简练直接，以效率和表意为中心，保持严肃、学术和强协作感。",
+    userProfileStyleWarmDescription:
+      "像一起帮忙的好朋友一样说话，保持热情，并在有帮助的前提下提供情绪价值。",
+    userProfileTechLabel: "技术背景",
+    userProfileTechGeneral: "一般用户",
+    userProfileTechEnthusiast: "爱好者",
+    userProfileTechProfessional: "专业用户",
+    userProfileTechGeneralDescription:
+      "避开不必要的专业术语，围绕目标用易懂的语言解释正在做什么；需要时帮助你做出当前最明智的决策，出错时提供简单易懂的替代方案。",
+    userProfileTechEnthusiastDescription:
+      "像一本教科书一样工作：推进任务时适度讲解关键步骤，帮助你逐渐理解 Agentic AI 的工作方式；遇到选择或限制时，尽力说明原因、清晰表达局限性，并提供可以继续尝试的替代方案。",
+    userProfileTechProfessionalDescription:
+      "省略过度解释，直接沟通复杂技术细节，提供技术上较复杂的解决方案；假设你愿意折腾，但仍选择建设性最强的最优路径。",
+    userProfileDetailsLabel: "其他个人细节",
+    userProfileDetailsPlaceholder: "例如：你的工作、兴趣、偏好或当前目标",
+    userProfileDetailsDescription: "补充这些信息可以帮助 Pine 更好地了解你。",
+    userProfileInstructionsLabel: "自定义指令",
+    userProfileInstructionsPlaceholder: "输入你希望 Pine 遵循的额外工作方式……",
+    userProfileInstructionsDescription:
+      "保存后会作为 Pine 系统提示词级别的个性化指令使用，但不能绕过安全、权限和审批规则。",
+    saveUserProfile: "保存画像",
   },
   models: {
     favorites: "收藏的模型",
@@ -460,6 +492,10 @@ export default {
     tinyFishCredentials: {
       title: "无法保存 TinyFish 密钥",
       description: "请检查系统安全凭据存储是否可用，然后重试",
+    },
+    userProfile: {
+      title: "无法保存用户画像",
+      description: "请稍后重试",
     },
     projectList: { title: "无法读取项目", description: "请稍后重试" },
     projectCreate: {

@@ -44,6 +44,7 @@ import {
 } from "./protocol";
 import {
   PINE_SYSTEM_PROMPT,
+  systemPromptWithUserProfile,
   systemPromptWithCurrentMonth,
   systemPromptForApprovalMode,
 } from "./system-prompt";
@@ -64,6 +65,7 @@ import {
   readPineAgentSettings,
   writeUtilityModelSelection,
 } from "./pineSettings";
+import { createDefaultPineUserProfile } from "../shared/userProfile";
 
 const JUDGE_TIMEOUT_MS = 60_000;
 const TITLE_TIMEOUT_MS = 30_000;
@@ -804,12 +806,19 @@ export class PineAgentRuntime {
         {
           name: "pine-approval-mode",
           factory: (pi) => {
-            pi.on("before_agent_start", (event) => {
+            pi.on("before_agent_start", async (event) => {
+              const userProfile =
+                (await readPineAgentSettings(live.agentDir)).userProfile ??
+                createDefaultPineUserProfile();
+              const personalizedSystemPrompt = systemPromptWithUserProfile(
+                event.systemPrompt,
+                userProfile,
+              );
               const approvalSystemPrompt =
                 systemPromptForApprovalMode(
-                  event.systemPrompt,
+                  personalizedSystemPrompt,
                   live.approvalMode,
-                ) ?? event.systemPrompt;
+                ) ?? personalizedSystemPrompt;
               return {
                 systemPrompt:
                   systemPromptWithCurrentMonth(approvalSystemPrompt),

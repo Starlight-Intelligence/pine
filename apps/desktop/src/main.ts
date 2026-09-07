@@ -30,6 +30,10 @@ import { AgentProcessHost } from "./main/agentProcessHost";
 import { ModelRecommendationService } from "./main/modelRecommendations";
 import { ProjectRepository } from "./main/projects/projectRepository";
 import {
+  readPineAgentSettings,
+  writePineUserProfile,
+} from "./agent/pineSettings";
+import {
   ABORT_SESSION_CHANNEL,
   APPROVAL_RESPONSE_CHANNEL,
   DEQUEUE_STEERING_CHANNEL,
@@ -93,6 +97,13 @@ import {
   type SetTinyFishApiKeyResult,
   type TinyFishCredentialStatus,
 } from "./shared/tinyfish";
+import {
+  createDefaultPineUserProfile,
+  GET_USER_PROFILE_CHANNEL,
+  SET_USER_PROFILE_CHANNEL,
+  type PineUserProfile,
+  type SetUserProfileResult,
+} from "./shared/userProfile";
 import {
   DELETE_SESSION_CHANNEL,
   LOAD_SESSION_MESSAGES_CHANNEL,
@@ -263,6 +274,7 @@ function registerAttachmentImageProtocol(): void {
 nativeTheme.themeSource = "system";
 
 let agentHost: AgentProcessHost | null = null;
+let pineAgentDirectory: string | null = null;
 const modelRecommendations = new ModelRecommendationService();
 let projectRuntimes: ProjectRuntimeRegistry | null = null;
 let projectRepository: ProjectRepository | null = null;
@@ -421,6 +433,17 @@ const SetSidebarVibrancyRequestSchema = z.object({
 const SetTinyFishApiKeyRequestSchema = z.object({
   apiKey: z.string().trim().min(1).max(4_096),
 });
+const UserProfileSchema = z.object({
+  communicationStyle: z.enum(["calm-professional", "warm-friendly"]),
+  customInstructions: z.string().max(20_000),
+  nickname: z.string().trim().max(100),
+  personalDetails: z.string().max(10_000),
+  technicalBackground: z.enum([
+    "general-user",
+    "enthusiast",
+    "professional-user",
+  ]),
+});
 const InspectAttachmentsRequestSchema = z.object({
   paths: z.array(z.string().min(1).max(4_096)).max(100),
 });
@@ -473,6 +496,13 @@ function getTinyFishCredentialStore(): TinyFishCredentialStore {
     throw new Error("TinyFish credential storage is not ready.");
   }
   return tinyFishCredentialStore;
+}
+
+function getPineAgentDirectory(): string {
+  if (!pineAgentDirectory) {
+    throw new Error("Pine agent storage is not ready.");
+  }
+  return pineAgentDirectory;
 }
 
 /** macOS dock bounce id for the pending approval attention request. */
@@ -576,6 +606,25 @@ ipcMain.handle(
   (): TinyFishCredentialStatus => ({
     configured: getTinyFishCredentialStore().isConfigured(),
   }),
+);
+
+ipcMain.handle(
+  GET_USER_PROFILE_CHANNEL,
+  async (): Promise<PineUserProfile> =>
+    (await readPineAgentSettings(getPineAgentDirectory())).userProfile ??
+    createDefaultPineUserProfile(),
+);
+
+ipcMain.handle(
+  SET_USER_PROFILE_CHANNEL,
+  async (_event, profile: unknown): Promise<SetUserProfileResult> => {
+    const parsed = UserProfileSchema.parse(profile);
+    await writePineUserProfile(
+      getPineAgentDirectory(),
+      parsed satisfies PineUserProfile,
+    );
+    return { updated: true };
+  },
 );
 
 ipcMain.handle(
@@ -1083,13 +1132,14 @@ async function initializeApp(): Promise<void> {
   );
   await tinyFishCredentialStore.load();
   agentHost = AgentProcessHost.createDefault();
+  pineAgentDirectory = path.join(app.getPath("userData"), "agent");
   projectsRootPath = path.join(app.getPath("userData"), PROJECTS_DIRECTORY);
   projectRepository = new ProjectRepository(projectsRootPath);
   registerAttachmentImageProtocol();
   registerProjectMediaProtocol();
   projectRuntimes = new ProjectRuntimeRegistry(
     agentHost,
-    path.join(app.getPath("userData"), "agent"),
+    pineAgentDirectory,
     () => tinyFishCredentialStore?.getApiKey(),
   );
   agentHost.subscribe((agentEvent) => {

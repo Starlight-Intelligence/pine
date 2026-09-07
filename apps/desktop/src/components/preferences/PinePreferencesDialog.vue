@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { handleError } from "@/app/errors/errorHandler";
-import { SettingsIcon } from "@lucide/vue";
+import { PencilIcon, SettingsIcon } from "@lucide/vue";
 import { storeToRefs } from "pinia";
 import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { isAppLocale, persistAppLocale } from "@/app/i18n";
 import ModelPickerDialog from "@/components/models/ModelPickerDialog.vue";
+import UserProfileDialog from "@/components/preferences/UserProfileDialog.vue";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -36,6 +37,7 @@ const { supportsSidebarVibrancy, themePreference } =
 const { utilitySelectedModel } = storeToRefs(modelsStore);
 const isOpen = ref(false);
 const isUtilityModelPickerOpen = ref(false);
+const isUserProfileDialogOpen = ref(false);
 const isTinyFishCredentialDialogOpen = ref(false);
 const isTinyFishCredentialConfigured = ref(false);
 const tinyFishApiKey = ref("");
@@ -179,6 +181,27 @@ function updateSidebarVibrancy(value: boolean): void {
 
         <Field orientation="horizontal">
           <div class="flex min-w-0 flex-1 flex-col gap-1">
+            <FieldTitle id="pine-user-profile-setting">
+              {{ t("preferences.userProfile") }}
+            </FieldTitle>
+            <FieldDescription>
+              {{ t("preferences.userProfileDescription") }}
+            </FieldDescription>
+          </div>
+          <Button
+            data-testid="pine-user-profile-edit-button"
+            variant="outline"
+            size="sm"
+            aria-labelledby="pine-user-profile-setting"
+            @click="isUserProfileDialogOpen = true"
+          >
+            <PencilIcon data-icon="inline-start" />
+            {{ t("common.edit") }}
+          </Button>
+        </Field>
+
+        <Field orientation="horizontal">
+          <div class="flex min-w-0 flex-1 flex-col gap-1">
             <FieldTitle id="pine-utility-model-setting">
               {{ t("preferences.utilityModel") }}
             </FieldTitle>
@@ -242,6 +265,8 @@ function updateSidebarVibrancy(value: boolean): void {
       </FieldGroup>
     </DialogContent>
   </Dialog>
+
+  <UserProfileDialog v-model:open="isUserProfileDialogOpen" />
 
   <Dialog v-model:open="isTinyFishCredentialDialogOpen">
     <DialogContent class="sm:max-w-md">

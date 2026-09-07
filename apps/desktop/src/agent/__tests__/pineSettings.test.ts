@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   readPineAgentSettings,
+  writePineUserProfile,
   writeUtilityModelSelection,
 } from "../pineSettings";
 
@@ -37,6 +38,39 @@ describe("Pine agent settings", () => {
       utilityModel: {
         providerId: "provider",
         modelId: "replacement-model",
+      },
+    });
+  });
+
+  it("preserves the utility model when saving a user profile", async () => {
+    const agentDir = await mkdtemp(
+      path.join(os.tmpdir(), "pine-agent-settings-profile-"),
+    );
+    temporaryDirectories.push(agentDir);
+
+    await writeUtilityModelSelection(agentDir, {
+      providerId: "provider",
+      modelId: "utility-model",
+    });
+    await writePineUserProfile(agentDir, {
+      communicationStyle: "warm-friendly",
+      customInstructions: "Lead with the result.",
+      nickname: "Pine user",
+      personalDetails: "Enjoys learning by doing.",
+      technicalBackground: "enthusiast",
+    });
+
+    await expect(readPineAgentSettings(agentDir)).resolves.toEqual({
+      utilityModel: {
+        providerId: "provider",
+        modelId: "utility-model",
+      },
+      userProfile: {
+        communicationStyle: "warm-friendly",
+        customInstructions: "Lead with the result.",
+        nickname: "Pine user",
+        personalDetails: "Enjoys learning by doing.",
+        technicalBackground: "enthusiast",
       },
     });
   });

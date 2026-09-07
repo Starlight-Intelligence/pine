@@ -39,6 +39,44 @@ export default {
     tinyFishApiKeyLabel: "API key",
     tinyFishApiKeyPlaceholder: "Enter your TinyFish API key",
     saveTinyFishApiKey: "Save key",
+    userProfile: "User profile",
+    userProfileDescription:
+      "Tell Pine what to call you and how you want it to work with you.",
+    userProfileDialogTitle: "Edit user profile",
+    userProfileDialogDescription:
+      "These preferences shape Pine's future conversations and work.",
+    userProfileNicknameLabel: "Nickname",
+    userProfileNicknamePlaceholder: "What should Pine call you?",
+    userProfileNicknameDescription:
+      "Pine will use this name when it is appropriate.",
+    userProfileStyleLabel: "Communication style",
+    userProfileStyleCalm: "Calm & professional",
+    userProfileStyleWarm: "Warm & friendly",
+    userProfileStyleCalmDescription:
+      "Use concise, direct language centered on efficiency and precise meaning, with a serious, academic, collaborative tone.",
+    userProfileStyleWarmDescription:
+      "Speak like a helpful good friend: be warm and enthusiastic, and offer emotional support when it is useful.",
+    userProfileTechLabel: "Technical background",
+    userProfileTechGeneral: "General user",
+    userProfileTechEnthusiast: "Enthusiast",
+    userProfileTechProfessional: "Professional user",
+    userProfileTechGeneralDescription:
+      "Avoid unnecessary jargon, explain the work in clear goal-oriented language, help choose the wisest option, and offer simple alternatives when something breaks.",
+    userProfileTechEnthusiastDescription:
+      "Act like a textbook when useful: explain key steps as you work, help the user understand how Agentic AI works, and clearly explain decisions, limitations, and alternatives they can try next.",
+    userProfileTechProfessionalDescription:
+      "Skip over-explaining, communicate complex technical details directly, and offer sophisticated solutions for a user willing to tinker while choosing the most constructive path.",
+    userProfileDetailsLabel: "Other personal details",
+    userProfileDetailsPlaceholder:
+      "For example: your work, interests, preferences, or current goals",
+    userProfileDetailsDescription:
+      "These details help Pine understand you better.",
+    userProfileInstructionsLabel: "Custom instructions",
+    userProfileInstructionsPlaceholder:
+      "Enter additional ways you want Pine to work…",
+    userProfileInstructionsDescription:
+      "Saved as system-level personalization for Pine, but cannot bypass safety, access, or approval rules.",
+    saveUserProfile: "Save profile",
   },
   models: {
     favorites: "Favorites",
@@ -475,6 +513,10 @@ export default {
       title: "Unable to save TinyFish key",
       description:
         "Check that the system secure credential store is available, then try again",
+    },
+    userProfile: {
+      title: "Unable to save user profile",
+      description: "Try again in a moment",
     },
     projectList: {
       title: "Unable to load Projects",

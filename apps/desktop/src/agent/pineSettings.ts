@@ -1,11 +1,17 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { PineUtilityModelSelection } from "../shared/models";
+import {
+  isPineCommunicationStyle,
+  isPineTechnicalBackground,
+  type PineUserProfile,
+} from "../shared/userProfile";
 
 const PINE_SETTINGS_FILE = "pine-settings.json";
 
-interface PineAgentSettings {
+export interface PineAgentSettings {
   utilityModel?: PineUtilityModelSelection;
+  userProfile?: PineUserProfile;
 }
 
 function isUtilityModelSelection(
@@ -20,6 +26,25 @@ function isUtilityModelSelection(
     selection.providerId.length > 0 &&
     typeof selection.modelId === "string" &&
     selection.modelId.length > 0
+  );
+}
+
+function isPineUserProfile(value: unknown): value is PineUserProfile {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return false;
+  }
+  const profile = value as Record<string, unknown>;
+  return (
+    typeof profile.nickname === "string" &&
+    profile.nickname.length <= 100 &&
+    typeof profile.personalDetails === "string" &&
+    profile.personalDetails.length <= 10_000 &&
+    typeof profile.customInstructions === "string" &&
+    profile.customInstructions.length <= 20_000 &&
+    typeof profile.communicationStyle === "string" &&
+    isPineCommunicationStyle(profile.communicationStyle) &&
+    typeof profile.technicalBackground === "string" &&
+    isPineTechnicalBackground(profile.technicalBackground)
   );
 }
 
@@ -41,8 +66,13 @@ export async function readPineAgentSettings(
     ) {
       return {};
     }
-    const utilityModel = (parsed as Record<string, unknown>).utilityModel;
-    return isUtilityModelSelection(utilityModel) ? { utilityModel } : {};
+    const settings = parsed as Record<string, unknown>;
+    const utilityModel = settings.utilityModel;
+    const userProfile = settings.userProfile;
+    return {
+      ...(isUtilityModelSelection(utilityModel) ? { utilityModel } : {}),
+      ...(isPineUserProfile(userProfile) ? { userProfile } : {}),
+    };
   } catch (error) {
     if (
       typeof error === "object" &&
@@ -60,11 +90,38 @@ export async function writeUtilityModelSelection(
   agentDir: string,
   utilityModel: PineUtilityModelSelection,
 ): Promise<void> {
+  await writePineAgentSettings(agentDir, { utilityModel });
+}
+
+export async function writePineUserProfile(
+  agentDir: string,
+  userProfile: PineUserProfile,
+): Promise<void> {
+  await writePineAgentSettings(agentDir, { userProfile });
+}
+
+async function writePineAgentSettings(
+  agentDir: string,
+  patch: Partial<PineAgentSettings>,
+): Promise<void> {
   await mkdir(agentDir, { recursive: true });
   const destination = settingsPath(agentDir);
+  let current: Record<string, unknown> = {};
+  try {
+    const parsed: unknown = JSON.parse(await readFile(destination, "utf8"));
+    if (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      !Array.isArray(parsed)
+    ) {
+      current = parsed as Record<string, unknown>;
+    }
+  } catch {
+    // Recreate the settings file when it is missing or malformed.
+  }
   await writeFile(
     destination,
-    `${JSON.stringify({ utilityModel } satisfies PineAgentSettings, null, 2)}\n`,
+    `${JSON.stringify({ ...current, ...patch }, null, 2)}\n`,
     "utf8",
   );
 }

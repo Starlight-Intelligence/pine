@@ -48,6 +48,7 @@ import type {
   SearchSessionsResult,
 } from "./sessions";
 import type { PineWindowApi } from "./window";
+import type { PineUserProfile, SetUserProfileResult } from "./userProfile";
 import type {
   SetTinyFishApiKeyRequest,
   SetTinyFishApiKeyResult,
@@ -152,10 +153,12 @@ export interface PineDesktopApi extends PineWindowApi {
   ) => Promise<PickAttachmentsResult>;
   listProjects: () => Promise<ListProjectsResult>;
   getModelCatalog: () => Promise<PineModelCatalog>;
+  getUserProfile: () => Promise<PineUserProfile>;
   getTinyFishCredentialStatus: () => Promise<TinyFishCredentialStatus>;
   setTinyFishApiKey: (
     request: SetTinyFishApiKeyRequest,
   ) => Promise<SetTinyFishApiKeyResult>;
+  setUserProfile: (profile: PineUserProfile) => Promise<SetUserProfileResult>;
   getPathForFile: (file: File) => string;
   inspectAttachments: (
     request: InspectAttachmentsRequest,

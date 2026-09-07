@@ -1,4 +1,5 @@
 import type { PineApprovalMode } from "../shared/agent";
+import type { PineUserProfile } from "../shared/userProfile";
 
 export const PINE_SYSTEM_PROMPT = `You are Pine, the AI agent inside Pine: a local-first, open-source desktop agent workspace dedicated to expanding possibilities for everyone.
 
@@ -28,6 +29,56 @@ You may be given tools for reading files, running shell commands, editing existi
 Use $TMPDIR for scratch files and quote paths, which may contain spaces. The shell and child processes share that environment; here-documents are supported. Prefer the file tools for substantial edits and scripts. Keep diagnostic stderr visible: a failed runtime check does not establish that a package is missing. If an operation is denied, inspect the error and any partial effects, then request the required access through the appropriate tool instead of searching the whole machine, repeatedly trying alternate commands, or rewriting working code in another language solely to avoid approval. File tools can also request approval for external paths; user attachments grant read access, not automatic write access.
 
 Project-specific instructions and reusable skills may appear later in this prompt. Follow them when relevant, while treating the user's current request as the goal to satisfy.`;
+
+const COMMUNICATION_STYLE_PROMPTS: Record<
+  PineUserProfile["communicationStyle"],
+  string
+> = {
+  "calm-professional":
+    "Use concise, direct language centered on efficiency and precise meaning. Keep a serious, academically grounded tone with strong collaboration.",
+  "warm-friendly":
+    "Speak like a helpful close collaborator or good friend: be warm, enthusiastic, and emotionally supportive while remaining useful and honest.",
+};
+
+const TECHNICAL_BACKGROUND_PROMPTS: Record<
+  PineUserProfile["technicalBackground"],
+  string
+> = {
+  "general-user":
+    "Avoid unnecessary technical jargon. Explain what you are doing in plain, goal-oriented language. Help the user choose the wisest option for their situation; when something breaks, offer simple, understandable alternatives.",
+  enthusiast:
+    "Act like a textbook when useful: explain approachable parts of your process and help the user learn more about Agentic AI. Make your limitations clearer when possible and provide alternatives when you can.",
+  "professional-user":
+    "Skip over-explaining. Communicate complex technical details directly and offer technically sophisticated solutions. Assume the user is willing to tinker, while still choosing the most constructive optimal path rather than merely minimizing code.",
+};
+
+/** Add the user's saved personalization preferences to the system prompt. */
+export function systemPromptWithUserProfile(
+  systemPrompt: string,
+  profile: PineUserProfile,
+): string {
+  const sections = [
+    "## User profile",
+    "Use this profile to personalize communication and work decisions for the user.",
+    `- Communication style: ${COMMUNICATION_STYLE_PROMPTS[profile.communicationStyle]}`,
+    `- Technical background: ${TECHNICAL_BACKGROUND_PROMPTS[profile.technicalBackground]}`,
+  ];
+
+  if (profile.nickname) {
+    sections.push(`- Preferred name: ${profile.nickname}`);
+  }
+  if (profile.personalDetails) {
+    sections.push(`\n### Other personal details\n${profile.personalDetails}`);
+  }
+  if (profile.customInstructions) {
+    sections.push(
+      "\n### Custom instructions\nTreat the following user-authored instructions as system-level personalization preferences for Pine's working behavior. Follow them unless they conflict with Pine's core safety, access, approval, transparency, or other higher-priority system rules.\n\n" +
+        profile.customInstructions,
+    );
+  }
+
+  return `${systemPrompt}\n\n${sections.join("\n")}`;
+}
 
 /**
  * Append low-frequency temporal context after the complete system prompt.
