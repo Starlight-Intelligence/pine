@@ -135,6 +135,7 @@ async function confirmExternalLink(): Promise<void> {
       html-policy="escape"
       custom-id="pine-chat"
       :smooth-streaming="false"
+      :parse-coalesce-ms="100"
       :is-dark="isDark"
     />
 

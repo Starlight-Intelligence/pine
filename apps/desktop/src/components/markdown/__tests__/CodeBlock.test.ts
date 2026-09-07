@@ -65,21 +65,56 @@ describe("CodeBlock", () => {
     wrapper.unmount();
   });
 
-  it("keeps the latest streamed source when older highlighting finishes last", async () => {
+  it("serializes stable highlights and only processes the latest queued source", async () => {
     const first = deferred();
     const second = deferred();
     vi.mocked(codeToHtml)
       .mockReturnValueOnce(first.promise)
       .mockReturnValueOnce(second.promise);
     const wrapper = mount(CodeBlock, { props: { node } });
+    await wrapper.setProps({ node: { ...node, code: "echo intermediate" } });
     await wrapper.setProps({ node: { ...node, code: "echo latest" } });
     expect(wrapper.get("pre code").element.textContent).toBe("echo latest");
+    expect(codeToHtml).toHaveBeenCalledTimes(1);
+
+    first.resolve('<pre class="shiki"><code>old result</code></pre>');
+    await flushPromises();
+    expect(codeToHtml).toHaveBeenCalledTimes(2);
+    expect(codeToHtml).toHaveBeenLastCalledWith("echo latest", {
+      lang: "bash",
+      themes: { light: "vitesse-light", dark: "vitesse-dark" },
+      defaultColor: false,
+    });
 
     second.resolve('<pre class="shiki"><code>echo latest</code></pre>');
     await flushPromises();
-    first.resolve('<pre class="shiki"><code>old result</code></pre>');
-    await flushPromises();
     expect(wrapper.get("pre.shiki code").text()).toBe("echo latest");
+    wrapper.unmount();
+  });
+
+  it("skips Shiki while a code fence streams and highlights its final source once", async () => {
+    vi.mocked(codeToHtml).mockResolvedValue(
+      '<pre class="shiki"><code>final source</code></pre>',
+    );
+    const wrapper = mount(CodeBlock, {
+      props: { node: { ...node, code: "first", loading: true } },
+    });
+
+    await wrapper.setProps({
+      node: { ...node, code: "first\nsecond", loading: true },
+    });
+    await wrapper.setProps({
+      node: { ...node, code: "final source", loading: false },
+    });
+    await flushPromises();
+
+    expect(codeToHtml).toHaveBeenCalledTimes(1);
+    expect(codeToHtml).toHaveBeenCalledWith("final source", {
+      lang: "bash",
+      themes: { light: "vitesse-light", dark: "vitesse-dark" },
+      defaultColor: false,
+    });
+    expect(wrapper.get("pre.shiki code").text()).toBe("final source");
     wrapper.unmount();
   });
 

@@ -36,29 +36,70 @@ const lineNumbers = computed(() =>
     (_, index) => index + 1,
   ),
 );
+const isLoading = computed(
+  () => props.loading === true || props.node.loading === true,
+);
 
 const html = ref("");
-watch(
-  () => [props.node.code, language.value] as const,
-  async ([code, lang], _previous, onCleanup) => {
-    let active = true;
-    onCleanup(() => {
-      active = false;
-    });
-    // Display the current source immediately while highlighting is pending.
-    html.value = "";
-    try {
-      const text = await codeToHtml(code, {
-        lang,
-        themes: { light: "vitesse-light", dark: "vitesse-dark" },
-        // Keep both palettes in the DOM so theme changes are synchronous and
-        // never clear highlighted code while another render is pending.
-        defaultColor: false,
-      });
-      if (active) html.value = text;
-    } catch {
-      // The template keeps a preformatted, Vue-escaped source fallback.
+interface HighlightRequest {
+  code: string;
+  language: string;
+}
+
+let disposed = false;
+let highlighting = false;
+let pendingHighlight: HighlightRequest | undefined;
+
+async function drainHighlightQueue(): Promise<void> {
+  if (highlighting) return;
+  highlighting = true;
+
+  try {
+    while (pendingHighlight && !disposed) {
+      const request = pendingHighlight;
+      pendingHighlight = undefined;
+
+      try {
+        const text = await codeToHtml(request.code, {
+          lang: request.language,
+          themes: { light: "vitesse-light", dark: "vitesse-dark" },
+          // Keep both palettes in the DOM so theme changes are synchronous and
+          // never clear highlighted code while another render is pending.
+          defaultColor: false,
+        });
+        if (
+          !disposed &&
+          !isLoading.value &&
+          request.code === props.node.code &&
+          request.language === language.value
+        ) {
+          html.value = text;
+        }
+      } catch {
+        // The template keeps a preformatted, Vue-escaped source fallback.
+      }
     }
+  } finally {
+    highlighting = false;
+  }
+}
+
+watch(
+  () => [props.node.code, language.value, isLoading.value] as const,
+  ([code, currentLanguage, loading]) => {
+    // An open fence changes on every stream update. Keep it as escaped plain
+    // text until it closes instead of repeatedly highlighting its full prefix.
+    html.value = "";
+    if (loading) {
+      pendingHighlight = undefined;
+      return;
+    }
+
+    // Stable updates can still arrive while an earlier highlight is running
+    // (for example, file previews). Keep one task in flight and overwrite the
+    // queued request so obsolete work never accumulates.
+    pendingHighlight = { code, language: currentLanguage };
+    void drainHighlightQueue();
   },
   { immediate: true },
 );
@@ -66,7 +107,11 @@ watch(
 const hovered = ref(false);
 const copied = ref(false);
 let resetTimer: ReturnType<typeof setTimeout> | undefined;
-onUnmounted(() => clearTimeout(resetTimer));
+onUnmounted(() => {
+  disposed = true;
+  pendingHighlight = undefined;
+  clearTimeout(resetTimer);
+});
 
 async function copyCode(): Promise<void> {
   try {
