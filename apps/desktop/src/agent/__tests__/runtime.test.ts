@@ -11,6 +11,7 @@ import {
   parseJudgeRulings,
   PineAgentRuntime,
   projectSessionDirectory,
+  recommendedCompactionReserveTokens,
   titleFromAssistantMessage,
   toolNamesForApprovalMode,
 } from "../runtime";
@@ -87,6 +88,17 @@ describe("normalizeGeneratedTitle", () => {
     ]) {
       expect(normalizeGeneratedTitle(title)).toBe(title);
     }
+  });
+});
+
+describe("recommendedCompactionReserveTokens", () => {
+  it("triggers at 80% for ordinary context windows", () => {
+    expect(recommendedCompactionReserveTokens(128_000)).toBe(25_600);
+    expect(recommendedCompactionReserveTokens(400_000)).toBe(80_000);
+  });
+
+  it("caps the trigger threshold at 400K tokens", () => {
+    expect(recommendedCompactionReserveTokens(1_000_000)).toBe(600_000);
   });
 });
 

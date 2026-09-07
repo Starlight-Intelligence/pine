@@ -3,12 +3,14 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import {
   ABORT_SESSION_CHANNEL,
+  COMPACT_SESSION_CHANNEL,
   APPROVAL_RESPONSE_CHANNEL,
   DEQUEUE_STEERING_CHANNEL,
   PROMPT_SESSION_CHANNEL,
   SET_APPROVAL_MODE_CHANNEL,
   SESSION_EVENT_CHANNEL,
   type AbortSessionResult,
+  type CompactSessionResult,
   type DequeueSteeringRequest,
   type DequeueSteeringResult,
   type PineAgentEvent,
@@ -19,6 +21,13 @@ import {
   type SetApprovalModeResult,
   type SessionEventListener,
 } from "./shared/agent";
+import {
+  GET_CONTEXT_COMPACTION_STRATEGY_CHANNEL,
+  SET_CONTEXT_COMPACTION_STRATEGY_CHANNEL,
+  type PineContextCompactionStrategy,
+  type SetContextCompactionStrategyRequest,
+  type SetContextCompactionStrategyResult,
+} from "./shared/preferences";
 import {
   INSPECT_ATTACHMENTS_CHANNEL,
   OPEN_ATTACHMENT_CHANNEL,
@@ -145,6 +154,8 @@ const pineApi: PineDesktopApi = {
     ipcRenderer.invoke(SET_SIDEBAR_VIBRANCY_CHANNEL, request),
   abortSession: (): Promise<AbortSessionResult> =>
     ipcRenderer.invoke(ABORT_SESSION_CHANNEL),
+  compactSession: (): Promise<CompactSessionResult> =>
+    ipcRenderer.invoke(COMPACT_SESSION_CHANNEL),
   dequeueSteering: (
     request: DequeueSteeringRequest,
   ): Promise<DequeueSteeringResult> =>
@@ -170,6 +181,8 @@ const pineApi: PineDesktopApi = {
     ipcRenderer.invoke(LIST_PROJECTS_CHANNEL),
   getModelCatalog: (): Promise<PineModelCatalog> =>
     ipcRenderer.invoke(GET_MODEL_CATALOG_CHANNEL),
+  getContextCompactionStrategy: (): Promise<PineContextCompactionStrategy> =>
+    ipcRenderer.invoke(GET_CONTEXT_COMPACTION_STRATEGY_CHANNEL),
   getUserProfile: (): Promise<PineUserProfile> =>
     ipcRenderer.invoke(GET_USER_PROFILE_CHANNEL),
   getTinyFishCredentialStatus: (): Promise<TinyFishCredentialStatus> =>
@@ -215,6 +228,10 @@ const pineApi: PineDesktopApi = {
     request: SetTinyFishApiKeyRequest,
   ): Promise<SetTinyFishApiKeyResult> =>
     ipcRenderer.invoke(SET_TINYFISH_API_KEY_CHANNEL, request),
+  setContextCompactionStrategy: (
+    request: SetContextCompactionStrategyRequest,
+  ): Promise<SetContextCompactionStrategyResult> =>
+    ipcRenderer.invoke(SET_CONTEXT_COMPACTION_STRATEGY_CHANNEL, request),
   setUserProfile: (profile: PineUserProfile): Promise<SetUserProfileResult> =>
     ipcRenderer.invoke(SET_USER_PROFILE_CHANNEL, profile),
   onProviderAuthEvent: (listener: ProviderAuthEventListener): (() => void) => {

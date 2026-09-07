@@ -6,6 +6,7 @@ import {
   SessionManager,
   SettingsManager,
   type AgentSession,
+  type CompactionSettings,
 } from "@earendil-works/pi-coding-agent";
 import {
   getSupportedThinkingLevels,
@@ -66,10 +67,26 @@ import {
   writeUtilityModelSelection,
 } from "./pineSettings";
 import { createDefaultPineUserProfile } from "../shared/userProfile";
+import {
+  DEFAULT_CONTEXT_COMPACTION_STRATEGY,
+  type PineContextCompactionStrategy,
+} from "../shared/preferences";
 
 const JUDGE_TIMEOUT_MS = 60_000;
 const TITLE_TIMEOUT_MS = 30_000;
 const MAX_GENERATED_TITLE_LENGTH = 60;
+export const RECOMMENDED_COMPACTION_CONTEXT_RATIO = 0.8;
+export const RECOMMENDED_COMPACTION_HARD_LIMIT = 400_000;
+
+export function recommendedCompactionReserveTokens(
+  contextWindow: number,
+): number {
+  const triggerTokens = Math.min(
+    Math.floor(contextWindow * RECOMMENDED_COMPACTION_CONTEXT_RATIO),
+    RECOMMENDED_COMPACTION_HARD_LIMIT,
+  );
+  return Math.max(0, contextWindow - triggerTokens);
+}
 
 const TITLE_TOOL: Tool = {
   name: "submit_title",
@@ -213,6 +230,8 @@ interface LiveAgentSession {
   availableToolNames: string[];
   tinyFishApiKey?: string;
   locale: "en-US" | "zh-CN";
+  contextCompactionStrategy: PineContextCompactionStrategy;
+  baseCompactionSettings: Required<CompactionSettings>;
 }
 
 export interface PineAgentRuntimeOptions {
@@ -520,6 +539,12 @@ export class PineAgentRuntime {
     return { aborted };
   }
 
+  async compact(sessionId: string): Promise<{ compacted: boolean }> {
+    const live = this.getSession(sessionId);
+    await live.session.compact();
+    return { compacted: true };
+  }
+
   setSessionApprovalMode(
     sessionId: string,
     approvalMode: PineApprovalMode,
@@ -733,6 +758,7 @@ export class PineAgentRuntime {
     if (live) {
       await live.session.setModel(model);
       live.session.setThinkingLevel(normalizedThinkingLevel);
+      this.applyContextCompactionStrategy(live, live.contextCompactionStrategy);
       await live.session.settingsManager.flush();
     } else {
       const settings = SettingsManager.create(process.cwd(), agentDir, {
@@ -760,6 +786,15 @@ export class PineAgentRuntime {
     return { updated: true };
   }
 
+  setContextCompactionStrategy(strategy: PineContextCompactionStrategy): {
+    updated: boolean;
+  } {
+    for (const live of this.liveSessions.values()) {
+      this.applyContextCompactionStrategy(live, strategy);
+    }
+    return { updated: true };
+  }
+
   private async registerSession(
     location: AgentSessionLocation,
     sessionManager: SessionManager,
@@ -781,6 +816,10 @@ export class PineAgentRuntime {
       location.agentDir,
       { projectTrusted: false },
     );
+    const baseCompactionSettings = settingsManager.getCompactionSettings();
+    const contextCompactionStrategy =
+      (await readPineAgentSettings(location.agentDir))
+        .contextCompactionStrategy ?? DEFAULT_CONTEXT_COMPACTION_STRATEGY;
     const attachedPaths = new PineAttachedPathAccess();
     await attachedPaths.grant(
       attachedPathsFromSessionEntries(sessionManager.getEntries()),
@@ -798,6 +837,8 @@ export class PineAgentRuntime {
         ? { tinyFishApiKey: location.tinyFishApiKey }
         : {}),
       locale: "en-US",
+      contextCompactionStrategy,
+      baseCompactionSettings,
     };
     const resourceLoader = new DefaultResourceLoader({
       cwd: location.cwd,
@@ -867,6 +908,7 @@ export class PineAgentRuntime {
       ),
     });
     live.session = session;
+    this.applyContextCompactionStrategy(live, contextCompactionStrategy);
     // Pine presents every staged steering message together, so inject the
     // whole batch at the next steering boundary instead of serializing turns.
     session.setSteeringMode("all");
@@ -900,6 +942,30 @@ export class PineAgentRuntime {
     return mode === "user"
       ? new UserApprovalGate(host)
       : new AutoReviewGate(host);
+  }
+
+  private applyContextCompactionStrategy(
+    live: LiveAgentSession,
+    strategy: PineContextCompactionStrategy,
+  ): void {
+    live.contextCompactionStrategy = strategy;
+    if (strategy === "passive") {
+      live.session.settingsManager.applyOverrides({
+        compaction: live.baseCompactionSettings,
+      });
+      return;
+    }
+
+    const contextWindow = live.session.model?.contextWindow;
+    live.session.settingsManager.applyOverrides({
+      compaction: {
+        ...live.baseCompactionSettings,
+        enabled: true,
+        ...(contextWindow
+          ? { reserveTokens: recommendedCompactionReserveTokens(contextWindow) }
+          : {}),
+      },
+    });
   }
 
   private setApprovalMode(
@@ -1380,6 +1446,7 @@ export class PineAgentRuntime {
             message: event.errorMessage,
           });
         }
+        this.emitContextUsage(session);
         break;
       case "auto_retry_end":
         if (!event.success) {

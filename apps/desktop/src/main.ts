@@ -31,21 +31,31 @@ import { ModelRecommendationService } from "./main/modelRecommendations";
 import { ProjectRepository } from "./main/projects/projectRepository";
 import {
   readPineAgentSettings,
+  writeContextCompactionStrategy,
   writePineUserProfile,
 } from "./agent/pineSettings";
 import {
   ABORT_SESSION_CHANNEL,
+  COMPACT_SESSION_CHANNEL,
   APPROVAL_RESPONSE_CHANNEL,
   DEQUEUE_STEERING_CHANNEL,
   PROMPT_SESSION_CHANNEL,
   SET_APPROVAL_MODE_CHANNEL,
   SESSION_EVENT_CHANNEL,
   type AbortSessionResult,
+  type CompactSessionResult,
   type DequeueSteeringResult,
   type PromptSessionResult,
   type RespondApprovalRequest,
   type SetApprovalModeResult,
 } from "./shared/agent";
+import {
+  DEFAULT_CONTEXT_COMPACTION_STRATEGY,
+  GET_CONTEXT_COMPACTION_STRATEGY_CHANNEL,
+  SET_CONTEXT_COMPACTION_STRATEGY_CHANNEL,
+  type PineContextCompactionStrategy,
+  type SetContextCompactionStrategyResult,
+} from "./shared/preferences";
 import {
   ATTACHMENT_IMAGE_PROTOCOL,
   INSPECT_ATTACHMENTS_CHANNEL,
@@ -385,6 +395,9 @@ const RespondApprovalRequestSchema = z.object({
 const SetApprovalModeRequestSchema = z.object({
   approvalMode: z.enum(["let-me-review", "auto-approve", "YOLO"]),
 });
+const SetContextCompactionStrategyRequestSchema = z.object({
+  strategy: z.enum(["passive", "recommended"]),
+});
 const LoginProviderRequestSchema = z.object({
   authType: z.enum(["api_key", "oauth"]),
   loginId: z.uuid(),
@@ -613,6 +626,27 @@ ipcMain.handle(
   async (): Promise<PineUserProfile> =>
     (await readPineAgentSettings(getPineAgentDirectory())).userProfile ??
     createDefaultPineUserProfile(),
+);
+
+ipcMain.handle(
+  GET_CONTEXT_COMPACTION_STRATEGY_CHANNEL,
+  async (): Promise<PineContextCompactionStrategy> =>
+    (await readPineAgentSettings(getPineAgentDirectory()))
+      .contextCompactionStrategy ?? DEFAULT_CONTEXT_COMPACTION_STRATEGY,
+);
+
+ipcMain.handle(
+  SET_CONTEXT_COMPACTION_STRATEGY_CHANNEL,
+  async (
+    _event,
+    request: unknown,
+  ): Promise<SetContextCompactionStrategyResult> => {
+    const { strategy } =
+      SetContextCompactionStrategyRequestSchema.parse(request);
+    await writeContextCompactionStrategy(getPineAgentDirectory(), strategy);
+    await projectRuntimes?.setContextCompactionStrategy(strategy);
+    return { updated: true };
+  },
 );
 
 ipcMain.handle(
@@ -1071,6 +1105,12 @@ ipcMain.handle(
   ABORT_SESSION_CHANNEL,
   async (event): Promise<AbortSessionResult> =>
     getProjectRuntimes().abort(event.sender.id),
+);
+
+ipcMain.handle(
+  COMPACT_SESSION_CHANNEL,
+  async (event): Promise<CompactSessionResult> =>
+    getProjectRuntimes().compact(event.sender.id),
 );
 
 ipcMain.handle(

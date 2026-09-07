@@ -31,6 +31,10 @@ const getTinyFishCredentialStatus = vi
 const setTinyFishApiKey = vi.fn().mockResolvedValue({ configured: true });
 const getUserProfile = vi.fn();
 const setUserProfile = vi.fn().mockResolvedValue({ updated: true });
+const getContextCompactionStrategy = vi.fn().mockResolvedValue("recommended");
+const setContextCompactionStrategy = vi.fn().mockResolvedValue({
+  updated: true,
+});
 
 function installPineApi(platform: string | undefined): void {
   const pineWindow = window as unknown as {
@@ -41,6 +45,8 @@ function installPineApi(platform: string | undefined): void {
       setTinyFishApiKey: typeof setTinyFishApiKey;
       getUserProfile: typeof getUserProfile;
       setUserProfile: typeof setUserProfile;
+      getContextCompactionStrategy: typeof getContextCompactionStrategy;
+      setContextCompactionStrategy: typeof setContextCompactionStrategy;
     };
   };
   if (platform === undefined) {
@@ -54,6 +60,8 @@ function installPineApi(platform: string | undefined): void {
     setTinyFishApiKey,
     getUserProfile,
     setUserProfile,
+    getContextCompactionStrategy,
+    setContextCompactionStrategy,
   };
 }
 
@@ -98,6 +106,8 @@ describe("PinePreferencesDialog", () => {
       technicalBackground: "enthusiast",
     });
     setUserProfile.mockClear();
+    getContextCompactionStrategy.mockClear();
+    setContextCompactionStrategy.mockClear();
     getTinyFishCredentialStatus.mockResolvedValue({ configured: false });
     setTinyFishApiKey.mockResolvedValue({ configured: true });
     installPineApi(undefined);
@@ -196,6 +206,30 @@ describe("PinePreferencesDialog", () => {
     expect(document.documentElement.classList.contains("dark")).toBe(true);
     expect(window.localStorage.getItem(THEME_PREFERENCE_STORAGE_KEY)).toBe(
       "dark",
+    );
+  });
+
+  it("loads the recommended compaction strategy and persists changes", async () => {
+    installPineApi("linux");
+    const { wrapper } = mountDialog();
+    await vi.waitFor(() =>
+      expect(getContextCompactionStrategy).toHaveBeenCalled(),
+    );
+    const group = wrapper
+      .findAllComponents(ToggleGroup)
+      .find(
+        (candidate) =>
+          candidate.attributes("aria-labelledby") ===
+          "pine-context-compaction-strategy-setting",
+      );
+
+    expect(group?.props("modelValue")).toBe("recommended");
+    group?.vm.$emit("update:modelValue", "passive");
+
+    await vi.waitFor(() =>
+      expect(setContextCompactionStrategy).toHaveBeenCalledWith({
+        strategy: "passive",
+      }),
     );
   });
 

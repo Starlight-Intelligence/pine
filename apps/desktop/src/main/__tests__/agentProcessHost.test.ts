@@ -151,6 +151,27 @@ describe("AgentProcessHost", () => {
     });
   });
 
+  it("sends typed manual compaction requests", async () => {
+    const { host, process } = createHost();
+    const pending = host.compact("session-1");
+    await vi.waitFor(() => expect(process.requests).toHaveLength(1));
+
+    expect(process.requests[0]).toEqual(
+      expect.objectContaining({
+        type: "session:compact",
+        sessionId: "session-1",
+      }),
+    );
+    process.emit("message", {
+      type: "response",
+      id: process.requests[0].id,
+      ok: true,
+      result: { compacted: true },
+    });
+
+    await expect(pending).resolves.toEqual({ compacted: true });
+  });
+
   it("sends the dedicated utility model selection to the worker", async () => {
     const { host, process } = createHost();
     const selection = { providerId: "provider", modelId: "utility-model" };

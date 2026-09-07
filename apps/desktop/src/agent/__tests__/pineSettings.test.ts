@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   readPineAgentSettings,
+  writeContextCompactionStrategy,
   writePineUserProfile,
   writeUtilityModelSelection,
 } from "../pineSettings";
@@ -19,6 +20,20 @@ afterEach(async () => {
 });
 
 describe("Pine agent settings", () => {
+  it("persists the context compaction strategy", async () => {
+    const agentDir = await mkdtemp(
+      path.join(os.tmpdir(), "pine-agent-settings-compaction-"),
+    );
+    temporaryDirectories.push(agentDir);
+
+    await writeContextCompactionStrategy(agentDir, "recommended");
+    await writeContextCompactionStrategy(agentDir, "passive");
+
+    await expect(readPineAgentSettings(agentDir)).resolves.toEqual({
+      contextCompactionStrategy: "passive",
+    });
+  });
+
   it("persists the utility model independently from session settings", async () => {
     const agentDir = await mkdtemp(
       path.join(os.tmpdir(), "pine-agent-settings-"),

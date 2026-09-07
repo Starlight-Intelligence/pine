@@ -1,5 +1,6 @@
 import type {
   AbortSessionResult,
+  CompactSessionResult,
   DequeueSteeringRequest,
   DequeueSteeringResult,
   PromptSessionRequest,
@@ -9,6 +10,11 @@ import type {
   SetApprovalModeResult,
   SessionEventListener,
 } from "./agent";
+import type {
+  PineContextCompactionStrategy,
+  SetContextCompactionStrategyRequest,
+  SetContextCompactionStrategyResult,
+} from "./preferences";
 import type {
   InspectAttachmentsRequest,
   OpenAttachmentRequest,
@@ -135,6 +141,7 @@ export interface PineDesktopApi extends PineWindowApi {
     request: ProjectFilePreviewRequest,
   ) => Promise<ProjectFilePreview>;
   abortSession: () => Promise<AbortSessionResult>;
+  compactSession: () => Promise<CompactSessionResult>;
   dequeueSteering: (
     request: DequeueSteeringRequest,
   ) => Promise<DequeueSteeringResult>;
@@ -153,11 +160,15 @@ export interface PineDesktopApi extends PineWindowApi {
   ) => Promise<PickAttachmentsResult>;
   listProjects: () => Promise<ListProjectsResult>;
   getModelCatalog: () => Promise<PineModelCatalog>;
+  getContextCompactionStrategy: () => Promise<PineContextCompactionStrategy>;
   getUserProfile: () => Promise<PineUserProfile>;
   getTinyFishCredentialStatus: () => Promise<TinyFishCredentialStatus>;
   setTinyFishApiKey: (
     request: SetTinyFishApiKeyRequest,
   ) => Promise<SetTinyFishApiKeyResult>;
+  setContextCompactionStrategy: (
+    request: SetContextCompactionStrategyRequest,
+  ) => Promise<SetContextCompactionStrategyResult>;
   setUserProfile: (profile: PineUserProfile) => Promise<SetUserProfileResult>;
   getPathForFile: (file: File) => string;
   inspectAttachments: (

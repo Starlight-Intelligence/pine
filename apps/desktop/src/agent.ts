@@ -37,6 +37,9 @@ async function handleRequest(request: AgentWorkerRequest): Promise<void> {
     case "session:abort":
       result = await runtime.abort(request.sessionId);
       break;
+    case "session:compact":
+      result = await runtime.compact(request.sessionId);
+      break;
     case "session:dequeue-steering":
       result = await runtime.dequeueSteering(
         request.sessionId,
@@ -102,6 +105,9 @@ async function handleRequest(request: AgentWorkerRequest): Promise<void> {
       break;
     case "runtime:set-tinyfish-api-key":
       result = runtime.setTinyFishApiKey(request.tinyFishApiKey);
+      break;
+    case "runtime:set-context-compaction-strategy":
+      result = runtime.setContextCompactionStrategy(request.strategy);
       break;
   }
 

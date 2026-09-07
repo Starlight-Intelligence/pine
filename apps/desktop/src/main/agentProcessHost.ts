@@ -2,6 +2,7 @@ import { utilityProcess } from "electron";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import type { PineApprovalMode } from "../shared/agent";
+import type { PineContextCompactionStrategy } from "../shared/preferences";
 import type {
   LoginProviderRequest,
   PineModelCatalog,
@@ -31,6 +32,7 @@ interface AgentProcess {
 
 export interface AgentHost {
   abort(sessionId: string): Promise<{ aborted: boolean }>;
+  compact(sessionId: string): Promise<{ compacted: boolean }>;
   dequeueSteering(
     sessionId: string,
     message: string,
@@ -82,6 +84,9 @@ export interface AgentHost {
     selection: PineUtilityModelSelection,
   ): Promise<{ updated: boolean }>;
   setTinyFishApiKey(apiKey: string | undefined): Promise<{ updated: boolean }>;
+  setContextCompactionStrategy(
+    strategy: PineContextCompactionStrategy,
+  ): Promise<{ updated: boolean }>;
   subscribe(listener: (event: PineRuntimeEvent) => void): () => void;
   /** Resolve a pending user-approval round trip inside the agent worker. */
   respondApproval(requestId: string, decision: GateDecision): void;
@@ -151,6 +156,10 @@ export class AgentProcessHost implements AgentHost {
 
   abort(sessionId: string): Promise<{ aborted: boolean }> {
     return this.request({ type: "session:abort", sessionId });
+  }
+
+  compact(sessionId: string): Promise<{ compacted: boolean }> {
+    return this.request({ type: "session:compact", sessionId });
   }
 
   dequeueSteering(
@@ -249,6 +258,15 @@ export class AgentProcessHost implements AgentHost {
     return this.request({
       type: "runtime:set-tinyfish-api-key",
       ...(apiKey ? { tinyFishApiKey: apiKey } : {}),
+    });
+  }
+
+  setContextCompactionStrategy(
+    strategy: PineContextCompactionStrategy,
+  ): Promise<{ updated: boolean }> {
+    return this.request({
+      type: "runtime:set-context-compaction-strategy",
+      strategy,
     });
   }
 

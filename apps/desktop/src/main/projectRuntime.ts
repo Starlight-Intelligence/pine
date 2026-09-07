@@ -4,6 +4,7 @@ import type {
   ProjectEntry,
 } from "../shared/projectFiles";
 import type { PineProject, PineProjectFolder } from "../shared/projects";
+import type { PineContextCompactionStrategy } from "../shared/preferences";
 import type {
   PineApprovalMode,
   PromptSessionRequest,
@@ -357,6 +358,12 @@ export class ProjectRuntimeRegistry {
     return { ...result, sessionId };
   }
 
+  async compact(webContentsId: number): Promise<{ compacted: boolean }> {
+    const runtime = this.get(webContentsId);
+    if (runtime.session.status !== "active") return { compacted: false };
+    return this.agentHost.compact(runtime.session.summary.id);
+  }
+
   async dequeueSteering(
     webContentsId: number,
     message: string,
@@ -424,6 +431,16 @@ export class ProjectRuntimeRegistry {
 
   setTinyFishApiKey(apiKey: string | undefined): Promise<{ updated: boolean }> {
     return this.agentHost.setTinyFishApiKey(apiKey);
+  }
+
+  setContextCompactionStrategy(
+    strategy: PineContextCompactionStrategy,
+  ): Promise<{ updated: boolean }> {
+    const hasActiveSession = [...this.runtimes.values()].some(
+      (runtime) => runtime.session.status === "active",
+    );
+    if (!hasActiveSession) return Promise.resolve({ updated: true });
+    return this.agentHost.setContextCompactionStrategy(strategy);
   }
 
   ownerOfSession(sessionId: string): number | undefined {

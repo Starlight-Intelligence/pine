@@ -24,6 +24,11 @@ export default {
     themeSystem: "System",
     themeLight: "Light",
     themeDark: "Dark",
+    contextCompactionStrategy: "Context compaction strategy",
+    contextCompactionStrategyDescription:
+      "Recommended settings compact at 80% context usage, capped at 400K tokens.",
+    contextCompactionPassive: "Passive compaction",
+    contextCompactionRecommended: "Use recommended settings",
     sidebarVibrancy: "Sidebar blur",
     sidebarVibrancyDescription:
       "Render the sidebar with the native macOS blur material",
@@ -302,6 +307,8 @@ export default {
         utilization: "Utilization",
         cost: "Conversation cost",
         unknown: "Unknown",
+        compactNow: "Compact context now",
+        compacting: "Compacting…",
       },
     },
     approvalRequest: {
@@ -507,6 +514,14 @@ export default {
     },
   },
   errors: {
+    contextCompaction: {
+      title: "Unable to compact context",
+      description: "Try again in a moment",
+    },
+    contextCompactionStrategy: {
+      title: "Unable to update context compaction strategy",
+      description: "Try again in a moment",
+    },
     utilityModel: {
       title: "Unable to update utility model",
       description: "Check the model provider and try again",

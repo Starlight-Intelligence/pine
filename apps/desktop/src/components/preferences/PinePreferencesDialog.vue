@@ -28,6 +28,11 @@ import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useModelsStore } from "@/stores/models";
 import { isThemePreference, useAppearanceStore } from "@/stores/appearance";
+import {
+  DEFAULT_CONTEXT_COMPACTION_STRATEGY,
+  isPineContextCompactionStrategy,
+  type PineContextCompactionStrategy,
+} from "@/shared/preferences";
 
 const { locale, t } = useI18n();
 const appearanceStore = useAppearanceStore();
@@ -42,6 +47,10 @@ const isTinyFishCredentialDialogOpen = ref(false);
 const isTinyFishCredentialConfigured = ref(false);
 const tinyFishApiKey = ref("");
 const isSavingTinyFishApiKey = ref(false);
+const contextCompactionStrategy = ref<PineContextCompactionStrategy>(
+  DEFAULT_CONTEXT_COMPACTION_STRATEGY,
+);
+const isSavingContextCompactionStrategy = ref(false);
 const canSaveTinyFishApiKey = computed(
   () => tinyFishApiKey.value.trim().length > 0 && !isSavingTinyFishApiKey.value,
 );
@@ -50,11 +59,52 @@ watch(isOpen, (open) => {
   if (!open) return;
   void modelsStore.load();
   void loadTinyFishCredentialStatus();
+  void loadContextCompactionStrategy();
 });
 
 onMounted(() => {
   void loadTinyFishCredentialStatus();
+  void loadContextCompactionStrategy();
 });
+
+async function loadContextCompactionStrategy(): Promise<void> {
+  if (typeof window.pine?.getContextCompactionStrategy !== "function") return;
+  try {
+    contextCompactionStrategy.value =
+      await window.pine.getContextCompactionStrategy();
+  } catch (error) {
+    handleError(error, {
+      id: "context-compaction-strategy-load",
+      title: t("errors.contextCompactionStrategy.title"),
+      description: t("errors.contextCompactionStrategy.description"),
+    });
+  }
+}
+
+async function updateContextCompactionStrategy(value: unknown): Promise<void> {
+  if (
+    !isPineContextCompactionStrategy(value) ||
+    value === contextCompactionStrategy.value ||
+    isSavingContextCompactionStrategy.value
+  ) {
+    return;
+  }
+  const previous = contextCompactionStrategy.value;
+  contextCompactionStrategy.value = value;
+  isSavingContextCompactionStrategy.value = true;
+  try {
+    await window.pine.setContextCompactionStrategy({ strategy: value });
+  } catch (error) {
+    contextCompactionStrategy.value = previous;
+    handleError(error, {
+      id: "context-compaction-strategy-save",
+      title: t("errors.contextCompactionStrategy.title"),
+      description: t("errors.contextCompactionStrategy.description"),
+    });
+  } finally {
+    isSavingContextCompactionStrategy.value = false;
+  }
+}
 
 async function loadTinyFishCredentialStatus(): Promise<void> {
   if (typeof window.pine?.getTinyFishCredentialStatus !== "function") return;
@@ -175,6 +225,33 @@ function updateSidebarVibrancy(value: boolean): void {
             </ToggleGroupItem>
             <ToggleGroupItem value="dark">
               {{ t("preferences.themeDark") }}
+            </ToggleGroupItem>
+          </ToggleGroup>
+        </Field>
+
+        <Field orientation="horizontal">
+          <div class="flex min-w-0 flex-1 flex-col gap-1">
+            <FieldTitle id="pine-context-compaction-strategy-setting">
+              {{ t("preferences.contextCompactionStrategy") }}
+            </FieldTitle>
+            <FieldDescription>
+              {{ t("preferences.contextCompactionStrategyDescription") }}
+            </FieldDescription>
+          </div>
+          <ToggleGroup
+            type="single"
+            variant="outline"
+            size="sm"
+            :disabled="isSavingContextCompactionStrategy"
+            :model-value="contextCompactionStrategy"
+            aria-labelledby="pine-context-compaction-strategy-setting"
+            @update:model-value="updateContextCompactionStrategy"
+          >
+            <ToggleGroupItem value="passive">
+              {{ t("preferences.contextCompactionPassive") }}
+            </ToggleGroupItem>
+            <ToggleGroupItem value="recommended">
+              {{ t("preferences.contextCompactionRecommended") }}
             </ToggleGroupItem>
           </ToggleGroup>
         </Field>

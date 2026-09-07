@@ -1,19 +1,23 @@
 <script setup lang="ts">
 import { storeToRefs } from "pinia";
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
+import { handleError } from "@/app/errors/errorHandler";
 import { Button } from "@/components/ui/button";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { Separator } from "@/components/ui/separator";
+import { Spinner } from "@/components/ui/spinner";
 import { formatTokenCount } from "@/lib/format-token-count";
 import { useSessionStore } from "@/stores/session";
 
 const { t } = useI18n();
 const sessionStore = useSessionStore();
-const { contextUsage: usage } = storeToRefs(sessionStore);
+const { activeSession, contextUsage: usage } = storeToRefs(sessionStore);
+const isCompacting = ref(false);
 
 const RING_RADIUS = 8;
 const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
@@ -64,6 +68,22 @@ const costText = computed(() =>
     ? `$${usage.value.cost.toFixed(4)}`
     : t("project.composer.contextUsage.unknown"),
 );
+
+async function compactContext(): Promise<void> {
+  if (!activeSession.value || isCompacting.value) return;
+  isCompacting.value = true;
+  try {
+    await sessionStore.compactContext();
+  } catch (error) {
+    handleError(error, {
+      id: "context-compaction-manual",
+      title: t("errors.contextCompaction.title"),
+      description: t("errors.contextCompaction.description"),
+    });
+  } finally {
+    isCompacting.value = false;
+  }
+}
 </script>
 
 <template>
@@ -139,6 +159,22 @@ const costText = computed(() =>
           <dd class="font-medium tabular-nums">{{ row.value }}</dd>
         </div>
       </dl>
+      <Separator />
+      <Button
+        data-testid="compact-context-button"
+        type="button"
+        variant="outline"
+        size="sm"
+        :disabled="!activeSession || isCompacting"
+        @click="compactContext"
+      >
+        <Spinner v-if="isCompacting" data-icon="inline-start" />
+        {{
+          isCompacting
+            ? t("project.composer.contextUsage.compacting")
+            : t("project.composer.contextUsage.compactNow")
+        }}
+      </Button>
     </PopoverContent>
   </Popover>
 </template>

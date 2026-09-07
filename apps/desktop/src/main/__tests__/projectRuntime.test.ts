@@ -22,6 +22,7 @@ const sessionSummary: PineSessionSummary = {
 function createAgentHost(): AgentHost {
   return {
     abort: vi.fn().mockResolvedValue({ aborted: false }),
+    compact: vi.fn().mockResolvedValue({ compacted: true }),
     dequeueSteering: vi.fn().mockResolvedValue({ removed: false }),
     createSession: vi.fn().mockResolvedValue({ session: sessionSummary }),
     disposeSession: vi.fn().mockResolvedValue({ disposed: true }),
@@ -33,6 +34,7 @@ function createAgentHost(): AgentHost {
     selectModel: vi.fn().mockResolvedValue({ disposed: true }),
     selectUtilityModel: vi.fn().mockResolvedValue({ updated: true }),
     setTinyFishApiKey: vi.fn().mockResolvedValue({ updated: true }),
+    setContextCompactionStrategy: vi.fn().mockResolvedValue({ updated: true }),
     openSession: vi.fn().mockResolvedValue({ session: sessionSummary }),
     prompt: vi.fn().mockResolvedValue({
       accepted: true,

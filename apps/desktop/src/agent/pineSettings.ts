@@ -2,6 +2,10 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { PineUtilityModelSelection } from "../shared/models";
 import {
+  isPineContextCompactionStrategy,
+  type PineContextCompactionStrategy,
+} from "../shared/preferences";
+import {
   isPineCommunicationStyle,
   isPineTechnicalBackground,
   type PineUserProfile,
@@ -10,6 +14,7 @@ import {
 const PINE_SETTINGS_FILE = "pine-settings.json";
 
 export interface PineAgentSettings {
+  contextCompactionStrategy?: PineContextCompactionStrategy;
   utilityModel?: PineUtilityModelSelection;
   userProfile?: PineUserProfile;
 }
@@ -69,7 +74,11 @@ export async function readPineAgentSettings(
     const settings = parsed as Record<string, unknown>;
     const utilityModel = settings.utilityModel;
     const userProfile = settings.userProfile;
+    const contextCompactionStrategy = settings.contextCompactionStrategy;
     return {
+      ...(isPineContextCompactionStrategy(contextCompactionStrategy)
+        ? { contextCompactionStrategy }
+        : {}),
       ...(isUtilityModelSelection(utilityModel) ? { utilityModel } : {}),
       ...(isPineUserProfile(userProfile) ? { userProfile } : {}),
     };
@@ -98,6 +107,13 @@ export async function writePineUserProfile(
   userProfile: PineUserProfile,
 ): Promise<void> {
   await writePineAgentSettings(agentDir, { userProfile });
+}
+
+export async function writeContextCompactionStrategy(
+  agentDir: string,
+  contextCompactionStrategy: PineContextCompactionStrategy,
+): Promise<void> {
+  await writePineAgentSettings(agentDir, { contextCompactionStrategy });
 }
 
 async function writePineAgentSettings(

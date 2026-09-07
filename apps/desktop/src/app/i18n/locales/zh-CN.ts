@@ -23,6 +23,11 @@ export default {
     themeSystem: "跟随系统",
     themeLight: "浅色",
     themeDark: "深色",
+    contextCompactionStrategy: "上下文压缩策略",
+    contextCompactionStrategyDescription:
+      "推荐设置会在上下文达到 80% 时压缩，并将触发上限限制在 400K Token。",
+    contextCompactionPassive: "消极压缩",
+    contextCompactionRecommended: "使用推荐设置",
     sidebarVibrancy: "侧栏模糊效果",
     sidebarVibrancyDescription: "使用 macOS 原生模糊材质渲染侧栏",
     utilityModel: "标题生成和自动批准模型",
@@ -284,6 +289,8 @@ export default {
         utilization: "占用率",
         cost: "对话花费",
         unknown: "未知",
+        compactNow: "立即压缩上下文",
+        compacting: "正在压缩……",
       },
     },
     approvalRequest: {
@@ -487,6 +494,14 @@ export default {
     },
   },
   errors: {
+    contextCompaction: {
+      title: "无法压缩上下文",
+      description: "请稍后重试",
+    },
+    contextCompactionStrategy: {
+      title: "无法更新上下文压缩策略",
+      description: "请稍后重试",
+    },
     utilityModel: {
       title: "无法更新专用模型",
       description: "请检查模型服务后重试",

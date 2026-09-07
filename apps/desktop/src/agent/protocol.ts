@@ -13,6 +13,7 @@ import type {
   ProviderLoginResult,
 } from "../shared/models";
 import type { PineContextUsage, PineSessionSummary } from "../shared/sessions";
+import type { PineContextCompactionStrategy } from "../shared/preferences";
 
 export interface AgentFolderGrant {
   access: "read-only" | "read-write";
@@ -68,6 +69,11 @@ export type AgentWorkerRequest =
   | {
       id: string;
       type: "session:abort";
+      sessionId: string;
+    }
+  | {
+      id: string;
+      type: "session:compact";
       sessionId: string;
     }
   | {
@@ -145,6 +151,11 @@ export type AgentWorkerRequest =
       type: "runtime:set-tinyfish-api-key";
       /** Undefined clears the in-memory key and hides network tools. */
       tinyFishApiKey?: string;
+    }
+  | {
+      id: string;
+      type: "runtime:set-context-compaction-strategy";
+      strategy: PineContextCompactionStrategy;
     };
 
 export type AgentWorkerRequestInput = AgentWorkerRequest extends infer TRequest
@@ -170,6 +181,7 @@ export type AgentWorkerResult =
   | ProviderLoginResult
   | { accepted: boolean }
   | { aborted: boolean }
+  | { compacted: boolean }
   | { message?: string; removed: boolean }
   | { cancelled: boolean }
   | { disposed: boolean }

@@ -440,6 +440,12 @@ export const useSessionStore = defineStore("session", () => {
     await window.pine.abortSession();
   }
 
+  async function compactContext(): Promise<boolean> {
+    if (!currentSessionId) return false;
+    const result = await window.pine.compactSession();
+    return result.compacted;
+  }
+
   async function dequeueSteering(message: string): Promise<string | undefined> {
     const result = await window.pine.dequeueSteering({ message });
     return result.removed ? result.message : undefined;
@@ -857,6 +863,7 @@ export const useSessionStore = defineStore("session", () => {
     activeSession,
     abort,
     connectAgentEvents,
+    compactContext,
     contextUsage,
     deleteSession,
     dequeueSteering,
