@@ -10,6 +10,7 @@ import {
 } from "@/shared/agent";
 import type {
   PineContentBlock,
+  PineCompactionStatus,
   PineContextUsage,
   PineSessionSummary,
   PineTextMessage,
@@ -112,6 +113,24 @@ function eventUpdateType(value: PineJsonValue): string | undefined {
     return undefined;
   }
   return typeof value.type === "string" ? value.type : undefined;
+}
+
+function compactionMessage(
+  compactionId: string,
+  status: PineCompactionStatus,
+): PineTranscriptMessage {
+  return {
+    createdAt: new Date().toISOString(),
+    id: `compaction-${compactionId}`,
+    role: "assistant",
+    status: status === "running" ? "streaming" : "complete",
+    blocks: [
+      {
+        type: "compaction",
+        compaction: { id: compactionId, status },
+      },
+    ],
+  };
 }
 
 export const useSessionStore = defineStore("session", () => {
@@ -616,6 +635,40 @@ export const useSessionStore = defineStore("session", () => {
       contextUsage.value = usage;
       const cached = sessionCache.get(event.sessionId);
       if (cached) cached.contextUsage = usage;
+      return;
+    }
+    if (
+      (event.type === "compaction-start" || event.type === "compaction-end") &&
+      currentSessionId === event.sessionId
+    ) {
+      const status: PineCompactionStatus =
+        event.type === "compaction-start" ? "running" : event.status;
+      const messageIndex = messages.value.findIndex((message) =>
+        message.blocks.some(
+          (block) =>
+            block.type === "compaction" &&
+            block.compaction.id === event.compactionId,
+        ),
+      );
+      const previous =
+        messageIndex >= 0 ? messages.value[messageIndex] : undefined;
+      const nextMessage = previous
+        ? {
+            ...previous,
+            status:
+              status === "running"
+                ? ("streaming" as const)
+                : ("complete" as const),
+            blocks: [
+              {
+                type: "compaction" as const,
+                compaction: { id: event.compactionId, status },
+              },
+            ],
+          }
+        : compactionMessage(event.compactionId, status);
+      if (messageIndex < 0) messages.value.push(nextMessage);
+      else messages.value[messageIndex] = nextMessage;
       return;
     }
     if (

@@ -105,6 +105,23 @@ function textMessages(entries: SessionTreeEntry[]): PineTextMessage[] {
   const toolOwners = new Map<string, PineTextMessage>();
 
   for (const entry of entries) {
+    if (entry.type === "compaction") {
+      messages.push({
+        createdAt: new Date(entry.timestamp).toISOString(),
+        id: `compaction-${entry.id}`,
+        role: "assistant",
+        blocks: [
+          {
+            type: "compaction",
+            compaction: {
+              id: entry.id,
+              status: "complete",
+            },
+          },
+        ],
+      });
+      continue;
+    }
     if (entry.type !== "message") continue;
     const entryMessage = entry.message;
     if (

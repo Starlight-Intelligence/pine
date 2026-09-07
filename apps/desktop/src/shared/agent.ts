@@ -139,6 +139,17 @@ export type PineAgentEvent =
       cost: number;
     }
   | {
+      type: "compaction-start";
+      sessionId: string;
+      compactionId: string;
+    }
+  | {
+      type: "compaction-end";
+      sessionId: string;
+      compactionId: string;
+      status: "complete" | "error" | "aborted";
+    }
+  | {
       type: "steering-queue";
       sessionId: string;
       messages: string[];

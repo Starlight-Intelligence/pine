@@ -301,6 +301,58 @@ describe("ProjectSessionService", () => {
     }
   });
 
+  it("restores completed compaction markers from session history", async () => {
+    const rootPath = await createTemporaryProjectData();
+    const options = serviceOptions(rootPath);
+    await mkdir(options.cwd, { recursive: true });
+    const environment = new NodeExecutionEnv({ cwd: options.cwd });
+    const repository = new JsonlSessionRepo({
+      fs: environment,
+      sessionsRoot: options.sessionsRoot,
+    });
+    const session = await repository.create({ cwd: options.cwd });
+    await session.appendMessage({
+      role: "user",
+      content: "A long conversation",
+      timestamp: Date.now(),
+    });
+    const entries = await session.getEntries();
+    const firstMessage = entries.find((entry) => entry.type === "message");
+    if (!firstMessage) throw new Error("Expected a user message entry.");
+    await session.appendCompaction(
+      "The earlier conversation was summarized.",
+      firstMessage.id,
+      25_000,
+    );
+    const metadata = await session.getMetadata();
+    const service = await ProjectSessionService.create(options);
+
+    try {
+      const result = await service.loadMessages(metadata.id);
+
+      expect(result.messages).toEqual([
+        expect.objectContaining({
+          blocks: [{ type: "text", text: "A long conversation" }],
+        }),
+        expect.objectContaining({
+          id: expect.stringMatching(/^compaction-/),
+          blocks: [
+            {
+              type: "compaction",
+              compaction: {
+                id: expect.any(String),
+                status: "complete",
+              },
+            },
+          ],
+        }),
+      ]);
+    } finally {
+      await service.dispose();
+      await environment.cleanup();
+    }
+  });
+
   it("deletes a session and removes it from search", async () => {
     const rootPath = await createTemporaryProjectData();
     const options = serviceOptions(rootPath);

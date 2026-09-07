@@ -1,12 +1,46 @@
 import { mount } from "@vue/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createAppI18n } from "@/app/i18n";
+import ProjectCompactionMarker from "../ProjectCompactionMarker.vue";
 import ProjectThinkingMarker from "../ProjectThinkingMarker.vue";
 import ProjectToolCallMarker from "../ProjectToolCallMarker.vue";
 
 describe("project transcript markers", () => {
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it("shimmers while compacting and settles after compaction", async () => {
+    const wrapper = mount(ProjectCompactionMarker, {
+      props: {
+        compaction: { id: "compaction-1", status: "running" },
+      },
+      global: { plugins: [createAppI18n("zh-CN")] },
+    });
+
+    expect(wrapper.get('[data-slot="marker-content"]').text()).toBe(
+      "正在压缩上下文",
+    );
+    expect(wrapper.get('[data-slot="marker-content"]').classes()).toContain(
+      "shimmer",
+    );
+    expect(wrapper.get('[data-slot="marker"]').attributes("aria-live")).toBe(
+      "polite",
+    );
+
+    await wrapper.setProps({
+      compaction: { id: "compaction-1", status: "complete" },
+    });
+
+    expect(wrapper.get('[data-slot="marker-content"]').text()).toBe(
+      "已压缩上下文",
+    );
+    expect(wrapper.get('[data-slot="marker-content"]').classes()).not.toContain(
+      "shimmer",
+    );
+    expect(wrapper.get('[data-slot="marker"]').attributes("aria-live")).toBe(
+      undefined,
+    );
   });
 
   it("shows a stable elapsed-time summary and expands streaming thinking", async () => {

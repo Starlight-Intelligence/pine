@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createPinia, setActivePinia } from "pinia";
 import { createAppI18n } from "@/app/i18n";
 import type { PineTranscriptMessage } from "@/stores/session";
+import ProjectCompactionMarker from "../ProjectCompactionMarker.vue";
 import ProjectErrorMarker from "../ProjectErrorMarker.vue";
 import ProjectTranscriptMessage from "../ProjectTranscriptMessage.vue";
 import ProjectToolCallGroup from "../ProjectToolCallGroup.vue";
@@ -140,6 +141,24 @@ describe("ProjectTranscriptMessage", () => {
     expect(marker.get('[data-slot="marker-content"]').text()).toBe(
       "错误: Provider request failed",
     );
+  });
+
+  it("renders compaction markers in the assistant transcript", () => {
+    const wrapper = mountMessage({
+      createdAt: "2026-08-26T00:00:00.000Z",
+      id: "assistant-compaction",
+      role: "assistant",
+      status: "streaming",
+      blocks: [
+        {
+          type: "compaction",
+          compaction: { id: "compaction-1", status: "running" },
+        },
+      ],
+    });
+
+    expect(wrapper.findComponent(ProjectCompactionMarker).exists()).toBe(true);
+    expect(wrapper.text()).toContain("正在压缩上下文");
   });
 
   it("folds consecutive tool calls into a step group", () => {

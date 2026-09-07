@@ -338,6 +338,12 @@ export default {
         minutes: "{minutes}m {seconds}s",
         seconds: "{value}s",
       },
+      compaction: {
+        running: "Compacting context",
+        complete: "Context compacted",
+        error: "Context compaction failed",
+        aborted: "Context compaction canceled",
+      },
       toolSteps: {
         bash: {
           active: "Running {count} commands",

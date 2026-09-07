@@ -507,6 +507,60 @@ describe("session store", () => {
     ]);
   });
 
+  it("tracks compaction progress in the transcript", async () => {
+    let listener: ((event: PineAgentEvent) => void) | undefined;
+    Object.defineProperty(window, "pine", {
+      configurable: true,
+      value: {
+        onSessionEvent: vi.fn((nextListener) => {
+          listener = nextListener;
+          return () => undefined;
+        }),
+        promptSession: vi.fn().mockResolvedValue({ session }),
+      },
+    });
+    const store = useSessionStore();
+    store.connectAgentEvents();
+    await store.prompt("Keep working");
+
+    listener?.({
+      type: "compaction-start",
+      sessionId: session.id,
+      compactionId: "compaction-1",
+    });
+    expect(store.messages).toEqual([
+      expect.objectContaining({
+        id: "compaction-compaction-1",
+        status: "streaming",
+        blocks: [
+          {
+            type: "compaction",
+            compaction: { id: "compaction-1", status: "running" },
+          },
+        ],
+      }),
+    ]);
+
+    listener?.({
+      type: "compaction-end",
+      sessionId: session.id,
+      compactionId: "compaction-1",
+      status: "complete",
+    });
+    expect(store.messages[0]).toEqual(
+      expect.objectContaining({
+        id: "compaction-compaction-1",
+        status: "complete",
+        blocks: [
+          {
+            type: "compaction",
+            compaction: { id: "compaction-1", status: "complete" },
+          },
+        ],
+      }),
+    );
+  });
+
   it("tracks thinking completion and tool execution by call id", async () => {
     vi.useFakeTimers();
     try {

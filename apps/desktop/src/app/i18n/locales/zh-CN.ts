@@ -318,6 +318,12 @@ export default {
         minutes: "{minutes} 分 {seconds} 秒",
         seconds: "{value} 秒",
       },
+      compaction: {
+        running: "正在压缩上下文",
+        complete: "已压缩上下文",
+        error: "上下文压缩失败",
+        aborted: "已中止上下文压缩",
+      },
       toolSteps: {
         bash: {
           active: "正在运行 {count} 条命令",

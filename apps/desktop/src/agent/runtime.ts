@@ -392,6 +392,7 @@ export function titleFromAssistantMessage(
 
 export class PineAgentRuntime {
   private readonly activeMessageIds = new Map<string, string>();
+  private readonly activeCompactionIds = new Map<string, string>();
   private readonly liveSessions = new Map<string, LiveAgentSession>();
   private readonly modelRuntimes = new Map<string, Promise<ModelRuntime>>();
   private readonly loginControllers = new Map<string, AbortController>();
@@ -539,6 +540,7 @@ export class PineAgentRuntime {
 
     this.liveSessions.delete(sessionId);
     this.activeMessageIds.delete(sessionId);
+    this.activeCompactionIds.delete(sessionId);
     for (const [requestId, pending] of this.pendingApprovals) {
       if (pending.sessionId !== sessionId) continue;
       this.pendingApprovals.delete(requestId);
@@ -1344,7 +1346,32 @@ export class PineAgentRuntime {
           isError: event.isError,
         });
         break;
+      case "compaction_start": {
+        const compactionId = randomUUID();
+        this.activeCompactionIds.set(sessionId, compactionId);
+        this.options.emit({
+          type: "compaction-start",
+          sessionId,
+          compactionId,
+        });
+        break;
+      }
       case "compaction_end":
+        {
+          const compactionId =
+            this.activeCompactionIds.get(sessionId) ?? randomUUID();
+          this.activeCompactionIds.delete(sessionId);
+          this.options.emit({
+            type: "compaction-end",
+            sessionId,
+            compactionId,
+            status: event.result
+              ? "complete"
+              : event.aborted
+                ? "aborted"
+                : "error",
+          });
+        }
         if (!event.aborted && !event.result && event.errorMessage) {
           this.options.emit({
             type: "session-error",

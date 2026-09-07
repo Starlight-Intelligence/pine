@@ -13,6 +13,7 @@ import {
 } from "@/shared/sessions";
 import type { PineTranscriptMessage } from "@/stores/session";
 import ProjectAttachmentList from "./ProjectAttachmentList.vue";
+import ProjectCompactionMarker from "./ProjectCompactionMarker.vue";
 import ProjectErrorMarker from "./ProjectErrorMarker.vue";
 import ProjectThinkingMarker from "./ProjectThinkingMarker.vue";
 import ProjectToolCallGroup from "./ProjectToolCallGroup.vue";
@@ -118,6 +119,12 @@ const renderItems = computed<RenderItem[]>(() => {
           <ProjectErrorMarker
             v-else-if="item.kind === 'block' && item.block.type === 'error'"
             :error="item.block.error"
+          />
+          <ProjectCompactionMarker
+            v-else-if="
+              item.kind === 'block' && item.block.type === 'compaction'
+            "
+            :compaction="item.block.compaction"
           />
           <ProjectToolCallMarker
             v-else-if="item.kind === 'toolCall'"

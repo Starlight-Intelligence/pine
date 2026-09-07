@@ -25,6 +25,13 @@ export interface PineToolCall {
   durationMs?: number;
 }
 
+export type PineCompactionStatus = "running" | "complete" | "error" | "aborted";
+
+export interface PineCompaction {
+  id: string;
+  status: PineCompactionStatus;
+}
+
 export interface PineSessionError {
   message: string;
 }
@@ -34,6 +41,7 @@ export type PineContentBlock =
   | { type: "attachments"; attachments: PineAttachment[] }
   | { type: "thinking"; thinking: string }
   | { type: "toolCall"; toolCall: PineToolCall }
+  | { type: "compaction"; compaction: PineCompaction }
   | { type: "error"; error: PineSessionError };
 
 export interface PineTextMessage {
