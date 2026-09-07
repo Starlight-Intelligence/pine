@@ -1,9 +1,12 @@
 <script lang="ts">
 // Register the shadcn-style code block once at module load (not per-instance,
 // which would re-register on every mount).
-import { setCustomComponents } from "markstream-vue";
+import { enableKatex, setCustomComponents } from "markstream-vue";
 import CodeBlock from "./CodeBlock.vue";
 import MarkdownTable from "./MarkdownTable.vue";
+import "katex/dist/katex.min.css";
+
+enableKatex();
 
 setCustomComponents("pine-chat", {
   code_block: CodeBlock,
@@ -44,6 +47,7 @@ defineProps<{
 // do not track a `.dark` ancestor), so drive it from the app's color scheme.
 const { colorScheme } = storeToRefs(useAppearanceStore());
 const isDark = computed(() => colorScheme.value === "dark");
+const markdownParseOptions = { streamParse: "auto" } as const;
 const { t } = useI18n();
 const pendingExternalUrl = ref<string>();
 
@@ -132,6 +136,7 @@ async function confirmExternalLink(): Promise<void> {
       :content="source"
       :nodes="nodes"
       :final="final"
+      :parse-options="markdownParseOptions"
       html-policy="escape"
       custom-id="pine-chat"
       :smooth-streaming="false"

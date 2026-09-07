@@ -61,6 +61,58 @@ describe("MarkdownContent", () => {
     ]);
   });
 
+  it("renders inline and display LaTeX with KaTeX", async () => {
+    // markstream intentionally falls back to text for its async inline-math
+    // component in NODE_ENV=test. Exercise the production loader for this
+    // integration test so both renderer paths are covered.
+    vi.stubEnv("NODE_ENV", "production");
+    const wrapper = mountMarkdown({
+      source:
+        "$e^{i\\pi} + 1 = 0$\n\n$$\n\\int_0^1 x^2 \\, dx = \\frac{1}{3}\n$$",
+      final: true,
+    });
+
+    try {
+      await vi.waitFor(() => {
+        expect(
+          wrapper
+            .get('[data-markstream-math="inline"] .katex-mathml annotation')
+            .text(),
+        ).toBe("e^{i\\pi} + 1 = 0");
+        expect(
+          wrapper
+            .find('[data-markstream-math="block"] .katex-display')
+            .exists(),
+        ).toBe(true);
+      });
+    } finally {
+      wrapper.unmount();
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("settles an incomplete streamed formula when the message finishes", async () => {
+    const wrapper = mountMarkdown({
+      source: "$$\n\\frac{1}{",
+      final: false,
+    });
+
+    expect(wrapper.find('[data-markstream-math="block"] .katex').exists()).toBe(
+      false,
+    );
+
+    await wrapper.setProps({
+      source: "$$\n\\frac{1}{2}\n$$",
+      final: true,
+    });
+    await vi.waitFor(() => {
+      expect(
+        wrapper.find('[data-markstream-math="block"] .katex-display').exists(),
+      ).toBe(true);
+    });
+    wrapper.unmount();
+  });
+
   it("escapes raw HTML so it is never rendered as an element", () => {
     const wrapper = mountMarkdown(
       '<script data-test="unsafe">alert(1)</script>',
