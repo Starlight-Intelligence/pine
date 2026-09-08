@@ -460,5 +460,6 @@ export const RULING_TOOL: Tool = {
 };
 
 export function normalizeCommand(command: string): string {
-  return command.replace(/\s+/g, " ").trim();
+  // Shell whitespace is syntax and may also be quoted data or heredoc content.
+  return command;
 }

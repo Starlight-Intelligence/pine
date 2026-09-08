@@ -16,10 +16,10 @@ import { createMacOsBashSandboxProfile } from "../bash-sandbox";
 import type { ToolGate } from "../gate";
 import {
   createPineToolDefinitions,
-  matchSandboxDenial,
+  hasPermissionDiagnostic,
   PineAttachedPathAccess,
   PineToolAccessPolicy,
-  SandboxDeniedError,
+  SandboxCommandPermissionError,
 } from "../tools";
 
 function createFakeGate(
@@ -131,6 +131,25 @@ describe("PineToolAccessPolicy", () => {
     await expect(policy.authorize(outside, "read")).rejects.toThrow(
       "outside the folders shared with Pine",
     );
+  });
+
+  it("combines overlapping grants independently of their order", async () => {
+    const { readWrite } = await createFixture();
+    const child = path.join(readWrite, "nested");
+    await mkdir(child);
+    const grants = [
+      { path: readWrite, access: "read-only" as const },
+      { path: child, access: "read-write" as const },
+    ];
+    for (const folders of [grants, [...grants].reverse()]) {
+      const policy = await PineToolAccessPolicy.create(child, folders);
+      await expect(policy.authorize(child, "write")).resolves.toBe(
+        await realpath(child),
+      );
+      await expect(policy.authorize(readWrite, "write")).rejects.toThrow(
+        "read-only",
+      );
+    }
   });
 
   it("resolves symlinks before checking folder boundaries", async () => {
@@ -435,13 +454,49 @@ describe("createPineToolDefinitions", () => {
         );
       });
 
+      it("preserves successful diagnostic output and nonzero exit status", async () => {
+        const { run } = await setup();
+        await expect(
+          run("printf 'permission denied\\n'; exit 0"),
+        ).resolves.toBeDefined();
+        await expect(run("exit 141")).rejects.toThrow("141");
+        await expect(
+          run("printf 'permission denied\\n' >&2; exit 1"),
+        ).rejects.toThrow("may be a sandbox restriction");
+      });
+
+      it("stops a child that ignores SIGTERM on timeout", async () => {
+        const { location } = await setup();
+        const tools = await createPineToolDefinitions(location);
+        const bash = tools.find((tool) => tool.name === "bash")!;
+        await expect(
+          bash.execute(
+            "timeout",
+            {
+              command: "trap '' TERM; while true; do /bin/sleep 1; done",
+              description: "test timeout",
+              timeout: 0.2,
+            },
+            undefined,
+            undefined,
+            undefined as never,
+          ),
+        ).rejects.toThrow("timed out");
+      });
+
       it("runs the system developer-tool launcher with native temporary storage", async () => {
         const selected = await realpath("/var/select/developer_dir").catch(
           () => null,
         );
         if (!selected) return;
-        const { run } = await setup();
-        const result = await run(
+        vi.stubEnv("TMPDIR", "/private/tmp");
+        let runtime: Awaited<ReturnType<typeof setup>>;
+        try {
+          runtime = await setup();
+        } finally {
+          vi.unstubAllEnvs();
+        }
+        const result = await runtime.run(
           `/usr/bin/python3 -c 'import os; print("python-ok"); print(os.environ["TMPDIR"])'`,
         );
         expect(result.content).toEqual(
@@ -450,6 +505,9 @@ describe("createPineToolDefinitions", () => {
               text: expect.stringContaining("python-ok"),
             }),
           ]),
+        );
+        expect(JSON.stringify(result.content)).not.toMatch(
+          /Operation not permitted|couldn't create cache file/,
         );
       });
 
@@ -580,34 +638,36 @@ describe("createPineToolDefinitions", () => {
     },
   );
 
-  describe("matchSandboxDenial", () => {
-    it("recognizes every denial dialect seen in real sandbox runs", () => {
-      expect(matchSandboxDenial("zsh:1: operation not permitted: ps")).toBe(
-        true,
-      );
+  describe("hasPermissionDiagnostic", () => {
+    it("recognizes permission diagnostics without assigning their source", () => {
       expect(
-        matchSandboxDenial(
-          "_LSOpenURLsWithCompletionHandler() failed for the application /System/Applications/Music.app with error -54.",
-        ),
+        hasPermissionDiagnostic("zsh:1: operation not permitted: ps"),
       ).toBe(true);
       expect(
-        matchSandboxDenial(
+        hasPermissionDiagnostic(
+          "_LSOpenURLsWithCompletionHandler() failed for the application /System/Applications/Music.app with error -54.",
+        ),
+      ).toBe(false);
+      expect(
+        hasPermissionDiagnostic(
           "sandbox_extension_issue_file failed for /System/Library/CoreServices/System Events.app: 1 (Operation not permitted)",
         ),
       ).toBe(true);
       expect(
-        matchSandboxDenial(
+        hasPermissionDiagnostic(
           "32:44: execution error: Music got an error: Application isn’t running. (-600)",
         ),
-      ).toBe(true);
+      ).toBe(false);
       expect(
-        matchSandboxDenial(
+        hasPermissionDiagnostic(
           "40:83: execution error: File permission error. (-54)",
         ),
       ).toBe(true);
-      expect(matchSandboxDenial("Error: EACCES: access denied")).toBe(true);
+      expect(hasPermissionDiagnostic("Error: EACCES: access denied")).toBe(
+        true,
+      );
       expect(
-        matchSandboxDenial(
+        hasPermissionDiagnostic(
           "Reason: tried: '/opt/local/lib/libncurses.6.dylib' (blocked by sandbox)",
         ),
       ).toBe(true);
@@ -615,9 +675,9 @@ describe("createPineToolDefinitions", () => {
 
     it("ignores ordinary command failures", () => {
       expect(
-        matchSandboxDenial("cat: missing.txt: No such file or directory"),
+        hasPermissionDiagnostic("cat: missing.txt: No such file or directory"),
       ).toBe(false);
-      expect(matchSandboxDenial("Application isn’t running. (-601)")).toBe(
+      expect(hasPermissionDiagnostic("Application isn’t running. (-601)")).toBe(
         false,
       );
     });
@@ -648,7 +708,7 @@ describe("createPineToolDefinitions", () => {
   );
 
   it.runIf(process.platform === "darwin" && !process.env.CODEX_SANDBOX)(
-    "reports denied command segments even when a later command exits zero",
+    "preserves denial diagnostics when a later command exits zero",
     async () => {
       const { location } = await createFixture();
       const gate = createFakeGate();
@@ -670,7 +730,13 @@ describe("createPineToolDefinitions", () => {
             undefined,
             undefined as never,
           ),
-        ).rejects.toThrow("Use privileged_bash");
+        ).resolves.toMatchObject({
+          content: [
+            expect.objectContaining({
+              text: expect.stringContaining("Operation not permitted"),
+            }),
+          ],
+        });
         expect(gate.reviewDenial).not.toHaveBeenCalled();
       } finally {
         target.kill("SIGKILL");
@@ -679,7 +745,7 @@ describe("createPineToolDefinitions", () => {
   );
 
   it.runIf(process.platform === "darwin" && !process.env.CODEX_SANDBOX)(
-    "directs sandboxed AppleScript failures to privileged bash",
+    "preserves application failures without automatic native replay",
     async () => {
       const { location } = await createFixture();
       const gate = createFakeGate();
@@ -687,9 +753,8 @@ describe("createPineToolDefinitions", () => {
       const bash = tools.find((tool) => tool.name === "bash");
       if (!bash) throw new Error("Bash tool was not registered.");
 
-      // A tell block to a live system service fails with -600 inside the
-      // sandbox; the widened signature must produce the explicit fallback
-      // rather than depending on Finder's wording.
+      // Application-specific error codes are not verified sandbox evidence.
+      // Preserve the failure; native access always needs an explicit new call.
       await expect(
         bash.execute(
           "apple-events",
@@ -702,7 +767,7 @@ describe("createPineToolDefinitions", () => {
           undefined,
           undefined as never,
         ),
-      ).rejects.toThrow("Use privileged_bash");
+      ).rejects.toThrow();
 
       expect(gate.reviewDenial).not.toHaveBeenCalled();
     },
@@ -1124,8 +1189,91 @@ describe("createPineToolDefinitions", () => {
   );
 
   it("carries the captured output as review evidence", () => {
-    const error = new SandboxDeniedError("zsh:1: operation not permitted: ps");
+    const error = new SandboxCommandPermissionError(
+      "zsh:1: operation not permitted: ps",
+    );
     expect(error.outputTail).toContain("operation not permitted");
+  });
+
+  it("does not execute a privileged call cancelled while approval was pending", async () => {
+    const { location, outside } = await createFixture();
+    const controller = new AbortController();
+    const gate = createFakeGate({
+      reviewPrivilegedCall: () => {
+        controller.abort();
+        return Promise.resolve({ kind: "allow" });
+      },
+    });
+    const tools = await createPineToolDefinitions(location, gate);
+    const privileged = tools.find((tool) => tool.name === "privileged_bash")!;
+    const target = path.join(outside, "cancelled");
+    await expect(
+      privileged.execute(
+        "cancelled",
+        {
+          command: `touch ${JSON.stringify(target)}`,
+          description: "cancelled native call",
+        },
+        controller.signal,
+        undefined,
+        undefined as never,
+      ),
+    ).rejects.toThrow("aborted");
+    await expect(readFile(target)).rejects.toThrow();
+  });
+
+  it("fails closed when manual review has no approval gate", async () => {
+    const { location, readWrite } = await createFixture();
+    const tools = await createPineToolDefinitions({
+      ...location,
+      approvalMode: "let-me-review",
+    });
+    for (const [name, params] of [
+      [
+        "bash",
+        { command: "printf unexpected", description: "must require approval" },
+      ],
+      [
+        "write",
+        { path: path.join(readWrite, "unexpected"), content: "unexpected" },
+      ],
+    ] as const) {
+      const tool = tools.find((candidate) => candidate.name === name)!;
+      await expect(
+        tool.execute(
+          "missing-gate",
+          params,
+          undefined,
+          undefined,
+          undefined as never,
+        ),
+      ).rejects.toThrow("without an approval gate");
+    }
+  });
+
+  it("preserves native TMPDIR after privileged approval", async () => {
+    const { location } = await createFixture();
+    const gate = createFakeGate();
+    vi.stubEnv("TMPDIR", "/private/tmp");
+    try {
+      const tools = await createPineToolDefinitions(location, gate);
+      const privileged = tools.find((tool) => tool.name === "privileged_bash")!;
+      const result = await privileged.execute(
+        "native-env",
+        {
+          command: 'printf "%s" "$TMPDIR"',
+          description: "inspect native temp",
+        },
+        undefined,
+        undefined,
+        undefined as never,
+      );
+      expect(result.content).toEqual([
+        expect.objectContaining({ text: "/private/tmp" }),
+      ]);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it("YOLO mode lets file tools bypass shared-folder restrictions", async () => {

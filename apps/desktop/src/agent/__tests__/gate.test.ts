@@ -180,7 +180,7 @@ describe("AutoReviewGate", () => {
     );
   });
 
-  it("records session-scope approvals as normalized allowlist entries", async () => {
+  it("records session-scope approvals by exact command bytes", async () => {
     const { host, mocks } = createHost(() =>
       Promise.resolve({ verdict: "allow", scope: "session" }),
     );
@@ -192,11 +192,15 @@ describe("AutoReviewGate", () => {
       toolCallId: "t1",
       command: "rm    -rf   build",
     });
-    expect(gate.isApprovedCommand("rm -rf build")).toBe(true);
+    expect(gate.isApprovedCommand("rm -rf build")).toBe(false);
+    expect(gate.isApprovedCommand("rm    -rf   build")).toBe(true);
 
     mocks.judge.mockClear();
     await expect(
-      gate.reviewBashCommand({ toolCallId: "t2", command: "rm -rf build" }),
+      gate.reviewBashCommand({
+        toolCallId: "t2",
+        command: "rm    -rf   build",
+      }),
     ).resolves.toEqual({ kind: "allow" });
     expect(mocks.judge).not.toHaveBeenCalled();
   });
@@ -338,7 +342,7 @@ describe("AutoReviewGate", () => {
 });
 
 describe("normalizeCommand", () => {
-  it("collapses whitespace", () => {
-    expect(normalizeCommand("  echo   'a  b'  ")).toBe("echo 'a b'");
+  it("preserves shell syntax and quoted data", () => {
+    expect(normalizeCommand("  echo   'a  b'  ")).toBe("  echo   'a  b'  ");
   });
 });

@@ -1,7 +1,8 @@
 # Agent 执行环境
 
-Pine 的普通 shell 是具备明确数据边界的本地开发环境。策略集中在
-`apps/desktop/src/agent/bash-sandbox.ts`，环境变量集中在 `bash-env.ts`。
+Pine 的普通 shell 是具备明确数据边界的本地开发环境。权限策略集中在
+`apps/desktop/src/agent/tool-access-policy.ts`，Seatbelt profile 在 `bash-sandbox.ts`，
+受限进程执行在 `bash-execution.ts`，环境变量与平台发现集中在 `bash-env.ts`。
 不要按失败命令不断新增工具专属绕行逻辑。
 
 ## 能力划分
@@ -17,13 +18,31 @@ Pine 的普通 shell 是具备明确数据边界的本地开发环境。策略�
   前缀作为只读运行时树授权，覆盖启动器与其分离的动态库；用户 HOME 中的
   pyenv、nvm、uv 等工具链仍需共享目录或 `privileged_bash`。
 - **临时存储**：项目临时目录供 shell、子进程和文件工具共用。macOS 的用户临时目录
-  也属于运行环境，可读写；系统服务可能用原生 API 定位它而不遵循 TMPDIR。
+  也属于运行环境，可读写；通过 `getconf DARWIN_USER_TEMP_DIR` 获取并 realpath 校验，
+  不通过受 TMPDIR 影响的 os.tmpdir() 猜测。系统服务可能不遵循 TMPDIR。
   该目录可能含其他应用的临时数据，因此它不是项目间隔离的存储。
   不开放全局 `/tmp`，非 macOS 或不在 `/private/var/folders` 下的回退值不隐式授权。
 - **原生能力**：应用控制、外部文件操作等使用现有审批工具。普通 bash 不自动重放失败命令，
   因为命令失败前可能已产生部分副作用。
 
-## 环境契约
+## 审批与执行契约
+
+`privileged_bash` 每次审批通过后直接使用原生执行器，不添加 Pine Seatbelt profile。
+Auto Approve 与 Let Me Review 只是审批来源不同；两者批准后都保留宿主环境，和 YOLO
+使用同一原生执行路径。PATH 仍补全登录路径与项目 node_modules/.bin。
+它不会绕过 macOS TCC、Unix 权限、宿主继承的外部沙箱，也不会移除命令自己创建的沙箱。
+拒绝审批的错误明确标注“命令未启动”，不得当成命令运行结果或环境诊断。
+
+普通 bash 只返回实际退出状态；输出中的权限错误只能提示可能的原因，不能证明由哪个
+权限层拒绝。退出 0 的命令保留原始诊断，不因打印错误文字被改成失败；退出 141
+也不隐式改成成功。失败调用绝不自动原生重放。超时和取消先终止进程组，再强制结束；
+退出后后台子进程持有管道时只有限等待输出，不无限挂起。
+
+文件授权是可叠加的 grant：任一包含路径的 read-write grant 都能授权写入；read-only
+表示只增加读权限，不是覆盖其他 grant 的显式 deny。文件工具与 shell 使用同一语义。
+需要不可覆盖的保护目录时，应新增明确的 deny 模型，不能依赖目录排列顺序。
+
+## 普通 bash 环境契约
 
 保留实际 HOME 和登录 PATH，传入最小环境变量集合；不隐式开放用户配置和凭据。
 TMPDIR 指向项目临时目录，zsh 的 TMPPREFIX 同样指向其中，保证 here-doc 正常工作。
@@ -47,3 +66,9 @@ Bun 中整个环境表却为空，随后模型全盘搜索输出文件并反复�
 原生回归包含空格路径、here-doc → Bun → TMPDIR 文件落盘、系统 Python 启动，
 以及祖先目录可列举但兄弟文件不可读、只读目录不可写、符号链接不能越界。
 外层沙箱不能嵌套 Seatbelt，相关测试需在允许启动 Pine 自身沙箱的环境运行。
+
+## 2026-09-08 审计
+
+完整发现、剩余风险与第三方后端选择见 [沙箱审计](architecture/sandbox-audit.md)。
+临时目录回归在外层无沙箱、`TMPDIR=/private/tmp` 的环境中先复现失败，再验证修复；
+不是把失败测试跳过或归因于不可复现的“嵌套环境”。

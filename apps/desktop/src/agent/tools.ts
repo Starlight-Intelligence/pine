@@ -1,9 +1,6 @@
-import type { ChildProcess } from "node:child_process";
-import { spawn } from "node:child_process";
 import { constants } from "node:fs";
 import {
   access,
-  lstat,
   mkdir,
   open,
   readFile,
@@ -20,184 +17,41 @@ import {
   createReadToolDefinition,
   createWriteToolDefinition,
   defineTool,
-  type BashOperations,
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import type { Static } from "typebox";
 import type { AgentSessionLocation } from "./protocol";
 import type { AgentFolderGrant } from "./protocol";
-import { createMacOsBashSandboxProfile } from "./bash-sandbox";
-import { createBashEnvironment, resolveLoginPath } from "./bash-env";
+import {
+  createNativeBashEnvironment,
+  resolveLoginPath,
+  resolveNativeTemporaryDirectory,
+} from "./bash-env";
+import {
+  createScopedBashOperations,
+  SandboxCommandPermissionError,
+} from "./bash-execution";
+import {
+  PineToolAccessPolicy,
+  PineAttachedPathAccess,
+  PathAccessDeniedError,
+  preserveAccessDenial,
+} from "./tool-access-policy";
+export {
+  PineToolAccessPolicy,
+  PineAttachedPathAccess,
+} from "./tool-access-policy";
+export {
+  SandboxCommandPermissionError,
+  hasPermissionDiagnostic,
+} from "./bash-execution";
 import type { ToolGate } from "./gate";
 import type { PineApprovalMode } from "../shared/agent";
 import {
   createTinyFishToolDefinitions,
   type TinyFishToolFactoryOptions,
 } from "./tinyfishTools";
-
-type AccessMode = "read" | "write";
-
-interface CanonicalFolderGrant extends AgentFolderGrant {
-  path: string;
-}
-
-function pathContains(parentPath: string, candidatePath: string): boolean {
-  const relativePath = path.relative(parentPath, candidatePath);
-  return (
-    relativePath === "" ||
-    (!relativePath.startsWith(`..${path.sep}`) &&
-      relativePath !== ".." &&
-      !path.isAbsolute(relativePath))
-  );
-}
-
-/**
- * Read-only paths explicitly selected by the user as message attachments.
- * Grants accumulate for the live session. Files match exactly; directories
- * include descendants after realpath canonicalization.
- */
-export class PineAttachedPathAccess {
-  private readonly paths = new Set<string>();
-
-  async grant(targetPaths: readonly string[]): Promise<void> {
-    const canonicalPaths = await Promise.allSettled(
-      targetPaths.map((targetPath) => realpath(path.resolve(targetPath))),
-    );
-    for (const result of canonicalPaths) {
-      if (result.status === "fulfilled") this.paths.add(result.value);
-    }
-  }
-
-  allowsRead(canonicalPath: string): boolean {
-    return [...this.paths].some((attachedPath) =>
-      pathContains(attachedPath, canonicalPath),
-    );
-  }
-
-  readablePaths(): string[] {
-    return [...this.paths];
-  }
-}
-
-async function canonicalizeTarget(
-  targetPath: string,
-  allowMissing: boolean,
-): Promise<string> {
-  try {
-    return await realpath(targetPath);
-  } catch (error) {
-    if (!allowMissing || (error as NodeJS.ErrnoException).code !== "ENOENT") {
-      throw error;
-    }
-  }
-
-  const missingSegments: string[] = [];
-  let ancestorPath = path.resolve(targetPath);
-  while (true) {
-    try {
-      await lstat(ancestorPath);
-      break;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-      const parentPath = path.dirname(ancestorPath);
-      if (parentPath === ancestorPath) throw error;
-      missingSegments.unshift(path.basename(ancestorPath));
-      ancestorPath = parentPath;
-    }
-  }
-
-  const canonicalAncestor = await realpath(ancestorPath);
-  return path.join(canonicalAncestor, ...missingSegments);
-}
-
-export class PineToolAccessPolicy {
-  private constructor(
-    readonly cwd: string,
-    readonly folders: CanonicalFolderGrant[],
-    private readonly attachedPaths?: PineAttachedPathAccess,
-    private readonly permissive = false,
-  ) {}
-
-  static async create(
-    cwd: string,
-    folders: AgentFolderGrant[],
-    attachedPaths?: PineAttachedPathAccess,
-  ): Promise<PineToolAccessPolicy> {
-    const canonicalFolders = await Promise.all(
-      folders.map(async (folder) => ({
-        ...folder,
-        path: await realpath(folder.path),
-      })),
-    );
-    const canonicalCwd = await realpath(cwd);
-    const defaultGrant = canonicalFolders.find(
-      (folder) =>
-        folder.access === "read-write" &&
-        pathContains(folder.path, canonicalCwd),
-    );
-    if (!defaultGrant) {
-      throw new Error(
-        "The project default folder must be an available read-write folder.",
-      );
-    }
-    return new PineToolAccessPolicy(
-      canonicalCwd,
-      canonicalFolders,
-      attachedPaths,
-      false,
-    );
-  }
-
-  /**
-   * A policy that authorizes every path. It is only used after an approval
-   * gate explicitly allows a denied file operation to cross folder grants.
-   */
-  static permissive(cwd: string): PineToolAccessPolicy {
-    return new PineToolAccessPolicy(cwd, [], undefined, true);
-  }
-
-  async authorize(
-    targetPath: string,
-    mode: AccessMode,
-    options: { allowMissing?: boolean } = {},
-  ): Promise<string> {
-    const canonicalPath = await canonicalizeTarget(
-      path.resolve(targetPath),
-      options.allowMissing ?? false,
-    );
-    if (this.permissive) return canonicalPath;
-    if (mode === "read" && this.attachedPaths?.allowsRead(canonicalPath)) {
-      return canonicalPath;
-    }
-    const containingGrant = this.folders.find((folder) =>
-      pathContains(folder.path, canonicalPath),
-    );
-    if (!containingGrant) {
-      throw new Error(
-        `Path is outside the folders shared with Pine: ${targetPath}`,
-      );
-    }
-    if (mode === "write" && containingGrant.access !== "read-write") {
-      throw new Error(`Folder is read-only: ${containingGrant.path}`);
-    }
-    return canonicalPath;
-  }
-
-  writableFolders(): string[] {
-    if (this.permissive) return [];
-    return this.folders
-      .filter((folder) => folder.access === "read-write")
-      .map((folder) => folder.path);
-  }
-
-  readablePaths(): string[] {
-    return [
-      ...this.folders.map((folder) => folder.path),
-      ...(this.attachedPaths?.readablePaths() ?? []),
-    ];
-  }
-}
 
 async function detectImageMimeType(
   policy: PineToolAccessPolicy,
@@ -227,181 +81,6 @@ async function detectImageMimeType(
   } finally {
     await file.close();
   }
-}
-
-/**
- * Thrown when the macOS sandbox denied a command at runtime: an EPERM-class
- * failure, a blocked LaunchServices launch, or blocked Apple Events. Carries
- * the captured output tail (either stream) as review evidence for the gate.
- */
-export class SandboxDeniedError extends Error {
-  constructor(readonly outputTail: string) {
-    super(
-      "The project sandbox denied this command. Use privileged_bash for this operation if it genuinely requires capabilities outside the project sandbox.",
-    );
-  }
-}
-
-/**
- * Recognizes sandbox denial evidence in captured command output. These
- * failures announce themselves in several dialects: zsh prints EPERM for
- * denied syscalls, LaunchServices reports blocked app launches with an
- * "LSOpenURLsWithCompletionHandler … error -54" message, dyld reports
- * blocked dynamic libraries, and Apple Events
- * that the sandbox cannot deliver surface as the -600 "Application isn't
- * running" error (natively a tell block would auto-launch the app instead).
- * The apostrophe in "isn't" is matched loosely because AppleScript emits a
- * Unicode right single quote.
- */
-export function matchSandboxDenial(output: string): boolean {
-  return /operation not permitted|permission denied|permission error|access denied|not authou?rized|not permitted|\bE(?:PERM|ACCES)\b|blocked by sandbox|sandbox(?:_extension| violation| denied)|LSOpenURLsWithCompletionHandler|Application isn.t running\. \(-600\)|\((?:-54|-1743|-10004|-5000)\)/i.test(
-    output,
-  );
-}
-
-/** Matches the two denial errors PineToolAccessPolicy.authorize throws. */
-function isAuthorizeDenial(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error);
-  return (
-    message.includes("outside the folders shared with Pine") ||
-    message.includes("Folder is read-only")
-  );
-}
-
-function terminateProcess(child: ChildProcess): void {
-  if (!child.pid) return;
-  try {
-    process.kill(-child.pid, "SIGTERM");
-  } catch {
-    child.kill("SIGTERM");
-  }
-}
-
-function createScopedBashOperations(
-  policy: PineToolAccessPolicy,
-  temporaryDirectory: string,
-  loginPath: string,
-  runtimeFiles: string[],
-): BashOperations {
-  return {
-    exec: async (command, cwd, options) => {
-      await policy.authorize(cwd, "write");
-      if (process.platform !== "darwin") {
-        throw new Error(
-          "Bash is unavailable because Pine cannot enforce project read/write boundaries on this platform yet.",
-        );
-      }
-      if (options.signal?.aborted) throw new Error("aborted");
-
-      let timeoutMs: number | undefined;
-      if (options.timeout !== undefined) {
-        if (!Number.isFinite(options.timeout) || options.timeout <= 0) {
-          throw new Error("Invalid timeout: must be a positive number");
-        }
-        timeoutMs = Math.min(options.timeout * 1_000, 2_147_483_647);
-      }
-      const shellPath = "/bin/zsh";
-      const profile = createMacOsBashSandboxProfile({
-        readablePaths: policy.readablePaths(),
-        writableFolders: policy.writableFolders(),
-        temporaryDirectory,
-        runtimeFiles,
-      });
-      const child = spawn(
-        "/usr/bin/sandbox-exec",
-        // pipefail: a sandbox denial at the head of a pipeline (`ps aux | head`)
-        // must surface in the exit code, or the gate never sees it — the last
-        // stage succeeds and the default exit code would be 0. no_bg_nice
-        // prevents zsh from trying to renice background jobs, which the
-        // sandbox rejects even though the requested job itself starts.
-        [
-          "-p",
-          profile,
-          shellPath,
-          // Do not source the user's ~/.zshenv outside the shared folders.
-          "-f",
-          "-o",
-          "pipefail",
-          "-o",
-          "no_bg_nice",
-          "-c",
-          command,
-        ],
-        {
-          cwd: policy.cwd,
-          detached: true,
-          env: createBashEnvironment(
-            options.env,
-            temporaryDirectory,
-            loginPath,
-            policy.cwd,
-          ),
-          stdio: ["ignore", "pipe", "pipe"],
-          windowsHide: true,
-        },
-      );
-
-      child.stdout.on("data", options.onData);
-      // Keep bounded tails of BOTH streams as gate evidence: tool-emitted
-      // messages (LaunchServices, AppleScript) follow the command's own
-      // redirections, so denial text can land on stdout via `2>&1`.
-      let stdoutTail = "";
-      child.stdout.on("data", (chunk: Buffer) => {
-        stdoutTail = (stdoutTail + chunk.toString("utf8")).slice(-8_192);
-      });
-      let stderrTail = "";
-      child.stderr.on("data", (chunk: Buffer) => {
-        options.onData(chunk);
-        stderrTail = (stderrTail + chunk.toString("utf8")).slice(-8_192);
-      });
-      let timedOut = false;
-      let timeoutHandle: NodeJS.Timeout | undefined;
-      const onAbort = () => terminateProcess(child);
-      if (options.signal?.aborted) onAbort();
-      else options.signal?.addEventListener("abort", onAbort, { once: true });
-      if (timeoutMs !== undefined) {
-        timeoutHandle = setTimeout(() => {
-          timedOut = true;
-          terminateProcess(child);
-        }, timeoutMs);
-      }
-
-      try {
-        const { exitCode, exitSignal } = await new Promise<{
-          exitCode: number | null;
-          exitSignal: NodeJS.Signals | null;
-        }>((resolve, reject) => {
-          child.once("error", reject);
-          child.once("close", (code, signal) => {
-            resolve({ exitCode: code, exitSignal: signal });
-          });
-        });
-        if (options.signal?.aborted) throw new Error("aborted");
-        if (timedOut) throw new Error(`timeout:${options.timeout}`);
-        // With pipefail a writer killed by SIGPIPE (`… | head`) reports 141;
-        // that truncation is the intended behavior, not a failure.
-        const effectiveExit = exitCode === 141 ? 0 : exitCode;
-        // Inspect denial evidence regardless of the final exit status. Shell
-        // lists such as `kill <pid>; pgrep ...` can fail a sandboxed segment
-        // and then exit 0 because the final diagnostic command succeeded.
-        // Treating only non-zero commands as denials made those operations
-        // impossible to escalate.
-        const outputTail = `${stdoutTail}\n${stderrTail}`;
-        if (matchSandboxDenial(outputTail)) {
-          throw new SandboxDeniedError(outputTail);
-        }
-        if (exitCode === null) {
-          throw new Error(
-            `Shell terminated by signal ${exitSignal ?? "unknown"}.\n${outputTail.trim()}`,
-          );
-        }
-        return { exitCode: effectiveExit };
-      } finally {
-        if (timeoutHandle) clearTimeout(timeoutHandle);
-        options.signal?.removeEventListener("abort", onAbort);
-      }
-    },
-  };
 }
 
 function createReadOperations(policy: PineToolAccessPolicy) {
@@ -467,6 +146,9 @@ function gateFileTool<TParams extends TSchema, TDetails, TState>(
       }
       const gate = getGate();
       if (!gate) {
+        if (getApprovalMode() === "let-me-review") {
+          throw new Error("Execution is unavailable without an approval gate.");
+        }
         return tool.execute(toolCallId, params, signal, onUpdate, ctx);
       }
       const targetPath = (params as { path?: unknown }).path;
@@ -481,9 +163,11 @@ function gateFileTool<TParams extends TSchema, TDetails, TState>(
         throw new Error(pre.reason ?? "This call was denied.");
       }
       try {
-        return await tool.execute(toolCallId, params, signal, onUpdate, ctx);
+        return await preserveAccessDenial(() =>
+          tool.execute(toolCallId, params, signal, onUpdate, ctx),
+        );
       } catch (error) {
-        if (!isAuthorizeDenial(error)) throw error;
+        if (!(error instanceof PathAccessDeniedError)) throw error;
         const decision = await gate.reviewDenial("authorize", {
           toolCallId,
           toolName: tool.name,
@@ -492,6 +176,7 @@ function gateFileTool<TParams extends TSchema, TDetails, TState>(
           signal,
         });
         if (decision.kind === "allow") {
+          if (signal?.aborted) throw new Error("aborted");
           return await permissive.execute(
             toolCallId,
             params,
@@ -534,12 +219,10 @@ export async function createPineToolDefinitions(
   );
   // macOS services may use confstr's per-user temporary directory regardless
   // of TMPDIR. Share that runtime scratch space with both shell and file tools.
-  const systemTemporaryDirectory = await realpath(os.tmpdir());
-  const systemTemporaryGrants: AgentFolderGrant[] =
-    process.platform === "darwin" &&
-    pathContains("/private/var/folders", systemTemporaryDirectory)
-      ? [{ access: "read-write", path: systemTemporaryDirectory }]
-      : [];
+  const systemTemporaryDirectory = await resolveNativeTemporaryDirectory();
+  const systemTemporaryGrants: AgentFolderGrant[] = systemTemporaryDirectory
+    ? [{ access: "read-write", path: systemTemporaryDirectory }]
+    : [];
   const policy = await PineToolAccessPolicy.create(
     location.cwd,
     [
@@ -561,24 +244,12 @@ export async function createPineToolDefinitions(
   const canonicalBunPath = await realpath(bunPath).catch(() => null);
   const runtimeFiles = canonicalBunPath ? [bunPath, canonicalBunPath] : [];
 
-  // Native (unsandboxed) execution. YOLO keeps the user's full environment;
-  // reviewed native re-runs retain Pine's deterministic shell environment.
+  // Approval changes authority, not the user's shell environment.
   const nativeBashTool = createBashToolDefinition(location.cwd, {
     operations: createLocalBashOperations(),
     spawnHook: (context) => ({
       ...context,
-      env:
-        getApprovalMode() === "YOLO"
-          ? {
-              ...context.env,
-              PATH: `${path.join(location.cwd, "node_modules", ".bin")}:${loginPath}`,
-            }
-          : createBashEnvironment(
-              context.env,
-              canonicalBashTemporaryDirectory,
-              loginPath,
-              location.cwd,
-            ),
+      env: createNativeBashEnvironment(context.env, loginPath, location.cwd),
     }),
   });
 
@@ -665,6 +336,9 @@ export async function createPineToolDefinitions(
       // mode never reviews ordinary bash: the project sandbox is its complete,
       // non-escalating authority boundary.
       const currentGate = getGate();
+      if (getApprovalMode() === "let-me-review" && !currentGate) {
+        throw new Error("Execution is unavailable without an approval gate.");
+      }
       if (currentGate && getApprovalMode() === "let-me-review") {
         const pre = await currentGate.reviewBashCommand({
           toolCallId,
@@ -686,9 +360,9 @@ export async function createPineToolDefinitions(
           ctx,
         );
       } catch (error) {
-        if (error instanceof SandboxDeniedError) {
+        if (error instanceof SandboxCommandPermissionError) {
           throw new Error(
-            `${error.message}\n\nSandbox evidence:\n${error.outputTail.trim()}`,
+            `${error.message}\n\nPermission diagnostic (not verified sandbox evidence):\n${error.outputTail.trim()}`,
           );
         }
         throw error;
@@ -727,11 +401,11 @@ export async function createPineToolDefinitions(
               });
               if (decision.kind === "deny") {
                 throw new Error(
-                  decision.reason ??
-                    "The reviewer did not allow this command to run outside the project sandbox.",
+                  `Approval denied before execution; the command was not started. ${decision.reason ?? "The reviewer did not allow native execution."}`,
                 );
               }
             }
+            if (signal?.aborted) throw new Error("aborted");
             return nativeBashTool.execute(
               toolCallId,
               params,

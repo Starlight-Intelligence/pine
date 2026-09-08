@@ -1,5 +1,10 @@
-import { describe, expect, it } from "vitest";
-import { createBashEnvironment, resolveLoginPath } from "../bash-env";
+import { describe, expect, it, vi } from "vitest";
+import {
+  createBashEnvironment,
+  createNativeBashEnvironment,
+  resolveNativeTemporaryDirectory,
+  resolveLoginPath,
+} from "../bash-env";
 
 describe("createBashEnvironment", () => {
   it("prepends the project bin directory to the login PATH", () => {
@@ -50,4 +55,33 @@ describe("resolveLoginPath", () => {
     expect(loginPath.length).toBeGreaterThan(0);
     expect(loginPath).toContain("/bin");
   });
+});
+
+describe("native execution environment", () => {
+  it("preserves native temp, credentials and proxy settings without mutating the source", () => {
+    const source = {
+      TMPDIR: "/native/tmp",
+      HTTPS_PROXY: "http://localhost:1234",
+      TEST_TOKEN: "fixture",
+      XDG_CACHE_HOME: "/native/cache",
+    };
+    const result = createNativeBashEnvironment(source, "/usr/bin", "/project");
+    expect(result).toMatchObject(source);
+    expect(result.PATH).toBe("/project/node_modules/.bin:/usr/bin");
+    expect(source).not.toHaveProperty("PATH");
+  });
+
+  it.runIf(process.platform === "darwin" && !process.env.CODEX_SANDBOX)(
+    "discovers native temporary storage independently of TMPDIR",
+    async () => {
+      const expected = await resolveNativeTemporaryDirectory();
+      vi.stubEnv("TMPDIR", "/private/tmp");
+      try {
+        expect(await resolveNativeTemporaryDirectory()).toBe(expected);
+        expect(expected).toMatch(/^\/private\/var\/folders\/.+\/T$/);
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    },
+  );
 });
