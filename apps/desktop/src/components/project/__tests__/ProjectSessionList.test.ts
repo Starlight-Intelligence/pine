@@ -231,9 +231,14 @@ describe("ProjectSessionList", () => {
     const renameSession = vi
       .fn()
       .mockResolvedValue({ session: renamedSession });
+    const exportSession = vi.fn().mockResolvedValue({
+      path: "/tmp/Existing conversation.md",
+      saved: true,
+    });
     Object.defineProperty(window, "pine", {
       configurable: true,
       value: {
+        exportSession,
         renameSession,
         searchSessions: vi.fn().mockResolvedValue({ sessions: [session] }),
       },
@@ -274,6 +279,14 @@ describe("ProjectSessionList", () => {
       },
     });
     await flushPromises();
+
+    const exportAction = wrapper
+      .findAll('[data-slot="context-menu-item"]')
+      .find((item) => item.text().includes("Export conversation"));
+    expect(exportAction).toBeDefined();
+    await exportAction?.trigger("click");
+    await flushPromises();
+    expect(exportSession).toHaveBeenCalledWith({ sessionId: session.id });
 
     const renameAction = wrapper
       .findAll('[data-slot="context-menu-item"]')

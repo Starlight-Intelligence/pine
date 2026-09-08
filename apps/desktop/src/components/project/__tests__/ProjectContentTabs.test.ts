@@ -1,4 +1,9 @@
-import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
+import {
+  DOMWrapper,
+  enableAutoUnmount,
+  flushPromises,
+  mount,
+} from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { computed, nextTick, onUnmounted } from "vue";
 import { createMemoryHistory, createRouter } from "vue-router";
@@ -57,6 +62,10 @@ async function mountTabs(withFile = false) {
     configurable: true,
     value: {
       getAppVersion: vi.fn().mockResolvedValue("0.1.0"),
+      exportSession: vi.fn().mockResolvedValue({
+        path: "/tmp/First prompt.md",
+        saved: true,
+      }),
       openExternalUrl: vi.fn().mockResolvedValue(undefined),
       readProjectFilePreview: vi.fn().mockResolvedValue({
         kind: "text",
@@ -470,6 +479,27 @@ describe("ProjectContentTabs", () => {
     await version.trigger("click");
     await flushPromises();
     expect(window.pine.openExternalUrl).toHaveBeenCalledWith(PINE_RELEASES_URL);
+    wrapper.unmount();
+  });
+
+  it("exports the active session from the top-right actions menu", async () => {
+    const { wrapper } = await mountTabs();
+    const tabsStore = useContentTabsStore();
+    tabsStore.bindSession("session-1", firstSession);
+    await flushPromises();
+
+    const exportSession = vi.mocked(window.pine.exportSession);
+    await wrapper.get('button[aria-label="More actions"]').trigger("click");
+    await flushPromises();
+    const exportAction = Array.from(
+      document.querySelectorAll<HTMLElement>('[role="menuitem"]'),
+    ).find((item) => item.textContent?.includes("Export conversation"));
+    expect(exportAction).toBeDefined();
+    if (!exportAction) throw new Error("Export action was not rendered.");
+    await new DOMWrapper(exportAction).trigger("click");
+    await flushPromises();
+
+    expect(exportSession).toHaveBeenCalledWith({ sessionId: firstSession.id });
     wrapper.unmount();
   });
 });

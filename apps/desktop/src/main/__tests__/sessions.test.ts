@@ -9,7 +9,10 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import type { PineTextMessage } from "../../shared/sessions";
+import {
+  PINE_APPROVAL_MODE_ENTRY,
+  type PineTextMessage,
+} from "../../shared/sessions";
 import { ProjectSessionService } from "../sessions";
 
 const temporaryDirectories: string[] = [];
@@ -256,6 +259,46 @@ describe("ProjectSessionService", () => {
           ],
         }),
       ]);
+    } finally {
+      await service.dispose();
+      await environment.cleanup();
+    }
+  });
+
+  it("exports the complete conversation with persisted settings", async () => {
+    const rootPath = await createTemporaryProjectData();
+    const options = serviceOptions(rootPath);
+    await mkdir(options.cwd, { recursive: true });
+    const environment = new NodeExecutionEnv({ cwd: options.cwd });
+    const repository = new JsonlSessionRepo({
+      fs: environment,
+      sessionsRoot: options.sessionsRoot,
+    });
+    const session = await repository.create({ cwd: options.cwd });
+    await session.appendSessionName("Export me");
+    await session.appendModelChange("openai", "gpt-test");
+    await session.appendCustomEntry(PINE_APPROVAL_MODE_ENTRY, {
+      approvalMode: "YOLO",
+    });
+    await session.appendMessage({
+      role: "user",
+      content: "Inspect the project",
+      timestamp: Date.now(),
+    });
+    await session.appendMessage(
+      fauxAssistantMessage([{ type: "text", text: "Done." }]),
+    );
+    const metadata = await session.getMetadata();
+    const service = await ProjectSessionService.create(options);
+
+    try {
+      const result = await service.exportSession(metadata.id, "auto-approve");
+
+      expect(result.fileName).toBe("Export me.md");
+      expect(result.markdown).toContain("- Approval mode: YOLO");
+      expect(result.markdown).toContain("- Models used:\n  - openai/gpt-test");
+      expect(result.markdown).toContain("Inspect the project");
+      expect(result.markdown).toContain("Done.");
     } finally {
       await service.dispose();
       await environment.cleanup();

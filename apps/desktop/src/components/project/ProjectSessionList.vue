@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Pencil, Plus, Search, Trash2 } from "@lucide/vue";
+import { Download, Pencil, Plus, Search, Trash2 } from "@lucide/vue";
 import { useVirtualizer } from "@tanstack/vue-virtual";
 import { useEventListener } from "@vueuse/core";
 import { storeToRefs } from "pinia";
@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/sidebar";
 import { useContentTabNavigation } from "@/composables/useContentTabNavigation";
 import { useFileToSession } from "@/composables/useFileToSession";
+import { useSessionExport } from "@/composables/useSessionExport";
 import { FILE_TAB_DRAG_TYPE, hasFileTabDrag } from "@/lib/contentTabDrag";
 import type { PineSessionSummary } from "@/shared/sessions";
 import { useContentTabsStore } from "@/stores/contentTabs";
@@ -42,6 +43,7 @@ const projectStore = useProjectStore();
 const sessionStore = useSessionStore();
 const contentTabsStore = useContentTabsStore();
 const { sendFile } = useFileToSession();
+const { exportSession } = useSessionExport();
 const dropSessionId = ref<string | null>(null);
 useEventListener(window, "dragend", () => {
   dropSessionId.value = null;
@@ -264,6 +266,12 @@ watch(
                   >
                     <Pencil aria-hidden="true" />
                     {{ t("sessions.renameAction") }}
+                  </ContextMenuItem>
+                  <ContextMenuItem
+                    @select="exportSession(recentSessions[virtualRow.index].id)"
+                  >
+                    <Download aria-hidden="true" />
+                    {{ t("sessions.exportAction") }}
                   </ContextMenuItem>
                   <ContextMenuItem
                     variant="destructive"

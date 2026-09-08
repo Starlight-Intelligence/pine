@@ -116,11 +116,13 @@ import {
 } from "./shared/userProfile";
 import {
   DELETE_SESSION_CHANNEL,
+  EXPORT_SESSION_CHANNEL,
   LOAD_SESSION_MESSAGES_CHANNEL,
   RENAME_SESSION_CHANNEL,
   RESUME_SESSION_CHANNEL,
   SEARCH_SESSIONS_CHANNEL,
   type DeleteSessionResult,
+  type ExportSessionResult,
   type LoadSessionMessagesResult,
   type RenameSessionResult,
   type ResumeSessionResult,
@@ -1061,6 +1063,28 @@ ipcMain.handle(
         sessionId,
       ),
     };
+  },
+);
+
+ipcMain.handle(
+  EXPORT_SESSION_CHANNEL,
+  async (event, request: unknown): Promise<ExportSessionResult> => {
+    const { sessionId } = SessionIdRequestSchema.parse(request);
+    const document = await getProjectRuntimes().exportSession(
+      event.sender.id,
+      sessionId,
+    );
+    const parentWindow = BrowserWindow.fromWebContents(event.sender);
+    if (!parentWindow) return { saved: false };
+    const result = await dialog.showSaveDialog(parentWindow, {
+      defaultPath: document.fileName,
+      filters: [{ name: "Markdown", extensions: ["md"] }],
+      properties: ["createDirectory", "showOverwriteConfirmation"],
+    });
+    if (result.canceled || !result.filePath) return { saved: false };
+
+    await writeFile(result.filePath, document.markdown, "utf8");
+    return { path: result.filePath, saved: true };
   },
 );
 

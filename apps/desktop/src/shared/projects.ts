@@ -44,6 +44,8 @@ import type {
 import type {
   DeleteSessionRequest,
   DeleteSessionResult,
+  ExportSessionRequest,
+  ExportSessionResult,
   LoadSessionMessagesRequest,
   LoadSessionMessagesResult,
   RenameSessionRequest,
@@ -151,6 +153,9 @@ export interface PineDesktopApi extends PineWindowApi {
   deleteSession: (
     request: DeleteSessionRequest,
   ) => Promise<DeleteSessionResult>;
+  exportSession: (
+    request: ExportSessionRequest,
+  ) => Promise<ExportSessionResult>;
   listProjectDirectory: (
     request: ListProjectDirectoryRequest,
   ) => Promise<ListProjectDirectoryResult>;

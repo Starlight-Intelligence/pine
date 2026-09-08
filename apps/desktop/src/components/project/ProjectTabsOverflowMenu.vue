@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {
   CopyIcon,
+  DownloadIcon,
   EllipsisIcon,
   ExternalLinkIcon,
   FolderOpenIcon,
@@ -45,6 +46,7 @@ import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { useContentTabNavigation } from "@/composables/useContentTabNavigation";
 import { useProjectFileChanges } from "@/composables/useProjectFileChanges";
+import { useSessionExport } from "@/composables/useSessionExport";
 import type { ProjectFileOperation } from "@/shared/projectFiles";
 import type { PineSessionSummary } from "@/shared/sessions";
 import { useProjectStore } from "@/stores/project";
@@ -57,6 +59,7 @@ const sessionStore = useSessionStore();
 const projectStore = useProjectStore();
 const { activeProject } = storeToRefs(projectStore);
 const { emitProjectFilesChanged } = useProjectFileChanges();
+const { exportSession } = useSessionExport();
 
 // Shortcuts for the active tab's context menu: session actions target the
 // active session tab, file actions target the active file tab, and tree-wide
@@ -261,6 +264,13 @@ async function trashActiveFile(): Promise<void> {
         >
           <PencilIcon aria-hidden="true" />
           {{ t("sessions.renameAction") }}
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          :disabled="!targetSession"
+          @select="targetSession && exportSession(targetSession.id)"
+        >
+          <DownloadIcon aria-hidden="true" />
+          {{ t("sessions.exportAction") }}
         </DropdownMenuItem>
         <DropdownMenuItem
           variant="destructive"

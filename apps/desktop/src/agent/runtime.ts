@@ -30,7 +30,11 @@ import type {
   PineUtilityModelSelection,
   ProviderLoginResult,
 } from "../shared/models";
-import type { PineContextUsage, PineSessionSummary } from "../shared/sessions";
+import {
+  PINE_APPROVAL_MODE_ENTRY,
+  type PineContextUsage,
+  type PineSessionSummary,
+} from "../shared/sessions";
 import {
   attachmentMessagePreview,
   parseAttachmentMessage,
@@ -908,6 +912,7 @@ export class PineAgentRuntime {
       ),
     });
     live.session = session;
+    this.persistApprovalMode(live);
     this.applyContextCompactionStrategy(live, contextCompactionStrategy);
     // Pine presents every staged steering message together, so inject the
     // whole batch at the next steering boundary instead of serializing turns.
@@ -980,6 +985,36 @@ export class PineAgentRuntime {
       );
     }
     this.syncApprovalModeTools(live);
+    this.persistApprovalMode(live);
+  }
+
+  private persistApprovalMode(live: LiveAgentSession): void {
+    const entries = live.session.sessionManager.getEntries();
+    const previous = [...entries]
+      .reverse()
+      .find(
+        (entry) =>
+          entry.type === "custom" &&
+          entry.customType === PINE_APPROVAL_MODE_ENTRY,
+      );
+    const previousMode =
+      previous?.type === "custom" &&
+      typeof previous.data === "object" &&
+      previous.data !== null &&
+      !Array.isArray(previous.data)
+        ? (previous.data as { approvalMode?: unknown }).approvalMode
+        : undefined;
+    if (previousMode === live.approvalMode) return;
+    if (
+      previousMode === undefined &&
+      entries.some((entry) => entry.type === "message")
+    ) {
+      return;
+    }
+
+    live.session.sessionManager.appendCustomEntry(PINE_APPROVAL_MODE_ENTRY, {
+      approvalMode: live.approvalMode,
+    });
   }
 
   private syncApprovalModeTools(live: LiveAgentSession): void {

@@ -10,10 +10,14 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type {
   LoadSessionMessagesResult,
+  PineSessionModel,
   PineSessionSummary,
   PineTextMessage,
   SessionSearchResult,
 } from "../shared/sessions";
+import { PINE_APPROVAL_MODE_ENTRY } from "../shared/sessions";
+import type { PineApprovalMode } from "../shared/agent";
+import { formatSessionAsMarkdown } from "../shared/sessionExport";
 import { attachmentMessagePreview } from "../shared/attachments";
 import { parseMessageBlocks } from "../shared/sessions";
 
@@ -22,6 +26,11 @@ const SEARCH_INDEX_FILE = "session-search.sqlite";
 const SNIPPET_START = "\u0001";
 const SNIPPET_END = "\u0002";
 const SEARCH_INDEX_SCHEMA_VERSION = 2;
+
+export interface PineSessionExportDocument {
+  fileName: string;
+  markdown: string;
+}
 
 export interface PineSessionHandle {
   session: Session<JsonlSessionMetadata>;
@@ -190,6 +199,72 @@ function textMessages(entries: SessionTreeEntry[]): PineTextMessage[] {
   }
 
   return messages;
+}
+
+function isPineApprovalMode(value: unknown): value is PineApprovalMode {
+  return (
+    value === "let-me-review" || value === "auto-approve" || value === "YOLO"
+  );
+}
+
+function approvalModeFromEntries(
+  entries: SessionTreeEntry[],
+  fallback: PineApprovalMode,
+): PineApprovalMode {
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index];
+    if (
+      entry.type !== "custom" ||
+      entry.customType !== PINE_APPROVAL_MODE_ENTRY
+    )
+      continue;
+    const data = entry.data;
+    if (typeof data === "object" && data !== null && !Array.isArray(data)) {
+      const mode = (data as { approvalMode?: unknown }).approvalMode;
+      if (isPineApprovalMode(mode)) return mode;
+    }
+  }
+  return fallback;
+}
+
+function modelsFromEntries(entries: SessionTreeEntry[]): PineSessionModel[] {
+  const models = new Map<string, PineSessionModel>();
+  for (const entry of entries) {
+    if (entry.type === "model_change") {
+      const model = {
+        providerId: entry.provider,
+        modelId: entry.modelId,
+      };
+      models.set(`${model.providerId}/${model.modelId}`, model);
+      continue;
+    }
+    if (entry.type !== "message" || entry.message.role !== "assistant")
+      continue;
+    const assistant = entry.message as {
+      model?: unknown;
+      provider?: unknown;
+    };
+    if (
+      typeof assistant.provider !== "string" ||
+      typeof assistant.model !== "string"
+    )
+      continue;
+    const model = {
+      providerId: assistant.provider,
+      modelId: assistant.model,
+    };
+    models.set(`${model.providerId}/${model.modelId}`, model);
+  }
+  return [...models.values()];
+}
+
+function exportFileName(summary: PineSessionSummary): string {
+  const base = (summary.name || summary.preview || `conversation-${summary.id}`)
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/gu, "-")
+    .replace(/\s+/gu, " ")
+    .trim()
+    .slice(0, 100);
+  return `${base || `conversation-${summary.id}`}.md`;
 }
 
 function firstUserMessage(entries: SessionTreeEntry[]): string | undefined {
@@ -408,6 +483,33 @@ export class ProjectSessionService {
       hasMore: start > 0,
       messages: page,
       ...(start > 0 && page[0] ? { nextBefore: page[0].id } : {}),
+    };
+  }
+
+  async exportSession(
+    sessionId: string,
+    fallbackApprovalMode: PineApprovalMode,
+  ): Promise<PineSessionExportDocument> {
+    const metadata = (await this.repository.list()).find(
+      (session) => session.id === sessionId,
+    );
+    if (!metadata) throw new Error("Session not found in the active project.");
+
+    const session = await this.repository.open(metadata);
+    const entries = await session.getEntries();
+    const summary = await this.readSessionDocument(
+      metadata,
+      undefined,
+      session,
+    );
+    return {
+      fileName: exportFileName(summary),
+      markdown: formatSessionAsMarkdown({
+        approvalMode: approvalModeFromEntries(entries, fallbackApprovalMode),
+        messages: textMessages(entries),
+        models: modelsFromEntries(entries),
+        summary,
+      }),
     };
   }
 

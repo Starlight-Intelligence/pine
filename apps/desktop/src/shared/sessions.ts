@@ -5,6 +5,10 @@ export const RESUME_SESSION_CHANNEL = "sessions:resume" as const;
 export const LOAD_SESSION_MESSAGES_CHANNEL = "sessions:messages" as const;
 export const DELETE_SESSION_CHANNEL = "sessions:delete" as const;
 export const RENAME_SESSION_CHANNEL = "sessions:rename" as const;
+export const EXPORT_SESSION_CHANNEL = "sessions:export" as const;
+
+/** Custom session entry used to preserve the approval mode for exports. */
+export const PINE_APPROVAL_MODE_ENTRY = "pine.approval-mode" as const;
 
 export type PineToolCallStatus = "pending" | "running" | "complete" | "error";
 
@@ -23,6 +27,11 @@ export interface PineToolCall {
   output?: unknown;
   startedAt?: string;
   durationMs?: number;
+}
+
+export interface PineSessionModel {
+  modelId: string;
+  providerId: string;
 }
 
 export type PineCompactionStatus = "running" | "complete" | "error" | "aborted";
@@ -220,4 +229,13 @@ export interface LoadSessionMessagesResult {
   hasMore: boolean;
   messages: PineTextMessage[];
   nextBefore?: string;
+}
+
+export interface ExportSessionRequest {
+  sessionId: string;
+}
+
+export interface ExportSessionResult {
+  path?: string;
+  saved: boolean;
 }

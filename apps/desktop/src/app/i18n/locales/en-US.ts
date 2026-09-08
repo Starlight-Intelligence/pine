@@ -206,6 +206,11 @@ export default {
     noSessions: "No sessions yet",
     noResults: "No matching sessions",
     renameAction: "Rename conversation",
+    exportAction: "Export conversation",
+    exportSuccess: "Conversation exported",
+    exportFailedTitle: "Could not export conversation",
+    exportFailedDescription:
+      "Choose a writable Markdown file location and try again.",
     renameTitle: "Rename conversation",
     renameDescription: "Enter a new name for this conversation.",
     nameLabel: "Conversation name",

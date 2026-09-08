@@ -32,7 +32,10 @@ import {
 } from "./projectFileOperations";
 import { listProjectDirectory } from "./projectFiles";
 import type { ProjectDataPaths } from "./projects/projectRepository";
-import { ProjectSessionService } from "./sessions";
+import {
+  ProjectSessionService,
+  type PineSessionExportDocument,
+} from "./sessions";
 import type { AgentHost } from "./agentProcessHost";
 import type { GateDecision } from "../agent/protocol";
 import { parseAttachmentMessage } from "../shared/attachments";
@@ -166,6 +169,19 @@ export class ProjectRuntimeRegistry {
       before,
       limit,
     );
+  }
+
+  async exportSession(
+    webContentsId: number,
+    sessionId: string,
+  ): Promise<PineSessionExportDocument> {
+    const runtime = this.get(webContentsId);
+    const fallbackApprovalMode =
+      runtime.session.status === "active" &&
+      runtime.session.summary.id === sessionId
+        ? runtime.approvalMode
+        : "auto-approve";
+    return runtime.sessions.exportSession(sessionId, fallbackApprovalMode);
   }
 
   async deleteSession(
