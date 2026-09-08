@@ -144,9 +144,10 @@ const renderItems = computed<RenderItem[]>(() => {
           />
           <Bubble
             v-else-if="item.kind === 'block' && item.block.type === 'text'"
+            class="w-full"
             :variant="'ghost'"
           >
-            <BubbleContent>
+            <BubbleContent class="w-full">
               <MarkdownContent
                 :source="item.block.text"
                 :final="message.status === 'complete'"
