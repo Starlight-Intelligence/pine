@@ -22,6 +22,7 @@ import {
 import { handleError } from "@/app/errors/errorHandler";
 import CodeBlock from "@/components/markdown/CodeBlock.vue";
 import MarkdownContent from "@/components/markdown/MarkdownContent.vue";
+import ProjectHtmlPreview from "./ProjectHtmlPreview.vue";
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { Label } from "@/components/ui/label";
@@ -76,11 +77,20 @@ const isMarkdown = computed(
     preview.value?.kind === "text" &&
     fileLanguage(props.file.relativePath) === "markdown",
 );
+const isHtml = computed(
+  () =>
+    preview.value?.kind === "text" &&
+    fileLanguage(props.file.relativePath) === "html",
+);
+const canRenderText = computed(() => isMarkdown.value || isHtml.value);
 const rendered = computed(
-  () => isMarkdown.value && viewMode.value === "rendered",
+  () => canRenderText.value && viewMode.value === "rendered",
+);
+const renderedHtml = computed(
+  () => isHtml.value && viewMode.value === "rendered",
 );
 const markdownNodes = computed(() =>
-  rendered.value && preview.value?.kind === "text"
+  isMarkdown.value && rendered.value && preview.value?.kind === "text"
     ? parseMarkdownToStructure(
         preview.value.text,
         getMarkdown("pine-preview"),
@@ -148,7 +158,9 @@ const renderedZoom = ref(100);
 const canInvertPreview = computed(
   () => preview.value?.kind === "pdf" || preview.value?.kind === "office",
 );
-const canZoomPreview = canInvertPreview;
+const canZoomPreview = computed(
+  () => canInvertPreview.value || renderedHtml.value,
+);
 const zoom = computed(() => previewZoom.value[0] ?? 100);
 let zoomFrame: number | undefined;
 let pendingZoom = 100;
@@ -334,6 +346,13 @@ onBeforeUnmount(() => {
         }}</EmptyDescription>
       </EmptyHeader>
     </Empty>
+    <ProjectHtmlPreview
+      v-else-if="preview.kind === 'text' && renderedHtml"
+      class="min-h-0 flex-1"
+      :source="preview.text"
+      :title="fileName"
+      :zoom="appliedZoom"
+    />
     <ScrollArea
       v-else-if="preview.kind === 'text'"
       class="min-h-0 min-w-0 flex-1 [&_[data-slot=scroll-area-viewport]]:scroll-fade"
@@ -458,7 +477,7 @@ onBeforeUnmount(() => {
           t("project.preview.invertColors")
         }}</Label>
       </div>
-      <div v-if="isMarkdown" class="flex items-center gap-2">
+      <div v-if="canRenderText" class="flex items-center gap-2">
         <Switch
           :id="renderSwitchId"
           size="sm"

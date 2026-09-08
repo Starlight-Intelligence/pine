@@ -10,6 +10,7 @@ import { codeToHtml } from "@/lib/codeHighlight";
 import { Slider } from "@/components/ui/slider";
 import type { ProjectFilePreview as Preview } from "@/shared/projectFiles";
 import ProjectFilePreview from "../ProjectFilePreview.vue";
+import ProjectHtmlPreview from "../ProjectHtmlPreview.vue";
 import ProjectOfficePreview from "../ProjectOfficePreview.vue";
 import ProjectPdfPreview from "../ProjectPdfPreview.vue";
 
@@ -107,6 +108,50 @@ function selectText(
 }
 
 describe("ProjectFilePreview", () => {
+  it("renders HTML in a sandboxed iframe by default and switches to source", async () => {
+    const source =
+      '<!doctype html><html><body><h1>Hello</h1><script>window.top.alert("unsafe")</script></body></html>';
+    const wrapper = render(
+      vi.fn().mockResolvedValue({
+        ...info,
+        kind: "text",
+        text: source,
+        encoding: "UTF-8",
+      }),
+    );
+    await wrapper.setProps({
+      file: { ...file, relativePath: "public/index.html" },
+    });
+    await flushPromises();
+
+    const htmlPreview = wrapper.findComponent(ProjectHtmlPreview);
+    expect(htmlPreview.exists()).toBe(true);
+    const frame = htmlPreview.get("iframe");
+    expect(frame.attributes("srcdoc")).toBe(source);
+    expect(frame.attributes("sandbox")).toBe("");
+    expect(frame.attributes("referrerpolicy")).toBe("no-referrer");
+    expect(frame.attributes("title")).toBe("index.html");
+
+    const mode = wrapper.get('[role="switch"]');
+    expect(mode.attributes("aria-checked")).toBe("true");
+    const slider = wrapper.findComponent(Slider);
+    expect(slider.exists()).toBe(true);
+    slider.vm.$emit("update:modelValue", [150]);
+    slider.vm.$emit("valueCommit", [150]);
+    await flushPromises();
+    expect(htmlPreview.props("zoom")).toBe(150);
+    expect(frame.attributes("style")).toContain("transform: scale(1.5)");
+    expect(wrapper.get('[aria-label="File metadata"]').text()).toContain(
+      "HTML",
+    );
+
+    await mode.trigger("click");
+    await flushPromises();
+    expect(wrapper.findComponent(ProjectHtmlPreview).exists()).toBe(false);
+    expect(wrapper.find("pre.shiki").exists()).toBe(true);
+    expect(wrapper.findComponent(Slider).exists()).toBe(false);
+  });
+
   it("switches Markdown between source and rendered content and locates rendered selections", async () => {
     const wrapper = render(
       vi.fn().mockResolvedValue({

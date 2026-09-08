@@ -11,6 +11,7 @@ const fileNames: Record<string, string> = {
 const extensions: Record<string, string> = {
   md: "markdown",
   mdx: "mdx",
+  htm: "html",
   mjs: "javascript",
   cjs: "javascript",
   mts: "typescript",
