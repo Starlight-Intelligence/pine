@@ -40,6 +40,8 @@ import type {
   ProjectFileOperation,
   ListProjectDirectoryRequest,
   ListProjectDirectoryResult,
+  ProjectFilesChangedEvent,
+  SetWatchedProjectDirectoriesRequest,
 } from "./projectFiles";
 import type {
   DeleteSessionRequest,
@@ -159,6 +161,12 @@ export interface PineDesktopApi extends PineWindowApi {
   listProjectDirectory: (
     request: ListProjectDirectoryRequest,
   ) => Promise<ListProjectDirectoryResult>;
+  setWatchedProjectDirectories: (
+    request: SetWatchedProjectDirectoriesRequest,
+  ) => Promise<void>;
+  onProjectFilesChanged: (
+    listener: (event: ProjectFilesChangedEvent) => void,
+  ) => () => void;
   operateProjectFile: (request: ProjectFileOperation) => Promise<void>;
   inspectProjectAttachments: (
     entries: ProjectEntryReference[],

@@ -134,8 +134,11 @@ import {
   LIST_PROJECT_DIRECTORY_CHANNEL,
   READ_PROJECT_FILE_PREVIEW_CHANNEL,
   PROJECT_MEDIA_PROTOCOL,
+  PROJECT_FILES_CHANGED_CHANNEL,
+  SET_WATCHED_PROJECT_DIRECTORIES_CHANNEL,
   type ListProjectDirectoryResult,
 } from "./shared/projectFiles";
+import { ProjectFileWatcherRegistry } from "./main/projectFileWatcher";
 import {
   OPAQUE_WINDOW_BACKGROUND,
   SET_SIDEBAR_VIBRANCY_CHANNEL,
@@ -289,6 +292,7 @@ let agentHost: AgentProcessHost | null = null;
 let pineAgentDirectory: string | null = null;
 const modelRecommendations = new ModelRecommendationService();
 let projectRuntimes: ProjectRuntimeRegistry | null = null;
+let projectFileWatchers: ProjectFileWatcherRegistry | null = null;
 let projectRepository: ProjectRepository | null = null;
 let tinyFishCredentialStore: TinyFishCredentialStore | null = null;
 
@@ -442,6 +446,17 @@ const ListProjectDirectoryRequestSchema = z.object({
   folderId: z.uuid(),
   relativePath: z.string().max(4_096),
 });
+const SetWatchedProjectDirectoriesRequestSchema = z.object({
+  folders: z
+    .array(
+      z.object({
+        folderId: z.uuid(),
+        rootPath: z.string().min(1).max(4_096),
+        directories: z.array(z.string().max(4_096)),
+      }),
+    )
+    .max(64),
+});
 const SetSidebarVibrancyRequestSchema = z.object({
   enabled: z.boolean(),
 });
@@ -582,6 +597,9 @@ const createWindow = () => {
   });
   const webContentsId = mainWindow.webContents.id;
   installWindowShortcuts(mainWindow.webContents, createWindow);
+  mainWindow.webContents.once("destroyed", () => {
+    projectFileWatchers?.disposeSender(webContentsId);
+  });
 
   // Focus stops the approval attention request (Windows flashes until the
   // window is focused; macOS bounces until the app activates).
@@ -592,6 +610,7 @@ const createWindow = () => {
   });
   mainWindow.webContents.once("destroyed", () => {
     attachedPreviewPaths.delete(webContentsId);
+    projectFileWatchers?.disposeSender(webContentsId);
     void projectRuntimes?.dispose(webContentsId);
   });
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
@@ -683,7 +702,10 @@ ipcMain.handle(
   async (event, request: unknown) => {
     const entry = ProjectFilePreviewRequestSchema.parse(request);
     const filePath = await previewPath(event.sender.id, entry);
-    const url = new URL(`${PROJECT_MEDIA_PROTOCOL}://preview/`);
+    const url = URL.parse(`${PROJECT_MEDIA_PROTOCOL}://preview/`);
+    if (!url) {
+      throw new Error("Failed to construct the project media URL.");
+    }
     url.search = new URLSearchParams({
       ...entry,
       owner: String(event.sender.id),
@@ -1036,6 +1058,23 @@ ipcMain.handle(
 );
 
 ipcMain.handle(
+  SET_WATCHED_PROJECT_DIRECTORIES_CHANNEL,
+  (event, request: unknown): void => {
+    const parsed = SetWatchedProjectDirectoriesRequestSchema.parse(request);
+    if (!projectFileWatchers) {
+      projectFileWatchers = new ProjectFileWatcherRegistry(
+        (senderId, changes) => {
+          webContents
+            .fromId(senderId)
+            ?.send(PROJECT_FILES_CHANGED_CHANNEL, { folders: changes });
+        },
+      );
+    }
+    void projectFileWatchers.setWatchedDirectories(event.sender.id, parsed);
+  },
+);
+
+ipcMain.handle(
   SEARCH_SESSIONS_CHANNEL,
   async (event, request: unknown): Promise<SearchSessionsResult> => {
     const { query } = SearchSessionsRequestSchema.parse(request);
@@ -1247,6 +1286,7 @@ app.on("ready", () => {
 });
 
 app.on("will-quit", () => {
+  projectFileWatchers?.dispose();
   void agentHost?.dispose();
 });
 

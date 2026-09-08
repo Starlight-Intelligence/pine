@@ -9,7 +9,7 @@ import {
 } from "@lucide/vue";
 import { TreeItem, TreeRoot, TreeVirtualizer } from "reka-ui";
 import { storeToRefs } from "pinia";
-import { computed, ref, watch } from "vue";
+import { computed, onUnmounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { handleError } from "@/app/errors/errorHandler";
 import { fileIcon } from "@/lib/fileIcon";
@@ -25,6 +25,7 @@ import type {
   ProjectEntry,
   ProjectEntryReference,
   ProjectFileOperation,
+  ProjectFilesChangedEvent,
 } from "@/shared/projectFiles";
 import {
   containsFileDrag,
@@ -77,6 +78,7 @@ onProjectFilesChanged(() => {
     }),
   );
 });
+
 const items = ref<ProjectTreeNode[]>([]);
 const loadingDirectories = new Set<string>();
 const sidebarStore = useProjectSidebarStore();
@@ -402,6 +404,109 @@ async function drop(event: DragEvent, node: ProjectTreeNode): Promise<void> {
 }
 
 watch(activeProject, resetRoots, { immediate: true });
+// --- File-system watcher (main process) -------------------------------------
+// The renderer tells the main process which directories are currently visible
+// (project roots plus expanded directories); the main process watches exactly
+// those with non-recursive fs.watch handles and pushes debounced change
+// batches. This keeps handle count and refresh cost proportional to what the
+// user actually sees, independent of project size.
+const changedDirsByFolder = new Map<string, Set<string>>();
+let applyChangesTimer: ReturnType<typeof setTimeout> | undefined;
+let syncWatchTimer: ReturnType<typeof setTimeout> | undefined;
+
+function watchTargets(folderId: string): string[] {
+  const directories = new Set<string>([""]);
+  for (const key of expanded.value) {
+    const [keyFolder, ...rest] = key.split(":");
+    if (keyFolder === folderId) directories.add(rest.join(":"));
+  }
+  return [...directories];
+}
+
+function syncWatchSet(): void {
+  const folders =
+    activeProject.value?.folders
+      .filter((folder) => folder.isAvailable)
+      .map((folder) => ({
+        folderId: folder.id,
+        rootPath: folder.path,
+        directories: watchTargets(folder.id),
+      })) ?? [];
+  void window.pine.setWatchedProjectDirectories({ folders }).catch(() => {
+    // Watcher failures never break the tree; manual refresh still works.
+  });
+}
+
+function scheduleWatchSync(): void {
+  clearTimeout(syncWatchTimer);
+  syncWatchTimer = setTimeout(syncWatchSet, 200);
+}
+
+function onWatcherEvent(event: ProjectFilesChangedEvent): void {
+  for (const { folderId, changedDirs } of event.folders) {
+    const pending = changedDirsByFolder.get(folderId) ?? new Set<string>();
+    for (const dir of changedDirs) pending.add(dir);
+    changedDirsByFolder.set(folderId, pending);
+  }
+  clearTimeout(applyChangesTimer);
+  applyChangesTimer = setTimeout(
+    () =>
+      void applyWatchedChanges()
+        .then(() => changedDirsByFolder.clear())
+        .catch((error) => {
+          changedDirsByFolder.clear();
+          handleError(error, {
+            id: "project.files.watcher-refresh",
+            title: t("errors.projectFiles.title"),
+          });
+        }),
+    150,
+  );
+}
+
+async function applyWatchedChanges(): Promise<void> {
+  const currentGeneration = generation;
+  const reloads: Promise<void>[] = [];
+  function collect(node: ProjectTreeNode): void {
+    const pending = changedDirsByFolder.get(node.folderId);
+    if (
+      node.kind === "directory" &&
+      !node.isUnavailable &&
+      !node.isPlaceholder &&
+      pending?.has(node.relativePath) &&
+      (node.isRoot || expanded.value.includes(nodeKey(node)))
+    ) {
+      pending.delete(node.relativePath);
+      reloads.push(
+        (async () => {
+          const children = await readDirectory(
+            node.folderId,
+            node.relativePath,
+          );
+          if (currentGeneration !== generation) return;
+          node.children = children;
+          await Promise.all(
+            children
+              .filter((child) => expanded.value.includes(nodeKey(child)))
+              .map((child) => loadChildren(child)),
+          );
+        })(),
+      );
+    }
+    for (const child of node.children ?? []) collect(child);
+  }
+  for (const root of items.value) collect(root);
+  await Promise.all(reloads);
+}
+
+window.pine.onProjectFilesChanged(onWatcherEvent);
+watch([() => activeProject.value, expanded], () => scheduleWatchSync(), {
+  immediate: true,
+});
+onUnmounted(() => {
+  clearTimeout(syncWatchTimer);
+  clearTimeout(applyChangesTimer);
+});
 </script>
 
 <template>

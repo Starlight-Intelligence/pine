@@ -74,11 +74,16 @@ function mountTree(
         })),
   );
   const operateProjectFile = vi.fn(() => Promise.resolve());
+  const onProjectFilesChanged = vi.fn<
+    (listener: (event: unknown) => void) => () => void
+  >(() => () => {});
   Object.defineProperty(window, "pine", {
     configurable: true,
     value: {
       listProjectDirectory,
       operateProjectFile,
+      setWatchedProjectDirectories: vi.fn(() => Promise.resolve()),
+      onProjectFilesChanged,
       getPathForFile: (file: File) => `/external/${file.name}`,
     },
   });
@@ -96,6 +101,7 @@ function mountTree(
     folderId,
     listProjectDirectory,
     operateProjectFile,
+    onProjectFilesChanged,
   };
 }
 afterEach(() => {
@@ -404,5 +410,21 @@ describe("ProjectFileTree", () => {
     await flushPromises();
     expect(menuItem("重命名").attributes("data-disabled")).toBeDefined();
     expect(operateProjectFile).not.toHaveBeenCalled();
+  });
+
+  it("reloads affected directories when the file watcher reports changes", async () => {
+    const { wrapper, folderId, listProjectDirectory, onProjectFilesChanged } =
+      mountTree();
+    await expandRoot(wrapper);
+    listProjectDirectory.mockClear();
+    const listener = onProjectFilesChanged.mock.calls[0]?.[0];
+    expect(listener).toBeTypeOf("function");
+    listener({ folders: [{ folderId, changedDirs: [""] }] });
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    await flushPromises();
+    expect(listProjectDirectory).toHaveBeenCalledWith({
+      folderId,
+      relativePath: "",
+    });
   });
 });

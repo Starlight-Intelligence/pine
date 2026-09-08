@@ -19,6 +19,31 @@ export interface ListProjectDirectoryResult {
 }
 
 export const PROJECT_FILE_OPERATION_CHANNEL = "project-files:operate" as const;
+
+export const SET_WATCHED_PROJECT_DIRECTORIES_CHANNEL =
+  "project-files:set-watched-directories" as const;
+export const PROJECT_FILES_CHANGED_CHANNEL = "project-files:changed" as const;
+
+export interface WatchedProjectFolder {
+  folderId: string;
+  rootPath: string;
+  /** Portable relative paths of the directories to watch. "" is the root. */
+  directories: string[];
+}
+
+export interface SetWatchedProjectDirectoriesRequest {
+  /** Full desired watch state for the sender; replaces all previous folders. */
+  folders: WatchedProjectFolder[];
+}
+
+export interface ProjectFolderFileChanges {
+  folderId: string;
+  /** Portable relative paths of watched directories whose contents changed. */
+  changedDirs: string[];
+}
+export interface ProjectFilesChangedEvent {
+  folders: ProjectFolderFileChanges[];
+}
 export const PROJECT_FILE_ATTACHMENTS_CHANNEL =
   "project-files:attachments" as const;
 export type ProjectEntryReference = ListProjectDirectoryRequest;

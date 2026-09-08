@@ -104,8 +104,12 @@ import {
   PROJECT_FILE_ATTACHMENTS_CHANNEL,
   LIST_PROJECT_DIRECTORY_CHANNEL,
   READ_PROJECT_FILE_PREVIEW_CHANNEL,
+  PROJECT_FILES_CHANGED_CHANNEL,
+  SET_WATCHED_PROJECT_DIRECTORIES_CHANNEL,
   type ListProjectDirectoryRequest,
   type ListProjectDirectoryResult,
+  type ProjectFilesChangedEvent,
+  type SetWatchedProjectDirectoriesRequest,
 } from "./shared/projectFiles";
 import {
   SET_SIDEBAR_VIBRANCY_CHANNEL,
@@ -180,6 +184,19 @@ const pineApi: PineDesktopApi = {
     request: ListProjectDirectoryRequest,
   ): Promise<ListProjectDirectoryResult> =>
     ipcRenderer.invoke(LIST_PROJECT_DIRECTORY_CHANNEL, request),
+  setWatchedProjectDirectories: (
+    request: SetWatchedProjectDirectoriesRequest,
+  ): Promise<void> =>
+    ipcRenderer.invoke(SET_WATCHED_PROJECT_DIRECTORIES_CHANNEL, request),
+  onProjectFilesChanged: (
+    listener: (event: ProjectFilesChangedEvent) => void,
+  ): (() => void) => {
+    const handler = (_: unknown, event: ProjectFilesChangedEvent) =>
+      listener(event);
+    ipcRenderer.on(PROJECT_FILES_CHANGED_CHANNEL, handler);
+    return () =>
+      ipcRenderer.removeListener(PROJECT_FILES_CHANGED_CHANNEL, handler);
+  },
   operateProjectFile: (request) =>
     ipcRenderer.invoke(PROJECT_FILE_OPERATION_CHANNEL, request),
   inspectProjectAttachments: (entries) =>
