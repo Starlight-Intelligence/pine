@@ -485,8 +485,9 @@ async function applyWatchedChanges(): Promise<void> {
           );
           if (currentGeneration !== generation) return;
           node.children = children;
+          // Recurse through Vue's proxies so nested loads update the tree.
           await Promise.all(
-            children
+            node.children
               .filter((child) => expanded.value.includes(nodeKey(child)))
               .map((child) => loadChildren(child)),
           );
