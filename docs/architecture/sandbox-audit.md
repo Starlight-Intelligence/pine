@@ -1,6 +1,8 @@
 # Pine 沙箱审计与后端重构设计
 
-日期：2026-09-08。范围：Agent utility process → 工具注册 → 审批 → 文件工具 / shell
+日期：2026-09-08。下方初始审计保留为历史记录；最新实现状态见末尾“后端接入结果”。
+
+范围：Agent utility process → 工具注册 → 审批 → 文件工具 / shell
 执行器 → macOS Seatbelt，及相关测试、环境变量和退出行为。本文是代码与回归审计，
 不是第三方安全认证；没有执行内核漏洞、恶意 XPC 服务或完整竞态攻击测试。
 
@@ -114,3 +116,35 @@
   440 个测试全部通过，0 跳过，实际覆盖 macOS Seatbelt 用例。
 - 受限宿主执行 check：423 通过、17 平台原生用例跳过；该结果不替代上一项。
 - `git diff --check` 通过。
+
+## 后端接入结果
+
+已接入固定版本 sandbox-runtime 0.0.75 并移除手写 Seatbelt profile 生成器；
+`bash-sandbox.ts` 只保留运行时路径类别，`sandbox/policy.ts` 统一编译 SRT 权限。
+
+已落地：
+
+- 每次受限调用独立 supervisor，避免全局 manager 的跨项目配置串用；FD 3 返回执行状态。
+- 网络默认无许可，关闭本机监听/Unix sockets/额外 Mach 服务；审批后的原生路径独立。
+- 项目 scratch 隔离，取消全用户原生 tmp 授权，覆盖 SRT 隐式写授权。
+- 文件工具在内核限制内执行，覆盖检查后父目录替换；拒绝最终 symlink、多链接和非普通文件。
+- 文件输出上限、取消、后台同组进程回收；审批参数快照；监督进程依赖树写保护。
+- 源码运行和打包资源定位都通过应用依赖树加载固定 SRT，不从 PATH 或项目脚本选择后端。
+
+迁移过程中发现并解决 Unix socket 长路径限制，以及 SRT 字面目录项递归授权与 Pine
+祖先目录精确授权之间的语义差异。没有添加 Git/Python/AppleScript 命令放行表。
+带 glob 元字符的字面目录目前失败关闭，防止意外扩张权限。
+
+残余风险仍包括 inode/硬链接级别隔离、setsid 脱离进程组、CPU/内存/磁盘配额、内核与
+允许系统服务的漏洞。它们需要独立卷/快照/VM 或资源监督器；本次不声称关闭这些风险。
+Linux/Windows 保持不可用，直到在对应平台验证。审批 UI 仍使用既有工具错误展示，
+没有新增系统日志违规实时看板。
+
+验证补充：真实 Electron 44.1.1 Helper（ELECTRON_RUN_AS_NODE）能够启动 supervisor，
+完成受限文件写入与读取；应用安装在 /Applications 之外时，其 app bundle 作为只读运行时
+授权。Vite 生产 bundle 编译通过。Forge package 在解压缓存的 Electron ZIP 阶段提前结束，
+没有生成应用产物，因此本次不报告完整打包通过；该阶段尚未进入依赖注入或新后端执行。
+
+最终后端回归：61 个测试文件、448 个测试在无外层沙箱并设置 TMPDIR=/private/tmp 时
+全部通过，无跳过；覆盖 loopback 代理/直连、Unix socket、双项目并发、授权后路径替换、
+硬链接写入前拒绝、伪造 stdout 状态和审批参数快照。格式、Lint、TypeScript 检查通过。

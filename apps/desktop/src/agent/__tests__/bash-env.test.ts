@@ -1,8 +1,7 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   createBashEnvironment,
   createNativeBashEnvironment,
-  resolveNativeTemporaryDirectory,
   resolveLoginPath,
 } from "../bash-env";
 
@@ -70,18 +69,4 @@ describe("native execution environment", () => {
     expect(result.PATH).toBe("/project/node_modules/.bin:/usr/bin");
     expect(source).not.toHaveProperty("PATH");
   });
-
-  it.runIf(process.platform === "darwin" && !process.env.CODEX_SANDBOX)(
-    "discovers native temporary storage independently of TMPDIR",
-    async () => {
-      const expected = await resolveNativeTemporaryDirectory();
-      vi.stubEnv("TMPDIR", "/private/tmp");
-      try {
-        expect(await resolveNativeTemporaryDirectory()).toBe(expected);
-        expect(expected).toMatch(/^\/private\/var\/folders\/.+\/T$/);
-      } finally {
-        vi.unstubAllEnvs();
-      }
-    },
-  );
 });

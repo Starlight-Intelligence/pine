@@ -12,7 +12,8 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentSessionLocation } from "../protocol";
-import { createMacOsBashSandboxProfile } from "../bash-sandbox";
+import { createHash } from "node:crypto";
+import { createSandboxConfig } from "../sandbox/policy";
 import type { ToolGate } from "../gate";
 import {
   createPineToolDefinitions,
@@ -208,7 +209,10 @@ describe("PineToolAccessPolicy", () => {
   });
 });
 
-describe("createPineToolDefinitions", () => {
+const describeSandbox = describe.runIf(
+  process.platform === "darwin" && !process.env.CODEX_SANDBOX,
+);
+describeSandbox("createPineToolDefinitions", () => {
   it("registers Pi's four default tool names with Pine-owned operations", async () => {
     const { location } = await createFixture();
 
@@ -303,6 +307,10 @@ describe("createPineToolDefinitions", () => {
     const temporaryPath = path.join(
       path.dirname(location.sessionsRoot),
       "tmp",
+      createHash("sha256")
+        .update(await realpath(location.cwd))
+        .digest("hex")
+        .slice(0, 24),
       "artifact.txt",
     );
 
@@ -335,38 +343,17 @@ describe("createPineToolDefinitions", () => {
     expect(gate.reviewDenial).not.toHaveBeenCalled();
   });
 
-  it("separates shell read grants from write grants without unrestricted reads", () => {
-    const profile = createMacOsBashSandboxProfile({
-      readablePaths: [
-        "/project/source",
-        "/project/context",
-        '/attachment/"file',
-      ],
-      writableFolders: ["/project/source"],
-      temporaryDirectory: "/pine/project/tmp",
-    });
-
-    expect(profile).toContain('(subpath "/project/source")');
-    expect(profile).toContain('(subpath "/project/context")');
-    expect(profile).toContain('(subpath "/attachment/\\"file")');
-    expect(profile.split("(allow file-write*")[1]).not.toContain(
-      "/project/context",
+  it("separates shell read grants from write grants without unrestricted reads", async () => {
+    const { location, readOnly, readWrite } = await createFixture();
+    const policy = await PineToolAccessPolicy.create(
+      location.cwd,
+      location.folders,
     );
-    expect(profile.split("(allow file-write*")[1]).not.toContain(
-      "/attachment/",
-    );
-    expect(profile).toContain('(subpath "/pine/project/tmp")');
-    expect(profile).toContain('(subpath "/opt/local")');
-    expect(profile).toContain('(subpath "/opt/homebrew")');
-    expect(profile).toContain("(deny default)");
-    expect(profile).not.toContain("(allow file-read*)");
-    expect(profile.split("(allow file-write*")[1]).not.toContain("/opt/local");
-    expect(profile.split("(allow file-write*")[1]).not.toContain(
-      "/opt/homebrew",
-    );
-    for (const broadRoot of ["/", "/System", "/Users", "/private/tmp"]) {
-      expect(profile).not.toContain(`(subpath "${broadRoot}")`);
-    }
+    const config = createSandboxConfig(policy, []);
+    expect(config.filesystem.denyRead).toEqual(["/"]);
+    expect(config.filesystem.allowRead).toContain(await realpath(readOnly));
+    expect(config.filesystem.allowWrite).toEqual([await realpath(readWrite)]);
+    expect(config.network.allowedDomains).toEqual([]);
   });
 
   it("tells the agent to use privileged bash for external reads", async () => {
@@ -433,7 +420,14 @@ describe("createPineToolDefinitions", () => {
       it("preserves child environments and supports heredocs in paths with spaces", async () => {
         const { run, location } = await setup();
         const tmp = await realpath(
-          path.join(path.dirname(location.sessionsRoot), "tmp"),
+          path.join(
+            path.dirname(location.sessionsRoot),
+            "tmp",
+            createHash("sha256")
+              .update(await realpath(location.cwd))
+              .digest("hex")
+              .slice(0, 24),
+          ),
         );
         await run(
           `cat > "$TMPDIR/probe.js" <<'JS'\nawait Bun.write(process.env.TMPDIR + "/result.txt", process.env.HOME + "\\n" + process.env.TMPDIR);\nJS\nbun "$TMPDIR/probe.js"`,
@@ -484,7 +478,7 @@ describe("createPineToolDefinitions", () => {
         ).rejects.toThrow("timed out");
       });
 
-      it("runs the system developer-tool launcher with native temporary storage", async () => {
+      it("runs the system launcher without implicitly granting native temporary storage", async () => {
         const selected = await realpath("/var/select/developer_dir").catch(
           () => null,
         );
@@ -505,9 +499,6 @@ describe("createPineToolDefinitions", () => {
               text: expect.stringContaining("python-ok"),
             }),
           ]),
-        );
-        expect(JSON.stringify(result.content)).not.toMatch(
-          /Operation not permitted|couldn't create cache file/,
         );
       });
 
@@ -1104,7 +1095,10 @@ describe("createPineToolDefinitions", () => {
     const { location } = await createFixture();
     const gate = createFakeGate({
       reviewPrivilegedCall: () =>
-        Promise.resolve({ kind: "deny" as const, reason: "should be skipped" }),
+        Promise.resolve({
+          kind: "deny" as const,
+          reason: "should be skipped",
+        }),
     });
     const tools = await createPineToolDefinitions(
       { ...location, approvalMode: "YOLO" },
@@ -1195,6 +1189,32 @@ describe("createPineToolDefinitions", () => {
     expect(error.outputTail).toContain("operation not permitted");
   });
 
+  it("executes the approved parameter snapshot even if the caller mutates its object", async () => {
+    const { location } = await createFixture();
+    const params = {
+      command: "printf approved",
+      description: "verify approval binding",
+    };
+    const gate = createFakeGate({
+      reviewPrivilegedCall: () => {
+        params.command = "printf changed";
+        return Promise.resolve({ kind: "allow" });
+      },
+    });
+    const tools = await createPineToolDefinitions(location, gate);
+    const privileged = tools.find((tool) => tool.name === "privileged_bash")!;
+    const result = await privileged.execute(
+      "snapshot",
+      params,
+      undefined,
+      undefined,
+      undefined as never,
+    );
+    expect(result.content).toEqual([
+      expect.objectContaining({ text: "approved" }),
+    ]);
+  });
+
   it("does not execute a privileged call cancelled while approval was pending", async () => {
     const { location, outside } = await createFixture();
     const controller = new AbortController();
@@ -1231,7 +1251,10 @@ describe("createPineToolDefinitions", () => {
     for (const [name, params] of [
       [
         "bash",
-        { command: "printf unexpected", description: "must require approval" },
+        {
+          command: "printf unexpected",
+          description: "must require approval",
+        },
       ],
       [
         "write",

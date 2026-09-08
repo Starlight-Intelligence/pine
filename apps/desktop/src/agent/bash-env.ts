@@ -1,7 +1,5 @@
 import { execFile } from "node:child_process";
 import path from "node:path";
-import { realpath } from "node:fs/promises";
-import { promisify } from "node:util";
 
 const FALLBACK_PATH = "/usr/bin:/bin:/usr/sbin:/sbin";
 const LOGIN_PATH_TIMEOUT_MS = 10_000;
@@ -89,33 +87,4 @@ export function createNativeBashEnvironment(
     ...environment,
     PATH: `${path.join(cwd, "node_modules", ".bin")}:${loginPath}`,
   };
-}
-
-/** Resolve confstr's user scratch directory independently of inherited TMPDIR. */
-export async function resolveNativeTemporaryDirectory(): Promise<
-  string | null
-> {
-  if (process.platform !== "darwin") return null;
-  try {
-    const { stdout } = await promisify(execFile)(
-      "/usr/bin/getconf",
-      ["DARWIN_USER_TEMP_DIR"],
-      { timeout: 5_000, maxBuffer: 4_096 },
-    );
-    const directory = await realpath(stdout.trim());
-    const relative = path.relative("/private/var/folders", directory);
-    // An inherited host sandbox may make confstr fail or fall back to TMPDIR.
-    // Omit this optional runtime grant rather than broadening access or making
-    // unrelated file tools and approved native execution unavailable.
-    if (
-      !relative ||
-      relative.startsWith("..") ||
-      path.isAbsolute(relative) ||
-      path.basename(directory) !== "T"
-    )
-      return null;
-    return directory;
-  } catch {
-    return null;
-  }
 }

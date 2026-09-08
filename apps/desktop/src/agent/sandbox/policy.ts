@@ -1,0 +1,83 @@
+import path from "node:path";
+import type { SandboxRuntimeConfig } from "@anthropic-ai/sandbox-runtime";
+import {
+  MACOS_RUNTIME_DIRECTORIES,
+  MACOS_RUNTIME_FILES,
+} from "../bash-sandbox";
+import type { PineToolAccessPolicy } from "../tool-access-policy";
+
+/** Authority snapshot; no project-controlled config or implicit HOME grants. */
+export function createSandboxConfig(
+  policy: PineToolAccessPolicy,
+  runtimeFiles: string[],
+): SandboxRuntimeConfig {
+  // Electron's executable depends on frameworks elsewhere in its app bundle.
+  // Grant the containing installation, including when run outside /Applications.
+  runtimeFiles = [
+    ...new Set(
+      runtimeFiles.flatMap((entry) => {
+        const bundleEnd = entry.indexOf(".app/");
+        return bundleEnd < 0 ? [entry] : [entry, entry.slice(0, bundleEnd + 4)];
+      }),
+    ),
+  ];
+  const grants = [
+    ...policy.readablePaths(),
+    ...policy.writableFolders(),
+    ...runtimeFiles,
+  ];
+  if (grants.some((target) => /[*?\[\]\x00-\x1f]/.test(target))) {
+    throw new Error(
+      "The sandbox backend cannot safely represent wildcard or control characters in a literal path. Native access requires approval.",
+    );
+  }
+  // SRT literal entries are recursive subpaths. A singleton character class
+  // forces its documented glob matcher into an exact-path regex instead.
+  // This grants ancestor listing / symlink metadata without their contents.
+  const exactPath = (target: string) => {
+    if (!/[A-Za-z0-9]/.test(target)) {
+      throw new Error(
+        "The sandbox backend cannot safely encode this ancestor path.",
+      );
+    }
+    return target.replace(/[A-Za-z0-9]/, (character) => `[${character}]`);
+  };
+  const ancestors = new Set<string>(["/etc", "/tmp", "/var"]);
+  for (const target of [
+    ...grants,
+    ...MACOS_RUNTIME_DIRECTORIES,
+    ...MACOS_RUNTIME_FILES,
+  ]) {
+    let ancestor = path.dirname(target);
+    while (ancestor !== path.dirname(ancestor)) {
+      ancestors.add(ancestor);
+      ancestor = path.dirname(ancestor);
+    }
+  }
+  return {
+    network: {
+      allowedDomains: [],
+      deniedDomains: [],
+      allowUnixSockets: [],
+      allowLocalBinding: false,
+      allowMachLookup: [],
+    },
+    filesystem: {
+      denyRead: ["/"],
+      allowRead: [
+        ...new Set([
+          ...MACOS_RUNTIME_DIRECTORIES,
+          ...MACOS_RUNTIME_FILES.filter((entry) => entry !== "/"),
+          ...runtimeFiles,
+          ...policy.readablePaths(),
+          ...[...ancestors].map(exactPath),
+        ]),
+      ],
+      allowWrite: policy.writableFolders(),
+      denyWrite: [...runtimeFiles],
+      allowGitConfig: false,
+    },
+    enableWeakerNestedSandbox: false,
+    enableWeakerNetworkIsolation: false,
+  };
+}

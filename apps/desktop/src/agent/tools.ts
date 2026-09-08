@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+import { createSandboxFileIO, withFileExecutionSignal } from "./sandbox/files";
 import { constants } from "node:fs";
 import {
   access,
@@ -22,12 +24,7 @@ import {
 import { Type } from "typebox";
 import type { Static } from "typebox";
 import type { AgentSessionLocation } from "./protocol";
-import type { AgentFolderGrant } from "./protocol";
-import {
-  createNativeBashEnvironment,
-  resolveLoginPath,
-  resolveNativeTemporaryDirectory,
-} from "./bash-env";
+import { createNativeBashEnvironment, resolveLoginPath } from "./bash-env";
 import {
   createScopedBashOperations,
   SandboxCommandPermissionError,
@@ -53,76 +50,87 @@ import {
   type TinyFishToolFactoryOptions,
 } from "./tinyfishTools";
 
-async function detectImageMimeType(
-  policy: PineToolAccessPolicy,
-  targetPath: string,
-): Promise<string | null> {
-  const authorizedPath = await policy.authorize(targetPath, "read");
-  const file = await open(authorizedPath, "r");
-  try {
-    const header = Buffer.alloc(12);
-    const { bytesRead } = await file.read(header, 0, header.length, 0);
-    const bytes = header.subarray(0, bytesRead);
-    if (bytes.subarray(0, 8).equals(Buffer.from("89504e470d0a1a0a", "hex"))) {
-      return "image/png";
-    }
-    if (bytes.subarray(0, 3).equals(Buffer.from("ffd8ff", "hex"))) {
-      return "image/jpeg";
-    }
-    const signature = bytes.toString("ascii");
-    if (signature.startsWith("GIF87a") || signature.startsWith("GIF89a")) {
-      return "image/gif";
-    }
-    if (signature.startsWith("RIFF") && signature.slice(8, 12) === "WEBP") {
-      return "image/webp";
-    }
-    if (signature.startsWith("BM")) return "image/bmp";
-    return null;
-  } finally {
-    await file.close();
-  }
+interface FileIO {
+  access(path: string, mode: number): Promise<void>;
+  readFile(path: string): Promise<Buffer>;
+  readHeader(path: string): Promise<Buffer>;
+  writeFile(path: string, content: string): Promise<void>;
+  mkdir(path: string): Promise<void>;
 }
 
-function createReadOperations(policy: PineToolAccessPolicy) {
+const nativeFileIO: FileIO = {
+  access,
+  readFile: (targetPath: string) => readFile(targetPath),
+  readHeader: async (targetPath: string) => {
+    const file = await open(targetPath, "r");
+    try {
+      const buffer = Buffer.alloc(12);
+      const { bytesRead } = await file.read(buffer, 0, 12, 0);
+      return buffer.subarray(0, bytesRead);
+    } finally {
+      await file.close();
+    }
+  },
+  writeFile: (targetPath: string, content: string) =>
+    writeFile(targetPath, content, "utf8"),
+  mkdir: (targetPath: string) =>
+    mkdir(targetPath, { recursive: true }).then(() => undefined),
+};
+
+function imageMimeType(bytes: Buffer): string | null {
+  if (bytes.subarray(0, 8).equals(Buffer.from("89504e470d0a1a0a", "hex")))
+    return "image/png";
+  if (bytes.subarray(0, 3).equals(Buffer.from("ffd8ff", "hex")))
+    return "image/jpeg";
+  const signature = bytes.toString("ascii");
+  if (signature.startsWith("GIF87a") || signature.startsWith("GIF89a"))
+    return "image/gif";
+  if (signature.startsWith("RIFF") && signature.slice(8, 12) === "WEBP")
+    return "image/webp";
+  if (signature.startsWith("BM")) return "image/bmp";
+  return null;
+}
+
+function createReadOperations(policy: PineToolAccessPolicy, io = nativeFileIO) {
   return {
-    access: async (targetPath: string) => {
-      const authorizedPath = await policy.authorize(targetPath, "read");
-      await access(authorizedPath, constants.R_OK);
-    },
-    detectImageMimeType: (targetPath: string) =>
-      detectImageMimeType(policy, targetPath),
+    access: async (targetPath: string) =>
+      io.access(await policy.authorize(targetPath, "read"), constants.R_OK),
+    detectImageMimeType: async (targetPath: string) =>
+      imageMimeType(
+        await io.readHeader(await policy.authorize(targetPath, "read")),
+      ),
     readFile: async (targetPath: string) =>
-      readFile(await policy.authorize(targetPath, "read")),
+      io.readFile(await policy.authorize(targetPath, "read")),
   };
 }
 
-function createEditOperations(policy: PineToolAccessPolicy) {
+function createEditOperations(policy: PineToolAccessPolicy, io = nativeFileIO) {
   return {
-    access: async (targetPath: string) => {
-      const authorizedPath = await policy.authorize(targetPath, "write");
-      await access(authorizedPath, constants.R_OK | constants.W_OK);
-    },
+    access: async (targetPath: string) =>
+      io.access(
+        await policy.authorize(targetPath, "write"),
+        constants.R_OK | constants.W_OK,
+      ),
     readFile: async (targetPath: string) =>
-      readFile(await policy.authorize(targetPath, "write")),
+      io.readFile(await policy.authorize(targetPath, "write")),
     writeFile: async (targetPath: string, content: string) =>
-      writeFile(await policy.authorize(targetPath, "write"), content, "utf8"),
+      io.writeFile(await policy.authorize(targetPath, "write"), content),
   };
 }
 
-function createWriteOperations(policy: PineToolAccessPolicy) {
+function createWriteOperations(
+  policy: PineToolAccessPolicy,
+  io = nativeFileIO,
+) {
   return {
     mkdir: async (targetPath: string) =>
-      mkdir(
+      io.mkdir(
         await policy.authorize(targetPath, "write", { allowMissing: true }),
-        {
-          recursive: true,
-        },
-      ).then(() => undefined),
+      ),
     writeFile: async (targetPath: string, content: string) =>
-      writeFile(
+      io.writeFile(
         await policy.authorize(targetPath, "write", { allowMissing: true }),
         content,
-        "utf8",
       ),
   };
 }
@@ -140,7 +148,8 @@ function gateFileTool<TParams extends TSchema, TDetails, TState>(
 ): ToolDefinition<TParams, TDetails, TState> {
   return {
     ...tool,
-    execute: async (toolCallId, params, signal, onUpdate, ctx) => {
+    execute: async (toolCallId, inputParams, signal, onUpdate, ctx) => {
+      const params = structuredClone(inputParams);
       if (getApprovalMode() === "YOLO") {
         return permissive.execute(toolCallId, params, signal, onUpdate, ctx);
       }
@@ -149,7 +158,9 @@ function gateFileTool<TParams extends TSchema, TDetails, TState>(
         if (getApprovalMode() === "let-me-review") {
           throw new Error("Execution is unavailable without an approval gate.");
         }
-        return tool.execute(toolCallId, params, signal, onUpdate, ctx);
+        return withFileExecutionSignal(signal, () =>
+          tool.execute(toolCallId, params, signal, onUpdate, ctx),
+        );
       }
       const targetPath = (params as { path?: unknown }).path;
       const subject = typeof targetPath === "string" ? targetPath : undefined;
@@ -162,9 +173,12 @@ function gateFileTool<TParams extends TSchema, TDetails, TState>(
       if (pre.kind === "deny") {
         throw new Error(pre.reason ?? "This call was denied.");
       }
+      if (signal?.aborted) throw new Error("aborted");
       try {
         return await preserveAccessDenial(() =>
-          tool.execute(toolCallId, params, signal, onUpdate, ctx),
+          withFileExecutionSignal(signal, () =>
+            tool.execute(toolCallId, params, signal, onUpdate, ctx),
+          ),
         );
       } catch (error) {
         if (!(error instanceof PathAccessDeniedError)) throw error;
@@ -212,17 +226,15 @@ export async function createPineToolDefinitions(
   const bashTemporaryDirectory = path.join(
     path.dirname(location.sessionsRoot),
     "tmp",
+    createHash("sha256")
+      .update(await realpath(location.cwd))
+      .digest("hex")
+      .slice(0, 24),
   );
   await mkdir(bashTemporaryDirectory, { recursive: true });
   const canonicalBashTemporaryDirectory = await realpath(
     bashTemporaryDirectory,
   );
-  // macOS services may use confstr's per-user temporary directory regardless
-  // of TMPDIR. Share that runtime scratch space with both shell and file tools.
-  const systemTemporaryDirectory = await resolveNativeTemporaryDirectory();
-  const systemTemporaryGrants: AgentFolderGrant[] = systemTemporaryDirectory
-    ? [{ access: "read-write", path: systemTemporaryDirectory }]
-    : [];
   const policy = await PineToolAccessPolicy.create(
     location.cwd,
     [
@@ -230,7 +242,6 @@ export async function createPineToolDefinitions(
         access: "read-write",
         path: canonicalBashTemporaryDirectory,
       },
-      ...systemTemporaryGrants,
       ...location.folders,
     ],
     attachedPaths,
@@ -242,7 +253,17 @@ export async function createPineToolDefinitions(
   // exact executable (and its canonical target), never its parent directory.
   const bunPath = path.join(os.homedir(), ".bun", "bin", "bun");
   const canonicalBunPath = await realpath(bunPath).catch(() => null);
-  const runtimeFiles = canonicalBunPath ? [bunPath, canonicalBunPath] : [];
+  const runtimeFiles = [
+    ...(canonicalBunPath ? [bunPath, canonicalBunPath] : []),
+    process.execPath,
+    await realpath(process.execPath),
+  ];
+  const sandboxFiles = createSandboxFileIO(
+    policy,
+    canonicalBashTemporaryDirectory,
+    loginPath,
+    runtimeFiles,
+  );
 
   // Approval changes authority, not the user's shell environment.
   const nativeBashTool = createBashToolDefinition(location.cwd, {
@@ -254,13 +275,13 @@ export async function createPineToolDefinitions(
   });
 
   const readTool = createReadToolDefinition(location.cwd, {
-    operations: createReadOperations(policy),
+    operations: createReadOperations(policy, sandboxFiles),
   });
   const editTool = createEditToolDefinition(location.cwd, {
-    operations: createEditOperations(policy),
+    operations: createEditOperations(policy, sandboxFiles),
   });
   const writeTool = createWriteToolDefinition(location.cwd, {
-    operations: createWriteOperations(policy),
+    operations: createWriteOperations(policy, sandboxFiles),
   });
   const permissiveEditTool = createEditToolDefinition(location.cwd, {
     operations: createEditOperations(permissivePolicy),
@@ -319,12 +340,13 @@ export async function createPineToolDefinitions(
     ),
   });
   const sandboxGuidance =
-    " Ordinary bash can read only shared project folders, user-attached files/directories, Pine's temporary directory, macOS user temporary storage, and installed system/application/toolchain runtime files. Ancestor directories can be listed for toolchain discovery without granting access to sibling file contents. Reading or listing other external paths (including ~/Documents, ~/Downloads, private configs, and unrelated projects) is blocked even in Auto Approve mode. Use privileged_bash directly for those external reads and explain the required access; each call requires approval. Writes are limited to read-write shared folders, $TMPDIR and macOS user temporary storage; direct writes to /tmp are blocked.";
+    " Ordinary bash can read only shared project folders, user-attached files/directories, this project's temporary directory, and installed system/application/toolchain runtime files. Ancestor directories can be listed for toolchain discovery without granting access to sibling file contents. Reading or listing other external paths (including ~/Documents, ~/Downloads, private configs, and unrelated projects) is blocked even in Auto Approve mode. Use privileged_bash directly for those external reads and explain the required access; each call requires approval. Writes are limited to read-write shared folders and this project’s $TMPDIR. System temporary storage, network access, local servers and Unix sockets are blocked. Use privileged_bash with approval when native capabilities are needed. Some runtime-protected configuration files also require native approval.";
   const pineBashTool = defineTool({
     ...bashTool,
     parameters: pineBashParams,
     prepareArguments: (args) => args as Static<typeof pineBashParams>,
-    execute: async (toolCallId, params, signal, onUpdate, ctx) => {
+    execute: async (toolCallId, inputParams, signal, onUpdate, ctx) => {
+      const params = structuredClone(inputParams);
       if (getApprovalMode() === "YOLO") {
         throw new Error(
           "Ordinary bash is disabled in YOLO mode. Use privileged_bash instead.",
@@ -379,7 +401,8 @@ export async function createPineToolDefinitions(
           name: "privileged_bash",
           parameters: pineBashParams,
           prepareArguments: (args) => args as Static<typeof pineBashParams>,
-          execute: async (toolCallId, params, signal, onUpdate, ctx) => {
+          execute: async (toolCallId, inputParams, signal, onUpdate, ctx) => {
+            const params = structuredClone(inputParams);
             const command = params.command;
             // YOLO bypasses every Pine permission gate. Other modes require a
             // fresh review before native execution.
@@ -415,7 +438,7 @@ export async function createPineToolDefinitions(
             );
           },
           description:
-            "Run a shell command with the user's native permissions, outside Pine's project sandbox. Every call requires a fresh approval unless YOLO mode is active. Use it directly to read files or list directories outside the shared project folders and user attachments: ordinary bash blocks these reads even in Auto Approve mode. Also use it for external writes, macOS application control (osascript, open, Shortcuts, Automator), launching GUI applications, controlling or signaling processes outside Pine (kill, pkill, killall), or another operation that ordinary bash explicitly reports was denied by the project sandbox. State the needed external access in description. Do not use it for normal project commands or ordinary command errors.",
+            "Run a shell command with the user's native permissions, outside Pine's project sandbox. Every call requires a fresh approval unless YOLO mode is active. Use it directly to read files or list directories outside the shared project folders and user attachments: ordinary bash blocks these reads even in Auto Approve mode. Also use it for network access, system temporary storage, external writes, macOS application control (osascript, open, Shortcuts, Automator), launching GUI applications, controlling or signaling processes outside Pine (kill, pkill, killall), or another operation that ordinary bash explicitly reports was denied by the project sandbox. State the needed external access in description. Do not use it for normal project commands or ordinary command errors.",
           promptSnippet:
             "Use privileged_bash directly for macOS app/GUI control, external process control, out-of-project filesystem access, or after ordinary bash explicitly says the project sandbox denied an operation. Calls receive a fresh review before native execution unless YOLO mode is active. State why native privileges are required in description before composing command.",
         })
