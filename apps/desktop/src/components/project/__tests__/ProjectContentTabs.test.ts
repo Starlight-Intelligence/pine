@@ -197,6 +197,23 @@ describe("ProjectContentTabs", () => {
     expect(wrapper.get('[role="tablist"]').classes()).toContain("window-drag");
     wrapper.unmount();
   });
+
+  it("keeps the tab titlebar draggable while making separators scrollable", async () => {
+    const { wrapper } = await mountTabs(true);
+
+    expect(
+      wrapper.get('[data-slot="project-content-tabs-titlebar"]').classes(),
+    ).toContain("window-drag");
+    expect(
+      wrapper.get('[data-slot="project-content-tabs-titlebar"]').classes(),
+    ).not.toContain("pointer-events-none");
+    expect(wrapper.get(".project-content-tab-separator").classes()).toContain(
+      "window-no-drag",
+    );
+
+    wrapper.unmount();
+  });
+
   afterEach(() => {
     vi.restoreAllMocks();
   });
