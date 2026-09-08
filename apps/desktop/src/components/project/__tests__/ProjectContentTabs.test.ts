@@ -307,6 +307,34 @@ describe("ProjectContentTabs", () => {
     wrapper.unmount();
   });
 
+  it("clears the tab list fade after closing a tab removes overflow", async () => {
+    const { wrapper } = await mountTabs();
+    const tabsStore = useContentTabsStore();
+    const viewport = wrapper.get<HTMLDivElement>('[role="tablist"]').element;
+    Object.defineProperties(viewport, {
+      clientWidth: { configurable: true, value: 300 },
+      scrollWidth: {
+        configurable: true,
+        get: () =>
+          wrapper.findAll('[data-slot="project-content-tab"]').length * 160,
+      },
+    });
+
+    const secondTab = tabsStore.createSessionTab({ reuseDraft: false });
+    await nextTick();
+    await flushPromises();
+    expect(viewport.classList.contains("scroll-fade-none")).toBe(false);
+
+    await wrapper
+      .get(
+        `[data-tab-id="${secondTab.id}"] button[aria-label="Close New session"]`,
+      )
+      .trigger("click");
+    await flushPromises();
+    expect(viewport.classList.contains("scroll-fade-none")).toBe(true);
+    wrapper.unmount();
+  });
+
   it("binds each session tab to its own session and reuses its view", async () => {
     const { router, wrapper } = await mountTabs();
     const tabsStore = useContentTabsStore();

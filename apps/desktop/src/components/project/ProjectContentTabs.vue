@@ -2,7 +2,15 @@
 import { MessageSquarePlusIcon, SquareTerminalIcon, XIcon } from "@lucide/vue";
 import { storeToRefs } from "pinia";
 import type { ComponentPublicInstance } from "vue";
-import { computed, nextTick, onMounted, ref, useTemplateRef, watch } from "vue";
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  useTemplateRef,
+  watch,
+} from "vue";
 import { useI18n } from "vue-i18n";
 import { handleError } from "@/app/errors/errorHandler";
 import { PineLogo } from "@/components/pine";
@@ -77,10 +85,31 @@ const shouldReserveWindowControlsSpace = computed(
 
 const tabButtons = new Map<string, HTMLButtonElement>();
 const tabList = useTemplateRef<HTMLDivElement>("tabList");
+const tabListHasOverflow = ref<boolean | null>(null);
+let tabListResizeObserver: ResizeObserver | null = null;
 const draggingTabId = ref<string | null>(null);
 const dropPosition = ref<{ tabId: string; side: "before" | "after" } | null>(
   null,
 );
+
+function updateTabListOverflow(): void {
+  const viewport = tabList.value;
+  if (!viewport) return;
+  tabListHasOverflow.value = viewport.scrollWidth > viewport.clientWidth;
+}
+
+onMounted(() => {
+  updateTabListOverflow();
+  if (!tabList.value || typeof ResizeObserver === "undefined") return;
+
+  tabListResizeObserver = new ResizeObserver(updateTabListOverflow);
+  tabListResizeObserver.observe(tabList.value);
+});
+
+onBeforeUnmount(() => {
+  tabListResizeObserver?.disconnect();
+  tabListResizeObserver = null;
+});
 
 function startTabDrag(event: DragEvent, tab: ProjectContentTab): void {
   if (!event.dataTransfer) return;
@@ -165,7 +194,14 @@ function revealActiveTab(): void {
   });
 }
 
-watch([activeTabId, tabList], revealActiveTab, { flush: "post" });
+watch(
+  [activeTabId, tabList, tabs],
+  () => {
+    revealActiveTab();
+    updateTabListOverflow();
+  },
+  { flush: "post" },
+);
 
 function getTabLabel(tab: ProjectContentTab): string {
   return "label" in tab && tab.label
@@ -272,7 +308,12 @@ watch(activeSession, (session) => {
         role="tablist"
         :aria-label="t('project.contentTabs.tabListLabel')"
         class="scroll-fade-x pointer-events-auto flex min-w-0 flex-1 justify-start overflow-x-auto no-scrollbar"
-        :class="draggingTabId ? 'window-no-drag' : 'window-drag'"
+        :class="
+          cn(
+            tabListHasOverflow === false && 'scroll-fade-none',
+            draggingTabId ? 'window-no-drag' : 'window-drag',
+          )
+        "
         @dragover="dragOverTab($event)"
         @drop="dropTab"
         @dragleave="leaveTabList"
