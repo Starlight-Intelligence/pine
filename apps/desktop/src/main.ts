@@ -136,6 +136,8 @@ import {
   PROJECT_MEDIA_PROTOCOL,
   PROJECT_FILES_CHANGED_CHANNEL,
   SET_WATCHED_PROJECT_DIRECTORIES_CHANNEL,
+  MAX_WATCHED_PROJECT_DIRECTORIES,
+  MAX_WATCHED_PROJECT_FOLDERS,
   type ListProjectDirectoryResult,
 } from "./shared/projectFiles";
 import { ProjectFileWatcherRegistry } from "./main/projectFileWatcher";
@@ -451,11 +453,24 @@ const SetWatchedProjectDirectoriesRequestSchema = z.object({
     .array(
       z.object({
         folderId: z.uuid(),
-        rootPath: z.string().min(1).max(4_096),
         directories: z.array(z.string().max(4_096)),
       }),
     )
-    .max(64),
+    .max(MAX_WATCHED_PROJECT_FOLDERS)
+    .refine(
+      (folders) =>
+        new Set(folders.map((folder) => folder.folderId)).size ===
+        folders.length,
+      "Folder IDs must be unique.",
+    )
+    .refine(
+      (folders) =>
+        folders.reduce(
+          (total, folder) => total + folder.directories.length,
+          0,
+        ) <= MAX_WATCHED_PROJECT_DIRECTORIES,
+      `At most ${MAX_WATCHED_PROJECT_DIRECTORIES} directories can be watched.`,
+    ),
 });
 const SetSidebarVibrancyRequestSchema = z.object({
   enabled: z.boolean(),
@@ -597,9 +612,6 @@ const createWindow = () => {
   });
   const webContentsId = mainWindow.webContents.id;
   installWindowShortcuts(mainWindow.webContents, createWindow);
-  mainWindow.webContents.once("destroyed", () => {
-    projectFileWatchers?.disposeSender(webContentsId);
-  });
 
   // Focus stops the approval attention request (Windows flashes until the
   // window is focused; macOS bounces until the app activates).
@@ -1059,10 +1071,16 @@ ipcMain.handle(
 
 ipcMain.handle(
   SET_WATCHED_PROJECT_DIRECTORIES_CHANNEL,
-  (event, request: unknown): void => {
+  (event, request: unknown): Promise<void> => {
     const parsed = SetWatchedProjectDirectoriesRequestSchema.parse(request);
     if (!projectFileWatchers) {
       projectFileWatchers = new ProjectFileWatcherRegistry(
+        (senderId, folderId, relativePath) =>
+          getProjectRuntimes().resolveDirectory(
+            senderId,
+            folderId,
+            relativePath,
+          ),
         (senderId, changes) => {
           webContents
             .fromId(senderId)
@@ -1070,7 +1088,7 @@ ipcMain.handle(
         },
       );
     }
-    void projectFileWatchers.setWatchedDirectories(event.sender.id, parsed);
+    return projectFileWatchers.setWatchedDirectories(event.sender.id, parsed);
   },
 );
 

@@ -1,30 +1,31 @@
 import { watch, type FSWatcher } from "node:fs";
-import { realpath } from "node:fs/promises";
-import path from "node:path";
 import type {
   ProjectFolderFileChanges,
   SetWatchedProjectDirectoriesRequest,
-  WatchedProjectFolder,
 } from "../shared/projectFiles";
 
-function isWithinRoot(rootPath: string, candidatePath: string): boolean {
-  const pathFromRoot = path.relative(rootPath, candidatePath);
-  return (
-    pathFromRoot === "" ||
-    (!pathFromRoot.startsWith(`..${path.sep}`) &&
-      pathFromRoot !== ".." &&
-      !path.isAbsolute(pathFromRoot))
-  );
+interface WatchedDirectory {
+  relativePath: string;
+  watcher: FSWatcher;
 }
 
 interface FolderWatchers {
-  rootPath: string;
-  /** Absolute directory path -> active watcher. */
-  watchers: Map<string, FSWatcher>;
-  /** Portable relative paths of directories with pending change events. */
-  pending: Set<string>;
+  /** Resolved absolute directory path -> active watcher. */
+  directories: Map<string, WatchedDirectory>;
+}
+
+interface SenderWatchers {
+  folders: Map<string, FolderWatchers>;
+  pending: Map<string, Set<string>>;
+  revision: number;
   timer: NodeJS.Timeout | null;
 }
+
+export type ProjectDirectoryResolver = (
+  senderId: number,
+  folderId: string,
+  relativePath: string,
+) => Promise<string>;
 
 export type ProjectFilesChangeListener = (
   senderId: number,
@@ -36,117 +37,60 @@ export interface ProjectFileWatcherOptions {
 }
 
 /**
- * Watches the directories the renderer currently shows (project roots plus
- * expanded directories) with non-recursive fs.watch handles and reports
- * debounced change batches per webContents sender. Watching only visible
- * directories keeps the handle count bounded regardless of project size.
+ * Maintains the non-recursive directory watchers requested by each renderer.
+ * Paths are resolved through the active project runtime, so the renderer never
+ * chooses an arbitrary filesystem root. Full-state updates are revisioned: if
+ * resolutions overlap, only the newest update is allowed to change watchers.
  */
 export class ProjectFileWatcherRegistry {
-  private readonly senders = new Map<number, Map<string, FolderWatchers>>();
+  private readonly senders = new Map<number, SenderWatchers>();
   private readonly changeDebounceMs: number;
 
   constructor(
+    private readonly resolveDirectory: ProjectDirectoryResolver,
     private readonly onChange: ProjectFilesChangeListener,
     options: ProjectFileWatcherOptions = {},
   ) {
-    this.changeDebounceMs = options.changeDebounceMs ?? 200;
+    this.changeDebounceMs = options.changeDebounceMs ?? 100;
   }
 
   async setWatchedDirectories(
     senderId: number,
     request: SetWatchedProjectDirectoriesRequest,
   ): Promise<void> {
-    const existing = this.senders.get(senderId) ?? new Map();
-    const nextKeys = new Set(request.folders.map((folder) => folder.folderId));
-    for (const [folderId, state] of existing) {
-      if (!nextKeys.has(folderId)) {
-        this.closeFolder(state);
-        existing.delete(folderId);
-      }
-    }
+    const state = this.senders.get(senderId) ?? this.createSender(senderId);
+    const revision = ++state.revision;
+    const wantedFolders = new Map<string, Map<string, string>>();
 
-    for (const folder of request.folders) {
-      const state = existing.get(folder.folderId) ?? {
-        rootPath: folder.rootPath,
-        watchers: new Map<string, FSWatcher>(),
-        pending: new Set<string>(),
-        timer: null,
-      };
-      state.rootPath = folder.rootPath;
-      existing.set(folder.folderId, state);
-      await this.syncFolder(folder, state);
-    }
-    this.senders.set(senderId, existing);
-  }
+    await Promise.all(
+      request.folders.map(async (folder) => {
+        const wantedDirectories = new Map<string, string>();
+        await Promise.all(
+          [...new Set(folder.directories)].map(async (relativePath) => {
+            const absolutePath = await this.resolveDirectory(
+              senderId,
+              folder.folderId,
+              relativePath,
+            ).catch(() => undefined);
+            if (absolutePath) wantedDirectories.set(absolutePath, relativePath);
+          }),
+        );
+        wantedFolders.set(folder.folderId, wantedDirectories);
+      }),
+    );
 
-  private async syncFolder(
-    folder: WatchedProjectFolder,
-    state: FolderWatchers,
-  ): Promise<void> {
-    const resolvedRoot = await realpath(folder.rootPath).catch(() => undefined);
-    if (!resolvedRoot) {
-      this.closeFolder(state);
+    if (this.senders.get(senderId) !== state || state.revision !== revision)
       return;
-    }
-
-    const wanted = new Map<string, string>();
-    for (const relativePath of folder.directories) {
-      const resolved = await realpath(
-        path.resolve(resolvedRoot, relativePath),
-      ).catch(() => undefined);
-      if (resolved && isWithinRoot(resolvedRoot, resolved)) {
-        wanted.set(resolved, relativePath);
-      }
-    }
-
-    for (const [absolute, watcher] of state.watchers) {
-      if (!wanted.has(absolute)) {
-        watcher.close();
-        state.watchers.delete(absolute);
-      }
-    }
-
-    for (const [absolute, relativePath] of wanted) {
-      if (state.watchers.has(absolute)) continue;
-      try {
-        const watcher = watch(absolute, { persistent: false }, () => {
-          state.pending.add(relativePath);
-          this.scheduleFlush(folder.folderId, state);
-        });
-        watcher.on("error", () => {
-          watcher.close();
-          state.watchers.delete(absolute);
-          state.pending.add(relativePath);
-          this.scheduleFlush(folder.folderId, state);
-        });
-        state.watchers.set(absolute, watcher);
-      } catch {
-        // Directory vanished between realpath and watch; the renderer will
-        // rebuild the tree on the next change event it does receive.
-      }
-    }
-  }
-
-  private scheduleFlush(folderId: string, state: FolderWatchers): void {
-    if (state.timer) return;
-    state.timer = setTimeout(() => {
-      state.timer = null;
-      if (state.pending.size === 0) return;
-      const changedDirs = [...state.pending].sort((a, b) => a.localeCompare(b));
-      state.pending.clear();
-      for (const [senderId, folders] of this.senders) {
-        if ([...folders.values()].includes(state)) {
-          this.onChange(senderId, [{ folderId, changedDirs }]);
-          return;
-        }
-      }
-    }, this.changeDebounceMs);
+    this.commit(senderId, state, wantedFolders);
   }
 
   disposeSender(senderId: number): void {
-    const folders = this.senders.get(senderId);
-    if (!folders) return;
-    for (const state of folders.values()) this.closeFolder(state);
+    const state = this.senders.get(senderId);
+    if (!state) return;
+    state.revision += 1;
+    if (state.timer) clearTimeout(state.timer);
+    for (const folder of state.folders.values()) this.closeFolder(folder);
+    state.pending.clear();
     this.senders.delete(senderId);
   }
 
@@ -155,12 +99,95 @@ export class ProjectFileWatcherRegistry {
       this.disposeSender(senderId);
   }
 
-  private closeFolder(state: FolderWatchers): void {
-    if (state.timer) {
-      clearTimeout(state.timer);
-      state.timer = null;
+  private createSender(senderId: number): SenderWatchers {
+    const state: SenderWatchers = {
+      folders: new Map(),
+      pending: new Map(),
+      revision: 0,
+      timer: null,
+    };
+    this.senders.set(senderId, state);
+    return state;
+  }
+
+  private commit(
+    senderId: number,
+    state: SenderWatchers,
+    wantedFolders: Map<string, Map<string, string>>,
+  ): void {
+    for (const [folderId, folder] of state.folders) {
+      if (!wantedFolders.has(folderId)) {
+        this.closeFolder(folder);
+        state.folders.delete(folderId);
+        state.pending.delete(folderId);
+      }
     }
-    for (const watcher of state.watchers.values()) watcher.close();
-    state.watchers.clear();
+
+    for (const [folderId, wantedDirectories] of wantedFolders) {
+      const folder = state.folders.get(folderId) ?? {
+        directories: new Map<string, WatchedDirectory>(),
+      };
+      state.folders.set(folderId, folder);
+
+      for (const [absolutePath, watched] of folder.directories) {
+        if (wantedDirectories.get(absolutePath) !== watched.relativePath) {
+          watched.watcher.close();
+          folder.directories.delete(absolutePath);
+        }
+      }
+
+      for (const [absolutePath, relativePath] of wantedDirectories) {
+        if (folder.directories.has(absolutePath)) continue;
+        try {
+          const watcher = watch(absolutePath, { persistent: false }, () => {
+            this.queueChange(senderId, state, folderId, relativePath);
+          });
+          const watched = { relativePath, watcher };
+          watcher.on("error", () => {
+            if (folder.directories.get(absolutePath) !== watched) return;
+            watcher.close();
+            folder.directories.delete(absolutePath);
+            this.queueChange(senderId, state, folderId, relativePath);
+          });
+          folder.directories.set(absolutePath, watched);
+        } catch {
+          // The directory vanished between resolution and watch creation.
+          this.queueChange(senderId, state, folderId, relativePath);
+        }
+      }
+    }
+  }
+
+  private queueChange(
+    senderId: number,
+    state: SenderWatchers,
+    folderId: string,
+    relativePath: string,
+  ): void {
+    if (this.senders.get(senderId) !== state) return;
+    const pending = state.pending.get(folderId) ?? new Set<string>();
+    pending.add(relativePath);
+    state.pending.set(folderId, pending);
+    if (state.timer) return;
+    state.timer = setTimeout(() => {
+      state.timer = null;
+      if (this.senders.get(senderId) !== state || state.pending.size === 0)
+        return;
+      const changes = [...state.pending]
+        .map(([pendingFolderId, directories]) => ({
+          folderId: pendingFolderId,
+          changedDirs: [...directories].sort((left, right) =>
+            left.localeCompare(right),
+          ),
+        }))
+        .sort((left, right) => left.folderId.localeCompare(right.folderId));
+      state.pending.clear();
+      this.onChange(senderId, changes);
+    }, this.changeDebounceMs);
+  }
+
+  private closeFolder(folder: FolderWatchers): void {
+    for (const watched of folder.directories.values()) watched.watcher.close();
+    folder.directories.clear();
   }
 }

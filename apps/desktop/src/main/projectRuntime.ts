@@ -30,7 +30,7 @@ import {
   resolveProjectEntry,
   type ProjectFileNativeActions,
 } from "./projectFileOperations";
-import { listProjectDirectory } from "./projectFiles";
+import { listProjectDirectory, resolveProjectPath } from "./projectFiles";
 import type { ProjectDataPaths } from "./projects/projectRepository";
 import {
   ProjectSessionService,
@@ -241,6 +241,18 @@ export class ProjectRuntimeRegistry {
   ): Promise<ProjectEntry[]> {
     const runtime = this.get(webContentsId);
     return listProjectDirectory(
+      this.getFolder(runtime.project, folderId),
+      relativePath,
+    );
+  }
+
+  async resolveDirectory(
+    webContentsId: number,
+    folderId: string,
+    relativePath: string,
+  ): Promise<string> {
+    const runtime = this.get(webContentsId);
+    return resolveProjectPath(
       this.getFolder(runtime.project, folderId),
       relativePath,
     );

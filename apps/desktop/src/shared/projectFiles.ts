@@ -24,9 +24,11 @@ export const SET_WATCHED_PROJECT_DIRECTORIES_CHANNEL =
   "project-files:set-watched-directories" as const;
 export const PROJECT_FILES_CHANGED_CHANNEL = "project-files:changed" as const;
 
+export const MAX_WATCHED_PROJECT_FOLDERS = 64;
+export const MAX_WATCHED_PROJECT_DIRECTORIES = 2_048;
+
 export interface WatchedProjectFolder {
   folderId: string;
-  rootPath: string;
   /** Portable relative paths of the directories to watch. "" is the root. */
   directories: string[];
 }

@@ -74,15 +74,17 @@ function mountTree(
         })),
   );
   const operateProjectFile = vi.fn(() => Promise.resolve());
+  const unsubscribeProjectFilesChanged = vi.fn();
   const onProjectFilesChanged = vi.fn<
     (listener: (event: unknown) => void) => () => void
-  >(() => () => {});
+  >(() => unsubscribeProjectFilesChanged);
+  const setWatchedProjectDirectories = vi.fn(() => Promise.resolve());
   Object.defineProperty(window, "pine", {
     configurable: true,
     value: {
       listProjectDirectory,
       operateProjectFile,
-      setWatchedProjectDirectories: vi.fn(() => Promise.resolve()),
+      setWatchedProjectDirectories,
       onProjectFilesChanged,
       getPathForFile: (file: File) => `/external/${file.name}`,
     },
@@ -102,6 +104,8 @@ function mountTree(
     listProjectDirectory,
     operateProjectFile,
     onProjectFilesChanged,
+    setWatchedProjectDirectories,
+    unsubscribeProjectFilesChanged,
   };
 }
 afterEach(() => {
@@ -425,6 +429,49 @@ describe("ProjectFileTree", () => {
     expect(listProjectDirectory).toHaveBeenCalledWith({
       folderId,
       relativePath: "",
+    });
+  });
+
+  it("queues watcher events that arrive while a refresh is in flight", async () => {
+    let watcherRead = 0;
+    const releases: Array<() => void> = [];
+    const { wrapper, listProjectDirectory, onProjectFilesChanged } = mountTree(
+      "read-write",
+      ({ relativePath }) => {
+        if (relativePath || watcherRead === 0) {
+          watcherRead += 1;
+          return Promise.resolve({ entries: [] });
+        }
+        return new Promise((resolve) => {
+          releases.push(() => resolve({ entries: [] }));
+        });
+      },
+    );
+    await expandRoot(wrapper);
+    listProjectDirectory.mockClear();
+    const listener = onProjectFilesChanged.mock.calls[0]?.[0];
+    listener({ folders: [{ folderId, changedDirs: [""] }] });
+    await flushPromises();
+    listener({ folders: [{ folderId, changedDirs: [""] }] });
+    expect(listProjectDirectory).toHaveBeenCalledTimes(1);
+    releases.shift()?.();
+    await flushPromises();
+    expect(listProjectDirectory).toHaveBeenCalledTimes(2);
+    releases.shift()?.();
+    await flushPromises();
+  });
+
+  it("unsubscribes and clears the main-process watch set on unmount", () => {
+    const {
+      wrapper,
+      setWatchedProjectDirectories,
+      unsubscribeProjectFilesChanged,
+    } = mountTree();
+    wrapper.unmount();
+    wrappers.pop();
+    expect(unsubscribeProjectFilesChanged).toHaveBeenCalledOnce();
+    expect(setWatchedProjectDirectories).toHaveBeenLastCalledWith({
+      folders: [],
     });
   });
 });
