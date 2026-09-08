@@ -11,7 +11,11 @@ export default defineConfig({
       formats: ["es"],
     },
     rollupOptions: {
-      external: ["@earendil-works/pi-ai", "@earendil-works/pi-coding-agent"],
+      external: [
+        "@anthropic-ai/sandbox-runtime",
+        "@earendil-works/pi-ai",
+        "@earendil-works/pi-coding-agent",
+      ],
       output: {
         chunkFileNames: "[name]-[hash].mjs",
       },

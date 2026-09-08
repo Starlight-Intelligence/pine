@@ -15,6 +15,7 @@ import { VitePlugin } from "@electron-forge/plugin-vite";
 // utility process crashes on import. Bake the runtime dependency closure into the
 // packaged app's node_modules after the default prune pass.
 const AGENT_RUNTIME_ENTRYPOINTS = [
+  "@anthropic-ai/sandbox-runtime",
   "@earendil-works/pi-coding-agent",
   "@earendil-works/pi-ai",
 ] as const;

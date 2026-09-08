@@ -26,6 +26,7 @@
   },
   "license": "AGPL-3.0-or-later",
   "dependencies": {
+    "@anthropic-ai/sandbox-runtime": "0.0.75",
     "@earendil-works/pi-agent-core": "0.80.10",
     "@earendil-works/pi-ai": "0.80.10",
     "@earendil-works/pi-coding-agent": "0.80.10",
