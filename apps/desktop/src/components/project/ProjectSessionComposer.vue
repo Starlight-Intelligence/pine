@@ -67,6 +67,7 @@ import {
   attachmentMessagePreview,
   serializeAttachmentMessage,
   isPastedImageMimeType,
+  shouldAttachPastedText,
   type PineAttachment,
   type PastedImageMimeType,
 } from "@/shared/attachments";
@@ -234,51 +235,72 @@ interface PastedImage {
 
 /**
  * Paste handling: clipboard files that map to a real filesystem path (files
- * copied from the shell) reuse the existing inspect flow; pathless images
- * (screenshots, copied bitmaps) are copied into the project's Pine-managed
- * attachment storage by the main process.
+ * copied from the shell) reuse the existing inspect flow. Pathless images and
+ * large plain-text payloads are copied into the project's Pine-managed
+ * attachment storage by the main process; ordinary text keeps native paste.
  */
 async function handlePaste(event: ClipboardEvent): Promise<void> {
   const files = Array.from(event.clipboardData?.files ?? []);
-  if (files.length === 0) return;
+  if (files.length > 0) {
+    const paths: string[] = [];
+    const pastedImages: PastedImage[] = [];
+    for (const file of files) {
+      let filePath = "";
+      try {
+        filePath = window.pine.getPathForFile(file);
+      } catch {
+        filePath = "";
+      }
+      if (filePath) {
+        paths.push(filePath);
+        continue;
+      }
+      if (isPastedImageMimeType(file.type)) {
+        pastedImages.push({
+          bytes: new Uint8Array(await file.arrayBuffer()),
+          mimeType: file.type,
+          name: file.name || undefined,
+        });
+      }
+    }
+    // Nothing we can handle — let the browser's default paste proceed.
+    if (paths.length === 0 && pastedImages.length === 0) return;
+    event.preventDefault();
 
-  const paths: string[] = [];
-  const pastedImages: PastedImage[] = [];
-  for (const file of files) {
-    let filePath = "";
     try {
-      filePath = window.pine.getPathForFile(file);
+      const merged: PineAttachment[] = [];
+      if (paths.length > 0) {
+        const result = await window.pine.inspectAttachments({ paths });
+        merged.push(...result.attachments);
+      }
+      for (const image of pastedImages) {
+        const result = await window.pine.savePastedAttachment(image);
+        merged.push(result.attachment);
+      }
+      mergeAttachments(merged);
     } catch {
-      filePath = "";
+      toast.error(t("project.composer.attachmentPasteFailed"));
     }
-    if (filePath) {
-      paths.push(filePath);
-      continue;
-    }
-    if (isPastedImageMimeType(file.type)) {
-      pastedImages.push({
-        bytes: new Uint8Array(await file.arrayBuffer()),
-        mimeType: file.type,
-        name: file.name || undefined,
-      });
-    }
+    return;
   }
-  // Nothing we can handle — let the browser's default paste proceed.
-  if (paths.length === 0 && pastedImages.length === 0) return;
+
+  const pastedText = event.clipboardData?.getData?.("text/plain") ?? "";
+  if (!shouldAttachPastedText(pastedText)) return;
+
+  const textarea = event.currentTarget as HTMLTextAreaElement | null;
+  const selectionStart = textarea?.selectionStart ?? message.value.length;
+  const selectionEnd = textarea?.selectionEnd ?? selectionStart;
   event.preventDefault();
 
   try {
-    const merged: PineAttachment[] = [];
-    if (paths.length > 0) {
-      const result = await window.pine.inspectAttachments({ paths });
-      merged.push(...result.attachments);
-    }
-    for (const image of pastedImages) {
-      const result = await window.pine.savePastedAttachment(image);
-      merged.push(result.attachment);
-    }
-    mergeAttachments(merged);
+    const result = await window.pine.savePastedAttachment({
+      mimeType: "text/plain",
+      name: "pasted-text.txt",
+      text: pastedText,
+    });
+    mergeAttachments([result.attachment]);
   } catch {
+    message.value = `${message.value.slice(0, selectionStart)}${pastedText}${message.value.slice(selectionEnd)}`;
     toast.error(t("project.composer.attachmentPasteFailed"));
   }
 }

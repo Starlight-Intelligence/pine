@@ -31,12 +31,30 @@ const MIME_TO_EXTENSION: Record<PastedImageMimeType, string> = {
 /** Upper bound for a single pasted image, in bytes. */
 export const MAX_PASTED_IMAGE_BYTES = 25 * 1024 * 1024;
 
-export interface SavePastedAttachmentRequest {
+/**
+ * Plain-text pastes at or above this UTF-8 size become attachments. Measuring
+ * bytes keeps the rule useful for both single-byte source code and CJK text.
+ */
+export const PASTED_TEXT_ATTACHMENT_THRESHOLD_BYTES = 12 * 1024;
+
+/** Upper bound for a single pasted text attachment, in UTF-8 bytes. */
+export const MAX_PASTED_TEXT_BYTES = 5 * 1024 * 1024;
+
+export interface SavePastedImageAttachmentRequest {
   bytes: Uint8Array;
   mimeType: PastedImageMimeType;
   /** Original clipboard file name, used as the display name when present. */
   name?: string;
 }
+
+export interface SavePastedTextAttachmentRequest {
+  mimeType: "text/plain";
+  name?: string;
+  text: string;
+}
+
+export type SavePastedAttachmentRequest =
+  SavePastedImageAttachmentRequest | SavePastedTextAttachmentRequest;
 
 export interface AttachmentImageUrlRequest {
   path: string;
@@ -53,6 +71,17 @@ export function isPastedImageMimeType(
   value: string,
 ): value is PastedImageMimeType {
   return (PASTED_IMAGE_MIME_TYPES as readonly string[]).includes(value);
+}
+
+export function pastedTextByteLength(text: string): number {
+  return new TextEncoder().encode(text).byteLength;
+}
+
+export function shouldAttachPastedText(text: string): boolean {
+  return (
+    text.trim().length > 0 &&
+    pastedTextByteLength(text) >= PASTED_TEXT_ATTACHMENT_THRESHOLD_BYTES
+  );
 }
 
 export function isImageAttachment(attachment: {

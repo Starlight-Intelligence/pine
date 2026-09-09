@@ -5,8 +5,11 @@ import {
   extensionForPastedImage,
   isImageAttachment,
   isPastedImageMimeType,
+  PASTED_TEXT_ATTACHMENT_THRESHOLD_BYTES,
+  pastedTextByteLength,
   parseAttachmentMessage,
   serializeAttachmentMessage,
+  shouldAttachPastedText,
   type PineAttachment,
 } from "../attachments";
 import { parseMessageBlocks } from "../sessions";
@@ -142,5 +145,30 @@ describe("pasted image helpers", () => {
     expect(attachmentImageUrl("/tmp/a b/pic.png")).toBe(
       "pine-attachment://local/?p=%2Ftmp%2Fa%20b%2Fpic.png",
     );
+  });
+});
+
+describe("pasted text helpers", () => {
+  it("measures UTF-8 bytes instead of JavaScript code units", () => {
+    expect(pastedTextByteLength("pine")).toBe(4);
+    expect(pastedTextByteLength("松树")).toBe(6);
+  });
+
+  it("only converts non-blank text at the attachment threshold", () => {
+    expect(
+      shouldAttachPastedText(
+        "a".repeat(PASTED_TEXT_ATTACHMENT_THRESHOLD_BYTES - 1),
+      ),
+    ).toBe(false);
+    expect(
+      shouldAttachPastedText(
+        "a".repeat(PASTED_TEXT_ATTACHMENT_THRESHOLD_BYTES),
+      ),
+    ).toBe(true);
+    expect(
+      shouldAttachPastedText(
+        " ".repeat(PASTED_TEXT_ATTACHMENT_THRESHOLD_BYTES),
+      ),
+    ).toBe(false);
   });
 });

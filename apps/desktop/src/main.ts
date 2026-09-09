@@ -60,6 +60,7 @@ import {
   ATTACHMENT_IMAGE_PROTOCOL,
   INSPECT_ATTACHMENTS_CHANNEL,
   MAX_PASTED_IMAGE_BYTES,
+  MAX_PASTED_TEXT_BYTES,
   OPEN_ATTACHMENT_CHANNEL,
   PICK_ATTACHMENT_FOLDERS_CHANNEL,
   PICK_ATTACHMENTS_CHANNEL,
@@ -192,16 +193,28 @@ const PROJECT_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_PASTED_ATTACHMENT_NAME_LENGTH = 200;
 
-const SavePastedAttachmentRequestSchema = z.object({
-  bytes: z
-    .instanceof(Uint8Array)
-    .refine(
-      (bytes) =>
-        bytes.byteLength > 0 && bytes.byteLength <= MAX_PASTED_IMAGE_BYTES,
-    ),
-  mimeType: z.enum(PASTED_IMAGE_MIME_TYPES),
-  name: z.string().max(MAX_PASTED_ATTACHMENT_NAME_LENGTH).optional(),
-});
+const SavePastedAttachmentRequestSchema = z.union([
+  z.object({
+    bytes: z
+      .instanceof(Uint8Array)
+      .refine(
+        (bytes) =>
+          bytes.byteLength > 0 && bytes.byteLength <= MAX_PASTED_IMAGE_BYTES,
+      ),
+    mimeType: z.enum(PASTED_IMAGE_MIME_TYPES),
+    name: z.string().max(MAX_PASTED_ATTACHMENT_NAME_LENGTH).optional(),
+  }),
+  z.object({
+    mimeType: z.literal("text/plain"),
+    name: z.string().max(MAX_PASTED_ATTACHMENT_NAME_LENGTH).optional(),
+    text: z
+      .string()
+      .refine((text) => text.trim().length > 0)
+      .refine(
+        (text) => Buffer.byteLength(text, "utf8") <= MAX_PASTED_TEXT_BYTES,
+      ),
+  }),
+]);
 
 /** Root of the Pine-managed projects tree; set once the app is ready. */
 let projectsRootPath: string | null = null;
@@ -901,19 +914,20 @@ ipcMain.handle(
       throw new Error("No project is open in this window.");
     }
 
-    const extension = extensionForPastedImage(parsed.mimeType);
+    const isText = parsed.mimeType === "text/plain";
+    const extension = isText ? "txt" : extensionForPastedImage(parsed.mimeType);
     const displayName =
       path
         .basename(parsed.name ?? "")
         .trim()
-        .slice(0, 200) || `image.${extension}`;
+        .slice(0, 200) || (isText ? "pasted-text.txt" : `image.${extension}`);
 
     await mkdir(attachmentsRoot, { recursive: true });
     const attachmentPath = path.join(
       attachmentsRoot,
       `${randomUUID()}.${extension}`,
     );
-    await writeFile(attachmentPath, parsed.bytes);
+    await writeFile(attachmentPath, isText ? parsed.text : parsed.bytes);
     const metadata = await stat(attachmentPath);
 
     const attachment: PineAttachment = {
