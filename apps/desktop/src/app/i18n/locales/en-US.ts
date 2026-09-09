@@ -4,6 +4,7 @@ export default {
     delete: "Delete",
     edit: "Edit",
     done: "Done",
+    help: "Help",
     save: "Save",
     saving: "Saving",
   },
@@ -25,6 +26,7 @@ export default {
     themeLight: "Light",
     themeDark: "Dark",
     contextCompactionStrategy: "Context compaction strategy",
+    contextCompactionStrategyHelp: "About context compaction strategy",
     contextCompactionStrategyDescription:
       "Recommended settings compact at 80% context usage, capped at 400K tokens.",
     contextCompactionPassive: "Passive compaction",

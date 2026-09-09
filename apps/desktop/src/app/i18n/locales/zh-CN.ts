@@ -4,6 +4,7 @@ export default {
     delete: "删除",
     edit: "编辑",
     done: "完成",
+    help: "帮助",
     save: "保存",
     saving: "正在保存",
   },
@@ -24,6 +25,7 @@ export default {
     themeLight: "浅色",
     themeDark: "深色",
     contextCompactionStrategy: "上下文压缩策略",
+    contextCompactionStrategyHelp: "关于上下文压缩策略",
     contextCompactionStrategyDescription:
       "推荐设置会在上下文达到 80% 时压缩，并将触发上限限制在 400K Token。",
     contextCompactionPassive: "消极压缩",
