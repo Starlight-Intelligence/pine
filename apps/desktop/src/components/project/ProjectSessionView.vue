@@ -5,7 +5,7 @@ import {
   readProjectEntryDrag,
 } from "@/lib/projectFileDrag";
 import { hasSessionDrag, readSessionDrag } from "@/lib/sessionDrag";
-import { FilesIcon } from "@lucide/vue";
+import { FilesIcon, HistoryIcon } from "@lucide/vue";
 import { storeToRefs } from "pinia";
 import { computed, onMounted, ref, watch, type Ref } from "vue";
 import { useI18n } from "vue-i18n";
@@ -271,11 +271,12 @@ async function handleDrop(event: DragEvent): Promise<void> {
               >
                 <Button
                   size="sm"
-                  variant="ghost"
+                  variant="secondary"
                   :disabled="isLoadingMessages"
                   @click="loadEarlierMessages"
                 >
                   <Spinner v-if="isLoadingMessages" data-icon="inline-start" />
+                  <HistoryIcon v-else data-icon="inline-start" />
                   {{
                     isLoadingMessages
                       ? t("project.transcript.loadingHistory")

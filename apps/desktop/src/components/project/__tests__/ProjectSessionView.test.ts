@@ -78,6 +78,17 @@ function mountView() {
 }
 
 describe("ProjectSessionView file drop", () => {
+  it("renders the earlier-messages action as a tonal button with a history icon", async () => {
+    const { wrapper } = mountView();
+    const sessionStore = useSessionStore();
+    sessionStore.hasEarlierMessages = true;
+    await flushPromises();
+
+    const button = wrapper.get('button[data-variant="secondary"]');
+    expect(button.text()).toContain("加载更早的消息");
+    expect(button.find('svg[data-icon="inline-start"]').exists()).toBe(true);
+  });
+
   it("steers a running session while its tab is still creating", async () => {
     const { wrapper } = mountView();
     const sessionStore = useSessionStore();
