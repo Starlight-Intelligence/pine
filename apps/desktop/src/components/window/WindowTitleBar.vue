@@ -1,16 +1,34 @@
+<script setup lang="ts">
+withDefaults(defineProps<{ controlsOnly?: boolean }>(), {
+  controlsOnly: false,
+});
+</script>
+
 <template>
+  <div
+    v-if="!controlsOnly"
+    aria-hidden="true"
+    data-slot="window-titlebar-drag-region"
+    class="window-drag absolute inset-x-0 top-0 z-20 h-[var(--window-titlebar-height)]"
+  />
   <header
     data-slot="window-titlebar"
-    class="window-drag absolute inset-x-0 top-0 z-20"
+    class="pointer-events-none absolute inset-x-0 top-0 z-40"
   >
     <div
       class="relative flex min-h-[var(--window-titlebar-height)] w-[env(titlebar-area-width,100%)] items-center gap-1 py-[var(--window-titlebar-padding-block)] pr-3 pl-[var(--window-titlebar-leading-offset)] [margin-left:env(titlebar-area-x,0px)]"
     >
-      <div class="window-no-drag flex min-w-0 items-center gap-1">
+      <div
+        data-slot="window-titlebar-leading"
+        class="window-no-drag pointer-events-auto flex min-w-0 items-center gap-1"
+      >
         <slot name="leading" />
       </div>
 
-      <div class="window-no-drag ml-auto flex min-w-0 items-center gap-1">
+      <div
+        data-slot="window-titlebar-trailing"
+        class="window-no-drag pointer-events-auto ml-auto flex min-w-0 items-center gap-1"
+      >
         <slot name="trailing" />
       </div>
     </div>

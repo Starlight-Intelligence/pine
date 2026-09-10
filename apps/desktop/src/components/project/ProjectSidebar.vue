@@ -64,7 +64,7 @@ watch(
   <Sidebar collapsible="offcanvas">
     <div
       aria-hidden="true"
-      class="h-[var(--window-titlebar-height)] shrink-0"
+      class="window-drag h-[var(--window-titlebar-height)] shrink-0"
     />
     <Tabs v-model="activeTab" class="flex min-h-0 flex-1 flex-col">
       <SidebarHeader>

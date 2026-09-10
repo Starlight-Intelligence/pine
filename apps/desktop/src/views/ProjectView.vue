@@ -30,15 +30,6 @@ onKeyStroke("k", (event) => {
     class="relative h-full min-h-0 [&_[data-slot=sidebar-container]]:duration-500 [&_[data-slot=sidebar-container]]:ease-out-expo [&_[data-slot=sidebar-gap]]:duration-500 [&_[data-slot=sidebar-gap]]:ease-out-expo"
     :default-open="true"
   >
-    <WindowTitleBar>
-      <template #leading>
-        <SidebarTrigger />
-      </template>
-      <template #trailing>
-        <PinePreferencesDialog />
-      </template>
-    </WindowTitleBar>
-
     <ProjectSidebar
       @edit-project="isProjectSettingsOpen = true"
       @search-sessions="isSessionSearchOpen = true"
@@ -47,6 +38,17 @@ onKeyStroke("k", (event) => {
     <SidebarInset class="min-h-0 overflow-hidden">
       <ProjectContentTabs />
     </SidebarInset>
+
+    <!-- Electron applies overlapping drag/no-drag regions in DOM order.
+         Register window controls after the content titlebar's drag region. -->
+    <WindowTitleBar controls-only>
+      <template #leading>
+        <SidebarTrigger />
+      </template>
+      <template #trailing>
+        <PinePreferencesDialog />
+      </template>
+    </WindowTitleBar>
 
     <SessionSearchOverlay v-model:open="isSessionSearchOpen" />
     <ProjectDialog
