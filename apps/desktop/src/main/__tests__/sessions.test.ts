@@ -1,4 +1,13 @@
-import { JsonlSessionRepo } from "@earendil-works/pi-agent-core";
+import {
+  BACKGROUND_CONTEXT,
+  branchTip,
+  insertEntry,
+  JsonlSessionRepo,
+  setValue,
+  type AgentMessage,
+  type JsonlSessionMetadata,
+  type Session,
+} from "@earendil-works/pi-agent-core";
 import { NodeExecutionEnv } from "@earendil-works/pi-agent-core/node";
 import {
   fauxAssistantMessage,
@@ -45,6 +54,74 @@ function textOf(message: Pick<PineTextMessage, "blocks">): string {
     .join("");
 }
 
+function createRepository(
+  environment: NodeExecutionEnv,
+  sessionsRoot: string,
+): JsonlSessionRepo {
+  return new JsonlSessionRepo({ fileSystem: environment, sessionsRoot });
+}
+
+async function createSession(
+  repository: JsonlSessionRepo,
+  cwd: string,
+): Promise<Session<JsonlSessionMetadata>> {
+  const session = await repository.create({ cwd }, BACKGROUND_CONTEXT);
+  await session.createBranch("main", null, BACKGROUND_CONTEXT);
+  return session;
+}
+
+async function mainBranch(
+  session: Session<JsonlSessionMetadata>,
+): Promise<NonNullable<Awaited<ReturnType<typeof session.branch>>>> {
+  const branch = await session.branch("main", BACKGROUND_CONTEXT);
+  if (!branch) throw new Error("Expected a main session branch.");
+  return branch;
+}
+
+async function appendMessage(
+  session: Session<JsonlSessionMetadata>,
+  message: AgentMessage,
+): Promise<void> {
+  await (await mainBranch(session)).appendMessage(message, BACKGROUND_CONTEXT);
+}
+
+async function appendCustomEntry(
+  session: Session<JsonlSessionMetadata>,
+  customType: string,
+  data: Record<string, string>,
+): Promise<void> {
+  await (
+    await mainBranch(session)
+  ).appendCustomEntry(customType, data, BACKGROUND_CONTEXT);
+}
+
+async function appendCompaction(
+  session: Session<JsonlSessionMetadata>,
+  summary: string,
+  tokensBefore: number,
+): Promise<void> {
+  const branch = await mainBranch(session);
+  const parentId = await branch.getTipId(BACKGROUND_CONTEXT);
+  const id = session.idGenerator.next();
+  await session.mutate(async (mutator) => {
+    await mutator.commit(
+      [
+        insertEntry({
+          id,
+          parentId,
+          type: "compaction",
+          summary,
+          retainedTail: [],
+          tokensBefore,
+          fromHook: false,
+        }),
+        setValue(branchTip("main"), id),
+      ],
+      BACKGROUND_CONTEXT,
+    );
+  }, BACKGROUND_CONTEXT);
+}
+
 describe("ProjectSessionService", () => {
   it("creates a new persistent Pi session", async () => {
     const rootPath = await createTemporaryProjectData();
@@ -55,7 +132,7 @@ describe("ProjectSessionService", () => {
     try {
       const { session, summary } = await service.createSession();
 
-      expect((await session.getMetadata()).id).toBe(summary.id);
+      expect(session.metadata.id).toBe(summary.id);
       expect(summary.messageCount).toBe(0);
       await expect(service.search("")).resolves.toEqual([]);
     } finally {
@@ -68,28 +145,25 @@ describe("ProjectSessionService", () => {
     const options = serviceOptions(rootPath);
     await mkdir(options.cwd, { recursive: true });
     const environment = new NodeExecutionEnv({ cwd: options.cwd });
-    const repository = new JsonlSessionRepo({
-      fs: environment,
-      sessionsRoot: options.sessionsRoot,
-    });
-    await repository.create({ cwd: path.join(rootPath, "other-source") });
-    const session = await repository.create({ cwd: options.cwd });
-    await session.appendSessionName("Search architecture");
-    await session.appendMessage({
+    const repository = createRepository(environment, options.sessionsRoot);
+    await createSession(repository, path.join(rootPath, "other-source"));
+    const session = await createSession(repository, options.cwd);
+    await session.setName("Search architecture", BACKGROUND_CONTEXT);
+    await appendMessage(session, {
       role: "user",
       content: "Investigate SQLite 全文搜索 for previous sessions",
       timestamp: Date.now(),
     });
-    const metadata = await session.getMetadata();
+    const metadata = session.metadata;
     const service = await ProjectSessionService.create(options);
 
     try {
       await expect(service.search("")).resolves.toEqual([
         expect.objectContaining({ id: metadata.id }),
       ]);
-      await expect(repository.list()).resolves.toEqual([
-        expect.objectContaining({ id: metadata.id }),
-      ]);
+      await expect(
+        repository.list(undefined, BACKGROUND_CONTEXT),
+      ).resolves.toEqual([expect.objectContaining({ id: metadata.id })]);
       await expect(service.search("SQLite")).resolves.toEqual([
         expect.objectContaining({
           id: metadata.id,
@@ -104,10 +178,10 @@ describe("ProjectSessionService", () => {
       ]);
 
       const resumed = await service.resumeSession(metadata.id);
-      expect((await resumed.session.getMetadata()).path).toBe(metadata.path);
+      expect(resumed.session.metadata.path).toBe(metadata.path);
     } finally {
       await service.dispose();
-      await environment.cleanup();
+      await environment.cleanup(BACKGROUND_CONTEXT);
     }
   });
 
@@ -121,14 +195,14 @@ describe("ProjectSessionService", () => {
       mkdir(nextCwd, { recursive: true }),
     ]);
     const environment = new NodeExecutionEnv({ cwd: previousCwd });
-    const repository = new JsonlSessionRepo({ fs: environment, sessionsRoot });
-    const previousSession = await repository.create({ cwd: previousCwd });
-    await previousSession.appendMessage({
+    const repository = createRepository(environment, sessionsRoot);
+    const previousSession = await createSession(repository, previousCwd);
+    await appendMessage(previousSession, {
       role: "user",
       content: "Conversation from the previous default folder",
       timestamp: Date.now(),
     });
-    const metadata = await previousSession.getMetadata();
+    const metadata = previousSession.metadata;
     const service = await ProjectSessionService.create({
       cacheRoot: path.join(rootPath, "cache"),
       cwd: nextCwd,
@@ -155,7 +229,7 @@ describe("ProjectSessionService", () => {
       );
     } finally {
       await service.dispose();
-      await environment.cleanup();
+      await environment.cleanup(BACKGROUND_CONTEXT);
     }
   });
 
@@ -164,18 +238,15 @@ describe("ProjectSessionService", () => {
     const options = serviceOptions(rootPath);
     await mkdir(options.cwd, { recursive: true });
     const environment = new NodeExecutionEnv({ cwd: options.cwd });
-    const repository = new JsonlSessionRepo({
-      fs: environment,
-      sessionsRoot: options.sessionsRoot,
-    });
-    const session = await repository.create({ cwd: options.cwd });
-    await session.appendSessionName("Architecture review");
-    await session.appendMessage({
+    const repository = createRepository(environment, options.sessionsRoot);
+    const session = await createSession(repository, options.cwd);
+    await session.setName("Architecture review", BACKGROUND_CONTEXT);
+    await appendMessage(session, {
       role: "user",
       content: "Review the event flow",
       timestamp: Date.now(),
     });
-    const metadata = await session.getMetadata();
+    const metadata = session.metadata;
     const service = await ProjectSessionService.create(options);
 
     try {
@@ -190,7 +261,7 @@ describe("ProjectSessionService", () => {
       );
     } finally {
       await service.dispose();
-      await environment.cleanup();
+      await environment.cleanup(BACKGROUND_CONTEXT);
     }
   });
 
@@ -199,19 +270,16 @@ describe("ProjectSessionService", () => {
     const options = serviceOptions(rootPath);
     await mkdir(options.cwd, { recursive: true });
     const environment = new NodeExecutionEnv({ cwd: options.cwd });
-    const repository = new JsonlSessionRepo({
-      fs: environment,
-      sessionsRoot: options.sessionsRoot,
-    });
-    const session = await repository.create({ cwd: options.cwd });
+    const repository = createRepository(environment, options.sessionsRoot);
+    const session = await createSession(repository, options.cwd);
     for (const content of ["one", "two", "three", "four"]) {
-      await session.appendMessage({
+      await appendMessage(session, {
         role: "user",
         content,
         timestamp: Date.now(),
       });
     }
-    const metadata = await session.getMetadata();
+    const metadata = session.metadata;
     const service = await ProjectSessionService.create(options);
 
     try {
@@ -234,7 +302,7 @@ describe("ProjectSessionService", () => {
       expect(earlier.hasMore).toBe(false);
     } finally {
       await service.dispose();
-      await environment.cleanup();
+      await environment.cleanup(BACKGROUND_CONTEXT);
     }
   });
 
@@ -243,13 +311,11 @@ describe("ProjectSessionService", () => {
     const options = serviceOptions(rootPath);
     await mkdir(options.cwd, { recursive: true });
     const environment = new NodeExecutionEnv({ cwd: options.cwd });
-    const repository = new JsonlSessionRepo({
-      fs: environment,
-      sessionsRoot: options.sessionsRoot,
-    });
-    const session = await repository.create({ cwd: options.cwd });
+    const repository = createRepository(environment, options.sessionsRoot);
+    const session = await createSession(repository, options.cwd);
     const toolCallId = "call-read-main";
-    await session.appendMessage(
+    await appendMessage(
+      session,
       fauxAssistantMessage(
         [
           fauxThinking("Find the relevant file."),
@@ -264,7 +330,7 @@ describe("ProjectSessionService", () => {
         { stopReason: "toolUse", timestamp: Date.now() - 1_500 },
       ),
     );
-    await session.appendMessage({
+    await appendMessage(session, {
       role: "toolResult",
       toolCallId,
       toolName: "read",
@@ -272,7 +338,7 @@ describe("ProjectSessionService", () => {
       isError: false,
       timestamp: Date.now(),
     });
-    const metadata = await session.getMetadata();
+    const metadata = session.metadata;
     const service = await ProjectSessionService.create(options);
 
     try {
@@ -296,7 +362,7 @@ describe("ProjectSessionService", () => {
       ]);
     } finally {
       await service.dispose();
-      await environment.cleanup();
+      await environment.cleanup(BACKGROUND_CONTEXT);
     }
   });
 
@@ -305,25 +371,23 @@ describe("ProjectSessionService", () => {
     const options = serviceOptions(rootPath);
     await mkdir(options.cwd, { recursive: true });
     const environment = new NodeExecutionEnv({ cwd: options.cwd });
-    const repository = new JsonlSessionRepo({
-      fs: environment,
-      sessionsRoot: options.sessionsRoot,
-    });
-    const session = await repository.create({ cwd: options.cwd });
-    await session.appendSessionName("Export me");
-    await session.appendModelChange("openai", "gpt-test");
-    await session.appendCustomEntry(PINE_APPROVAL_MODE_ENTRY, {
+    const repository = createRepository(environment, options.sessionsRoot);
+    const session = await createSession(repository, options.cwd);
+    await session.setName("Export me", BACKGROUND_CONTEXT);
+    await appendCustomEntry(session, PINE_APPROVAL_MODE_ENTRY, {
       approvalMode: "YOLO",
     });
-    await session.appendMessage({
+    await appendMessage(session, {
       role: "user",
       content: "Inspect the project",
       timestamp: Date.now(),
     });
-    await session.appendMessage(
-      fauxAssistantMessage([{ type: "text", text: "Done." }]),
-    );
-    const metadata = await session.getMetadata();
+    await appendMessage(session, {
+      ...fauxAssistantMessage([{ type: "text", text: "Done." }]),
+      provider: "openai",
+      model: "gpt-test",
+    });
+    const metadata = session.metadata;
     const service = await ProjectSessionService.create(options);
 
     try {
@@ -336,7 +400,7 @@ describe("ProjectSessionService", () => {
       expect(result.markdown).toContain("Done.");
     } finally {
       await service.dispose();
-      await environment.cleanup();
+      await environment.cleanup(BACKGROUND_CONTEXT);
     }
   });
 
@@ -345,18 +409,16 @@ describe("ProjectSessionService", () => {
     const options = serviceOptions(rootPath);
     await mkdir(options.cwd, { recursive: true });
     const environment = new NodeExecutionEnv({ cwd: options.cwd });
-    const repository = new JsonlSessionRepo({
-      fs: environment,
-      sessionsRoot: options.sessionsRoot,
-    });
-    const session = await repository.create({ cwd: options.cwd });
-    await session.appendMessage(
+    const repository = createRepository(environment, options.sessionsRoot);
+    const session = await createSession(repository, options.cwd);
+    await appendMessage(
+      session,
       fauxAssistantMessage([], {
         stopReason: "error",
         errorMessage: "Provider request failed",
       }),
     );
-    const metadata = await session.getMetadata();
+    const metadata = session.metadata;
     const service = await ProjectSessionService.create(options);
 
     try {
@@ -375,7 +437,7 @@ describe("ProjectSessionService", () => {
       });
     } finally {
       await service.dispose();
-      await environment.cleanup();
+      await environment.cleanup(BACKGROUND_CONTEXT);
     }
   });
 
@@ -384,25 +446,19 @@ describe("ProjectSessionService", () => {
     const options = serviceOptions(rootPath);
     await mkdir(options.cwd, { recursive: true });
     const environment = new NodeExecutionEnv({ cwd: options.cwd });
-    const repository = new JsonlSessionRepo({
-      fs: environment,
-      sessionsRoot: options.sessionsRoot,
-    });
-    const session = await repository.create({ cwd: options.cwd });
-    await session.appendMessage({
+    const repository = createRepository(environment, options.sessionsRoot);
+    const session = await createSession(repository, options.cwd);
+    await appendMessage(session, {
       role: "user",
       content: "A long conversation",
       timestamp: Date.now(),
     });
-    const entries = await session.getEntries();
-    const firstMessage = entries.find((entry) => entry.type === "message");
-    if (!firstMessage) throw new Error("Expected a user message entry.");
-    await session.appendCompaction(
+    await appendCompaction(
+      session,
       "The earlier conversation was summarized.",
-      firstMessage.id,
       25_000,
     );
-    const metadata = await session.getMetadata();
+    const metadata = session.metadata;
     const service = await ProjectSessionService.create(options);
 
     try {
@@ -427,7 +483,7 @@ describe("ProjectSessionService", () => {
       ]);
     } finally {
       await service.dispose();
-      await environment.cleanup();
+      await environment.cleanup(BACKGROUND_CONTEXT);
     }
   });
 
@@ -436,17 +492,14 @@ describe("ProjectSessionService", () => {
     const options = serviceOptions(rootPath);
     await mkdir(options.cwd, { recursive: true });
     const environment = new NodeExecutionEnv({ cwd: options.cwd });
-    const repository = new JsonlSessionRepo({
-      fs: environment,
-      sessionsRoot: options.sessionsRoot,
-    });
-    const session = await repository.create({ cwd: options.cwd });
-    await session.appendMessage({
+    const repository = createRepository(environment, options.sessionsRoot);
+    const session = await createSession(repository, options.cwd);
+    await appendMessage(session, {
       role: "user",
       content: "Delete this conversation",
       timestamp: Date.now(),
     });
-    const metadata = await session.getMetadata();
+    const metadata = session.metadata;
     const service = await ProjectSessionService.create(options);
 
     try {
@@ -456,7 +509,7 @@ describe("ProjectSessionService", () => {
       await expect(service.deleteSession(metadata.id)).resolves.toBe(false);
     } finally {
       await service.dispose();
-      await environment.cleanup();
+      await environment.cleanup(BACKGROUND_CONTEXT);
     }
   });
 
@@ -465,17 +518,14 @@ describe("ProjectSessionService", () => {
     const options = serviceOptions(rootPath);
     await mkdir(options.cwd, { recursive: true });
     const environment = new NodeExecutionEnv({ cwd: options.cwd });
-    const repository = new JsonlSessionRepo({
-      fs: environment,
-      sessionsRoot: options.sessionsRoot,
-    });
-    const session = await repository.create({ cwd: options.cwd });
-    await session.appendMessage({
+    const repository = createRepository(environment, options.sessionsRoot);
+    const session = await createSession(repository, options.cwd);
+    await appendMessage(session, {
       role: "user",
       content: "Original first message",
       timestamp: Date.now(),
     });
-    const metadata = await session.getMetadata();
+    const metadata = session.metadata;
     const service = await ProjectSessionService.create(options);
 
     try {
@@ -494,7 +544,7 @@ describe("ProjectSessionService", () => {
       ]);
     } finally {
       await service.dispose();
-      await environment.cleanup();
+      await environment.cleanup(BACKGROUND_CONTEXT);
     }
   });
 });
