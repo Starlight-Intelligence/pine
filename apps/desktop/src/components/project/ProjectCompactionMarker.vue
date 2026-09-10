@@ -3,7 +3,7 @@ import {
   CheckIcon,
   CircleStopIcon,
   CircleXIcon,
-  ShrinkIcon,
+  ListCollapseIcon,
 } from "@lucide/vue";
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
@@ -32,7 +32,7 @@ const labelClass = computed(() => {
     :data-compaction-status="compaction.status"
   >
     <MarkerIcon>
-      <ShrinkIcon v-if="isRunning" />
+      <ListCollapseIcon v-if="isRunning" />
       <CheckIcon v-else-if="compaction.status === 'complete'" />
       <CircleStopIcon v-else-if="compaction.status === 'aborted'" />
       <CircleXIcon v-else class="text-destructive" />
