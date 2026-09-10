@@ -28,6 +28,7 @@ import {
 import { installWindowShortcuts } from "./main/windowShortcuts";
 import { AgentProcessHost } from "./main/agentProcessHost";
 import { ModelRecommendationService } from "./main/modelRecommendations";
+import { ModelMetadataService } from "./main/modelMetadata";
 import { ProjectRepository } from "./main/projects/projectRepository";
 import {
   readPineAgentSettings,
@@ -74,9 +75,11 @@ import {
   type SavePastedAttachmentResult,
 } from "./shared/attachments";
 import {
+  ADD_CUSTOM_MODEL_CHANNEL,
   CANCEL_PROVIDER_AUTH_CHANNEL,
   GET_MODEL_CATALOG_CHANNEL,
   LOGIN_PROVIDER_CHANNEL,
+  LOOKUP_MODEL_METADATA_CHANNEL,
   LOGOUT_PROVIDER_CHANNEL,
   OPEN_PROVIDER_AUTH_URL_CHANNEL,
   PROVIDER_AUTH_EVENT_CHANNEL,
@@ -84,7 +87,10 @@ import {
   SELECT_MODEL_CHANNEL,
   SELECT_UTILITY_MODEL_CHANNEL,
   isProviderAuthEvent,
+  type AddCustomModelRequest,
+  type LookupModelMetadataRequest,
   type PineModelCatalog,
+  type PineModelMetadata,
   type ProviderLoginResult,
 } from "./shared/models";
 import {
@@ -308,6 +314,7 @@ nativeTheme.themeSource = "system";
 let agentHost: AgentProcessHost | null = null;
 let pineAgentDirectory: string | null = null;
 const modelRecommendations = new ModelRecommendationService();
+const modelMetadata = new ModelMetadataService();
 let projectRuntimes: ProjectRuntimeRegistry | null = null;
 let projectFileWatchers: ProjectFileWatcherRegistry | null = null;
 let projectRepository: ProjectRepository | null = null;
@@ -426,15 +433,63 @@ const LoginProviderRequestSchema = z.object({
   loginId: z.uuid(),
   providerId: z.string().trim().min(1).max(200),
 });
+const CustomModelDefinitionSchema = z.object({
+  contextWindow: z.number().int().positive().max(10_000_000),
+  maxTokens: z.number().int().positive().max(10_000_000),
+  modelId: z.string().trim().min(1).max(500),
+  modelName: z.string().trim().min(1).max(200).optional(),
+  thinkingLevels: z
+    .array(z.enum(["off", "minimal", "low", "medium", "high", "xhigh", "max"]))
+    .min(1)
+    .max(7),
+  vision: z.boolean(),
+});
+const ProviderIdSchema = z.object({
+  providerId: z.string().trim().min(1).max(200),
+});
+const AddCustomModelRequestSchema = z.intersection(
+  CustomModelDefinitionSchema,
+  z.discriminatedUnion("providerMode", [
+    z.object({
+      providerMode: z.literal("existing"),
+      providerId: z.string().trim().min(1).max(200),
+    }),
+    z.object({
+      providerMode: z.literal("new"),
+      providerId: z
+        .string()
+        .trim()
+        .min(1)
+        .max(200)
+        .regex(/^[a-z0-9][a-z0-9._-]*$/),
+      providerName: z.string().trim().min(1).max(200),
+      baseUrl: z.url().refine((url) => {
+        try {
+          return ["http:", "https:"].includes(new URL(url).protocol);
+        } catch {
+          return false;
+        }
+      }),
+      apiKey: z.string().trim().min(1).max(100_000),
+      api: z.enum([
+        "anthropic-messages",
+        "google-generative-ai",
+        "openai-completions",
+        "openai-responses",
+      ]),
+    }),
+  ]),
+);
+const LookupModelMetadataRequestSchema = z.object({
+  modelId: z.string().trim().min(1).max(500),
+  providerId: z.string().trim().min(1).max(200).optional(),
+});
 const ProviderAuthResponseRequestSchema = z.object({
   loginId: z.uuid(),
   promptId: z.uuid(),
   value: z.string().max(100_000),
 });
 const ProviderAuthLoginIdSchema = z.object({ loginId: z.uuid() });
-const ProviderIdSchema = z.object({
-  providerId: z.string().trim().min(1).max(200),
-});
 const SelectModelRequestSchema = z.object({
   modelId: z.string().trim().min(1).max(500),
   providerId: z.string().trim().min(1).max(200),
@@ -761,6 +816,26 @@ ipcMain.handle(
       recommendedModelIds: recommendedIds.filter((id) => availableIds.has(id)),
     };
   },
+);
+
+ipcMain.handle(
+  LOOKUP_MODEL_METADATA_CHANNEL,
+  async (_event, request: unknown): Promise<PineModelMetadata> =>
+    modelMetadata.lookup(
+      LookupModelMetadataRequestSchema.parse(
+        request,
+      ) satisfies LookupModelMetadataRequest,
+    ),
+);
+
+ipcMain.handle(
+  ADD_CUSTOM_MODEL_CHANNEL,
+  async (_event, request: unknown): Promise<PineModelCatalog> =>
+    getProjectRuntimes().addCustomModel(
+      AddCustomModelRequestSchema.parse(
+        request,
+      ) satisfies AddCustomModelRequest,
+    ),
 );
 
 const providerLoginOwners = new Map<string, number>();

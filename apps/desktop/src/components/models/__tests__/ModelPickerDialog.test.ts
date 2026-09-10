@@ -26,6 +26,12 @@ const alertDialogStub = {
   emits: ["update:open"],
   template: '<div data-alert-dialog :data-open="open"><slot /></div>',
 };
+const customModelDialogStub = {
+  name: "CustomModelDialogStub",
+  props: ["open"],
+  emits: ["saved", "update:open"],
+  template: '<div data-custom-model-dialog :data-open="open" />',
+};
 const buttonStub = {
   props: ["disabled"],
   emits: ["click"],
@@ -85,6 +91,7 @@ function mountPicker(purpose: "session" | "utility" = "session") {
       logoutProvider,
       selectModel,
       selectUtilityModel,
+      addCustomModel: vi.fn(),
     },
   });
 
@@ -112,6 +119,7 @@ function mountPicker(purpose: "session" | "utility" = "session") {
         CommandItem: commandItemStub,
         CommandList: passthroughStub,
         CommandSeparator: passthroughStub,
+        CustomModelDialog: customModelDialogStub,
         ProviderAuthDialog: passthroughStub,
         ProviderIcon: passthroughStub,
       },
@@ -128,6 +136,35 @@ function mountPicker(purpose: "session" | "utility" = "session") {
 }
 
 describe("ModelPickerDialog provider management", () => {
+  it("places Add custom model directly after Back to models", async () => {
+    const { wrapper } = mountPicker();
+    await wrapper
+      .get(
+        '[data-command-item][data-value="manage configure provider service model"]',
+      )
+      .trigger("click");
+
+    const values = wrapper
+      .findAll("[data-command-item]")
+      .map((item) => item.attributes("data-value"));
+    expect(values.slice(0, 2)).toEqual([
+      "back models",
+      "add custom model provider endpoint",
+    ]);
+
+    await wrapper
+      .get(
+        '[data-command-item][data-value="add custom model provider endpoint"]',
+      )
+      .trigger("click");
+    await flushPromises();
+
+    expect(wrapper.emitted("update:open")).toContainEqual([false]);
+    expect(
+      wrapper.get("[data-custom-model-dialog]").attributes("data-open"),
+    ).toBe("true");
+  });
+
   it("confirms credential removal", async () => {
     const { getModelCatalog, logoutProvider, wrapper } = mountPicker();
     const manageItem = wrapper.get(

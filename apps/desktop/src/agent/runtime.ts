@@ -23,6 +23,7 @@ import { randomUUID } from "node:crypto";
 import path from "node:path";
 import type { PineAgentEvent, PineApprovalMode } from "../shared/agent";
 import type {
+  AddCustomModelRequest,
   PineAuthType,
   PineModelCatalog,
   PineProviderAuthEvent,
@@ -30,6 +31,7 @@ import type {
   PineUtilityModelSelection,
   ProviderLoginResult,
 } from "../shared/models";
+import { addCustomModel as writeCustomModel } from "./customModels";
 import {
   PINE_APPROVAL_MODE_ENTRY,
   type PineContextUsage,
@@ -685,6 +687,32 @@ export class PineAgentRuntime {
           }
         : {}),
     };
+  }
+
+  async addCustomModel(
+    agentDir: string,
+    input: AddCustomModelRequest,
+  ): Promise<PineModelCatalog> {
+    const runtime = await this.getModelRuntime(agentDir);
+    const provider = runtime.getProvider(input.providerId);
+    if (input.providerMode === "existing" && !provider) {
+      throw new Error(`Provider "${input.providerId}" was not found.`);
+    }
+    if (input.providerMode === "new" && provider) {
+      throw new Error(
+        `Provider "${input.providerId}" already exists. Select it as an existing provider instead.`,
+      );
+    }
+    if (runtime.getModel(input.providerId, input.modelId)) {
+      throw new Error(
+        `Model "${input.modelId}" already exists on provider "${input.providerId}".`,
+      );
+    }
+    await writeCustomModel(agentDir, input);
+    await runtime.refresh({ allowNetwork: false });
+    const configError = runtime.getError();
+    if (configError) throw new Error(configError);
+    return this.getModelCatalog(agentDir);
   }
 
   async loginProvider(

@@ -1,4 +1,6 @@
 export const GET_MODEL_CATALOG_CHANNEL = "models:catalog" as const;
+export const ADD_CUSTOM_MODEL_CHANNEL = "models:add-custom" as const;
+export const LOOKUP_MODEL_METADATA_CHANNEL = "models:lookup-metadata" as const;
 export const SELECT_MODEL_CHANNEL = "models:select" as const;
 export const SELECT_UTILITY_MODEL_CHANNEL = "models:select-utility" as const;
 export const LOGIN_PROVIDER_CHANNEL = "providers:login" as const;
@@ -10,6 +12,11 @@ export const OPEN_PROVIDER_AUTH_URL_CHANNEL =
 export const PROVIDER_AUTH_EVENT_CHANNEL = "providers:auth-event" as const;
 
 export type PineAuthType = "api_key" | "oauth";
+export type PineCustomModelApi =
+  | "anthropic-messages"
+  | "google-generative-ai"
+  | "openai-completions"
+  | "openai-responses";
 export type PineThinkingLevel =
   "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 
@@ -57,6 +64,45 @@ export interface PineModelCatalog {
   recommendedModelIds?: readonly string[];
   selection?: PineModelSelection;
   utilitySelection?: PineUtilityModelSelection;
+}
+
+interface CustomModelDefinition {
+  contextWindow: number;
+  maxTokens: number;
+  modelId: string;
+  modelName?: string;
+  thinkingLevels: readonly PineThinkingLevel[];
+  vision: boolean;
+}
+
+export type AddCustomModelRequest = CustomModelDefinition &
+  (
+    | {
+        api: PineCustomModelApi;
+        apiKey: string;
+        baseUrl: string;
+        providerId: string;
+        providerMode: "new";
+        providerName: string;
+      }
+    | {
+        providerId: string;
+        providerMode: "existing";
+      }
+  );
+
+export interface LookupModelMetadataRequest {
+  modelId: string;
+  providerId?: string;
+}
+
+export interface PineModelMetadata {
+  contextWindow?: number;
+  maxTokens?: number;
+  modelName: string;
+  sourceId: string;
+  thinkingLevels: readonly PineThinkingLevel[];
+  vision: boolean;
 }
 
 export type PineProviderAuthPrompt =

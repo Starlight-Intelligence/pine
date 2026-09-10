@@ -3,6 +3,7 @@ import {
   ArrowLeftIcon,
   CheckIcon,
   HeartIcon,
+  PlusIcon,
   UnplugIcon,
   WrenchIcon,
 } from "@lucide/vue";
@@ -39,6 +40,7 @@ import type {
 } from "@/shared/models";
 import { pineModelKey, useModelsStore } from "@/stores/models";
 import ModelCapabilities from "./ModelCapabilities.vue";
+import CustomModelDialog from "./CustomModelDialog.vue";
 import ProviderAuthDialog from "./ProviderAuthDialog.vue";
 import ProviderIcon from "./ProviderIcon.vue";
 
@@ -63,6 +65,7 @@ const selectedProvider = ref<PineProviderDescriptor | null>(null);
 const disconnectingProvider = ref<PineProviderDescriptor | null>(null);
 const isDisconnectDialogOpen = ref(false);
 const isDisconnecting = ref(false);
+const isCustomModelOpen = ref(false);
 const favoriteModelKeysAtOpen = ref<readonly string[]>([]);
 const providerModelGroups = computed(() =>
   providers.value
@@ -139,6 +142,26 @@ async function openAuth(provider: PineProviderDescriptor): Promise<void> {
   emit("update:open", false);
   await nextTick();
   isAuthOpen.value = true;
+}
+
+async function openCustomModel(): Promise<void> {
+  emit("update:open", false);
+  await nextTick();
+  isCustomModelOpen.value = true;
+}
+
+async function customModelOpenChanged(open: boolean): Promise<void> {
+  isCustomModelOpen.value = open;
+  if (open) return;
+  await nextTick();
+  emit("update:open", true);
+}
+
+async function handleCustomModelSaved(): Promise<void> {
+  view.value = "models";
+  isCustomModelOpen.value = false;
+  await nextTick();
+  emit("update:open", true);
 }
 
 async function selectModel(model: PineModelDescriptor): Promise<void> {
@@ -311,6 +334,13 @@ async function handleConnected(): Promise<void> {
             <ArrowLeftIcon aria-hidden="true" />
             {{ t("models.picker.backToModels") }}
           </CommandItem>
+          <CommandItem
+            value="add custom model provider endpoint"
+            @select="openCustomModel"
+          >
+            <PlusIcon aria-hidden="true" />
+            {{ t("models.picker.addCustomModel") }}
+          </CommandItem>
         </CommandGroup>
         <CommandSeparator />
 
@@ -367,6 +397,12 @@ async function handleConnected(): Promise<void> {
     v-model:open="isAuthOpen"
     :provider="selectedProvider"
     @connected="handleConnected"
+  />
+
+  <CustomModelDialog
+    :open="isCustomModelOpen"
+    @update:open="customModelOpenChanged"
+    @saved="handleCustomModelSaved"
   />
 
   <AlertDialog

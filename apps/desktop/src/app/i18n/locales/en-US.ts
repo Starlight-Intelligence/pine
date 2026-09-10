@@ -97,6 +97,7 @@ export default {
       searchPlaceholder: "Search providers and models…",
       empty: "No matching models",
       manageServiceOrModel: "Manage providers and models",
+      addCustomModel: "Add custom model",
       addFavorite: "Favorite {model}",
       backToModels: "Back to models",
       browse: "Browse all models…",
@@ -104,6 +105,42 @@ export default {
       recommended: "Recommended",
       removeFavorite: "Remove {model} from favorites",
       vision: "Vision",
+    },
+    custom: {
+      title: "Add model",
+      description: "Create a provider or add a model to one you already use.",
+      providerMode: "Provider",
+      newProvider: "Custom provider",
+      existingProvider: "Existing provider",
+      provider: "Existing provider",
+      selectProvider: "Choose a provider",
+      existingProviderDescription:
+        "Uses this provider's existing endpoint and credentials.",
+      providerName: "Provider name",
+      providerNamePlaceholder: "My local provider",
+      providerId: "Provider ID",
+      providerIdInvalid:
+        "Enter a valid provider ID using lowercase letters, numbers, dots, hyphens, or underscores.",
+      baseUrl: "Base URL",
+      api: "API format",
+      apiKey: "API key or value reference",
+      apiKeyPlaceholder: "API key, $ENV_VAR, or a local placeholder",
+      apiKeyDescription:
+        "Saved locally in models.json. You can use $ENV_VAR instead of storing a secret; keyless local servers accept any placeholder.",
+      modelName: "Model name (optional)",
+      modelNamePlaceholder: "Shown in Pine",
+      modelId: "Model ID",
+      contextWindow: "Context window",
+      maxTokens: "Maximum output tokens",
+      thinkingLevels: "Supported reasoning levels",
+      thinkingLevelsDescription:
+        "Choose every level accepted by this model. Leave only Off selected for a non-reasoning model.",
+      vision: "Image input",
+      visionDescription: "The model accepts text and images.",
+      tryAutoFill: "Try autofill",
+      autoFillDescription:
+        "Looks up the entered model ID in models.dev and fills its display name, context and output limits, image support, and known reasoning capability. Review the values before saving.",
+      save: "Add model",
     },
     thinkingLevels: {
       off: "Off",
@@ -525,6 +562,15 @@ export default {
     },
   },
   errors: {
+    customModel: {
+      title: "Unable to add custom model",
+      description: "Check the endpoint and model settings, then try again",
+    },
+    modelMetadata: {
+      title: "Unable to autofill model metadata",
+      description:
+        "Check the model ID or enter its full provider/model ID, then try again",
+    },
     contextCompaction: {
       title: "Unable to compact context",
       description: "Try again in a moment",

@@ -42,18 +42,23 @@ import {
   type SavePastedAttachmentResult,
 } from "./shared/attachments";
 import {
+  ADD_CUSTOM_MODEL_CHANNEL,
   CANCEL_PROVIDER_AUTH_CHANNEL,
   GET_MODEL_CATALOG_CHANNEL,
   LOGIN_PROVIDER_CHANNEL,
+  LOOKUP_MODEL_METADATA_CHANNEL,
   LOGOUT_PROVIDER_CHANNEL,
   OPEN_PROVIDER_AUTH_URL_CHANNEL,
   PROVIDER_AUTH_EVENT_CHANNEL,
   RESPOND_PROVIDER_AUTH_CHANNEL,
   SELECT_MODEL_CHANNEL,
   SELECT_UTILITY_MODEL_CHANNEL,
+  type AddCustomModelRequest,
   type LoginProviderRequest,
   type LogoutProviderRequest,
+  type LookupModelMetadataRequest,
   type PineModelCatalog,
+  type PineModelMetadata,
   type PineProviderAuthEvent,
   type ProviderAuthEventListener,
   type ProviderAuthResponseRequest,
@@ -212,6 +217,12 @@ const pineApi: PineDesktopApi = {
     ipcRenderer.invoke(LIST_PROJECTS_CHANNEL),
   getModelCatalog: (): Promise<PineModelCatalog> =>
     ipcRenderer.invoke(GET_MODEL_CATALOG_CHANNEL),
+  lookupModelMetadata: (
+    request: LookupModelMetadataRequest,
+  ): Promise<PineModelMetadata> =>
+    ipcRenderer.invoke(LOOKUP_MODEL_METADATA_CHANNEL, request),
+  addCustomModel: (request: AddCustomModelRequest): Promise<PineModelCatalog> =>
+    ipcRenderer.invoke(ADD_CUSTOM_MODEL_CHANNEL, request),
   getContextCompactionStrategy: (): Promise<PineContextCompactionStrategy> =>
     ipcRenderer.invoke(GET_CONTEXT_COMPACTION_STRATEGY_CHANNEL),
   getUserProfile: (): Promise<PineUserProfile> =>

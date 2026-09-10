@@ -88,6 +88,7 @@ export default {
       searchPlaceholder: "搜索服务或模型…",
       empty: "没有匹配的模型",
       manageServiceOrModel: "管理服务或模型",
+      addCustomModel: "添加自定义模型",
       addFavorite: "收藏 {model}",
       backToModels: "返回模型列表",
       browse: "浏览所有模型…",
@@ -95,6 +96,41 @@ export default {
       recommended: "推荐",
       removeFavorite: "取消收藏 {model}",
       vision: "视觉",
+    },
+    custom: {
+      title: "添加模型",
+      description: "创建自定义服务，或在已有服务下添加模型。",
+      providerMode: "服务",
+      newProvider: "自定义服务",
+      existingProvider: "现有服务",
+      provider: "现有服务",
+      selectProvider: "选择服务",
+      existingProviderDescription: "沿用该服务已有的端点和凭据。",
+      providerName: "服务名称",
+      providerNamePlaceholder: "我的本地服务",
+      providerId: "服务 ID",
+      providerIdInvalid:
+        "请输入有效的服务 ID，仅可使用小写字母、数字、点、连字符和下划线。",
+      baseUrl: "基础 URL",
+      api: "API 格式",
+      apiKey: "API 密钥或值引用",
+      apiKeyPlaceholder: "API 密钥、$ENV_VAR 或本地占位值",
+      apiKeyDescription:
+        "保存在本地 models.json 中。可使用 $ENV_VAR 避免存储密钥；无需密钥的本地服务可填任意占位值。",
+      modelName: "模型名称（可选）",
+      modelNamePlaceholder: "在 Pine 中显示的名称",
+      modelId: "模型 ID",
+      contextWindow: "上下文窗口",
+      maxTokens: "最大输出 Token 数",
+      thinkingLevels: "支持的推理强度",
+      thinkingLevelsDescription:
+        "选择模型能够接受的所有强度。非推理模型仅保留“关闭”。",
+      vision: "图像输入",
+      visionDescription: "该模型可接收文本和图像。",
+      tryAutoFill: "尝试自动填充",
+      autoFillDescription:
+        "使用已输入的模型 ID 从 models.dev 查找元数据，并填充显示名称、上下文与输出上限、图像支持和已知的推理能力。保存前请确认填充结果。",
+      save: "添加模型",
     },
     thinkingLevels: {
       off: "关闭",
@@ -504,6 +540,14 @@ export default {
     },
   },
   errors: {
+    customModel: {
+      title: "无法添加自定义模型",
+      description: "请检查端点和模型设置后重试",
+    },
+    modelMetadata: {
+      title: "无法自动填充模型元数据",
+      description: "请检查模型 ID，或输入完整的“服务/模型” ID 后重试",
+    },
     contextCompaction: {
       title: "无法压缩上下文",
       description: "请稍后重试",

@@ -12,6 +12,7 @@ import type {
   RespondApprovalRequest,
 } from "../shared/agent";
 import type {
+  AddCustomModelRequest,
   LoginProviderRequest,
   PineModelCatalog,
   ProviderLoginResult,
@@ -426,6 +427,10 @@ export class ProjectRuntimeRegistry {
 
   getModelCatalog(): Promise<PineModelCatalog> {
     return this.agentHost.getModelCatalog(this.agentDir);
+  }
+
+  addCustomModel(request: AddCustomModelRequest): Promise<PineModelCatalog> {
+    return this.agentHost.addCustomModel(this.agentDir, request);
   }
 
   loginProvider(request: LoginProviderRequest): Promise<ProviderLoginResult> {

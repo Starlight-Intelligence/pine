@@ -4,6 +4,7 @@ import path from "node:path";
 import type { PineApprovalMode } from "../shared/agent";
 import type { PineContextCompactionStrategy } from "../shared/preferences";
 import type {
+  AddCustomModelRequest,
   LoginProviderRequest,
   PineModelCatalog,
   PineThinkingLevel,
@@ -58,6 +59,10 @@ export interface AgentHost {
     name: string,
   ): Promise<AgentWorkerSessionResult>;
   getModelCatalog(agentDir: string): Promise<PineModelCatalog>;
+  addCustomModel(
+    agentDir: string,
+    request: AddCustomModelRequest,
+  ): Promise<PineModelCatalog>;
   loginProvider(
     agentDir: string,
     request: LoginProviderRequest,
@@ -193,6 +198,13 @@ export class AgentProcessHost implements AgentHost {
 
   getModelCatalog(agentDir: string): Promise<PineModelCatalog> {
     return this.request({ type: "models:catalog", agentDir });
+  }
+
+  addCustomModel(
+    agentDir: string,
+    request: AddCustomModelRequest,
+  ): Promise<PineModelCatalog> {
+    return this.request({ type: "models:add-custom", agentDir, ...request });
   }
 
   loginProvider(

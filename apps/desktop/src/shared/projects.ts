@@ -24,9 +24,12 @@ import type {
   SavePastedAttachmentResult,
 } from "./attachments";
 import type {
+  AddCustomModelRequest,
   LoginProviderRequest,
   LogoutProviderRequest,
+  LookupModelMetadataRequest,
   PineModelCatalog,
+  PineModelMetadata,
   ProviderAuthEventListener,
   ProviderAuthResponseRequest,
   ProviderLoginResult,
@@ -178,6 +181,10 @@ export interface PineDesktopApi extends PineWindowApi {
   ) => Promise<PickAttachmentsResult>;
   listProjects: () => Promise<ListProjectsResult>;
   getModelCatalog: () => Promise<PineModelCatalog>;
+  lookupModelMetadata: (
+    request: LookupModelMetadataRequest,
+  ) => Promise<PineModelMetadata>;
+  addCustomModel: (request: AddCustomModelRequest) => Promise<PineModelCatalog>;
   getContextCompactionStrategy: () => Promise<PineContextCompactionStrategy>;
   getUserProfile: () => Promise<PineUserProfile>;
   getTinyFishCredentialStatus: () => Promise<TinyFishCredentialStatus>;

@@ -5,6 +5,7 @@ import type {
   PineJsonValue,
 } from "../shared/agent";
 import type {
+  AddCustomModelRequest,
   LoginProviderRequest,
   PineModelCatalog,
   PineProviderAuthEvent,
@@ -104,6 +105,11 @@ export type AgentWorkerRequest =
       type: "models:catalog";
       agentDir: string;
     }
+  | ({
+      id: string;
+      type: "models:add-custom";
+      agentDir: string;
+    } & AddCustomModelRequest)
   | ({
       id: string;
       type: "provider:login";

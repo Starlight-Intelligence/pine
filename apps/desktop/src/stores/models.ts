@@ -1,6 +1,7 @@
 import { acceptHMRUpdate, defineStore } from "pinia";
 import { computed, ref, shallowRef } from "vue";
 import type {
+  AddCustomModelRequest,
   PineAuthType,
   PineModelCatalog,
   PineModelDescriptor,
@@ -191,6 +192,10 @@ export const useModelsStore = defineStore("models", () => {
     }
   }
 
+  async function addCustomModel(input: AddCustomModelRequest): Promise<void> {
+    catalog.value = await window.pine.addCustomModel(input);
+  }
+
   async function select(
     model: PineModelDescriptor,
     thinkingLevel?: PineModelSelection["thinkingLevel"],
@@ -298,6 +303,7 @@ export const useModelsStore = defineStore("models", () => {
   }
 
   return {
+    addCustomModel,
     beginLogin,
     cancelLogin,
     catalog,
