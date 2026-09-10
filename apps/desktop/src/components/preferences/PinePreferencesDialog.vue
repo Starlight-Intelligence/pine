@@ -237,7 +237,7 @@ function updateSidebarVibrancy(value: boolean): void {
         </Field>
 
         <Field orientation="horizontal">
-          <div class="flex min-w-0 flex-1 items-center gap-2">
+          <div class="flex min-w-0 flex-1 items-baseline gap-2">
             <FieldTitle id="pine-context-compaction-strategy-setting">
               {{ t("preferences.contextCompactionStrategy") }}
             </FieldTitle>
@@ -247,11 +247,11 @@ function updateSidebarVibrancy(value: boolean): void {
                   <Badge
                     as="button"
                     type="button"
-                    variant="outline"
+                    variant="secondary"
+                    class="size-5 translate-y-px p-0"
                     :aria-label="t('preferences.contextCompactionStrategyHelp')"
                   >
-                    <CircleHelpIcon data-icon="inline-start" />
-                    {{ t("common.help") }}
+                    <CircleHelpIcon aria-hidden="true" />
                   </Badge>
                 </TooltipTrigger>
                 <TooltipContent side="top" :side-offset="4">

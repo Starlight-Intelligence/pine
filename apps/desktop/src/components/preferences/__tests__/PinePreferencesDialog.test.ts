@@ -240,8 +240,12 @@ describe("PinePreferencesDialog", () => {
     const description =
       "推荐设置会在上下文达到 80% 时压缩，并将触发上限限制在 400K Token。";
 
-    expect(wrapper.getComponent(Badge).props("variant")).toBe("outline");
-    expect(helpBadge.text()).toBe("帮助");
+    expect(wrapper.getComponent(Badge).props("variant")).toBe("secondary");
+    expect(helpBadge.text()).toBe("");
+    expect(helpBadge.classes()).toEqual(
+      expect.arrayContaining(["size-5", "translate-y-px", "p-0"]),
+    );
+    expect(helpBadge.find("svg").attributes("aria-hidden")).toBe("true");
     expect(
       wrapper
         .findAll('[data-slot="field-description"]')
