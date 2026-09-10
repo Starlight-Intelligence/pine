@@ -2,6 +2,7 @@ import { createPinia, setActivePinia } from "pinia";
 import { mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { APP_LOCALE_STORAGE_KEY, createAppI18n } from "@/app/i18n";
+import { Badge } from "@/components/ui/badge";
 import { ToggleGroup } from "@/components/ui/toggle-group";
 import type { PineModelCatalog } from "@/shared/models";
 import {
@@ -231,6 +232,28 @@ describe("PinePreferencesDialog", () => {
         strategy: "passive",
       }),
     );
+  });
+
+  it("shows the compaction description from a focusable help badge", async () => {
+    const { wrapper } = mountDialog();
+    const helpBadge = wrapper.get('button[aria-label="关于上下文压缩策略"]');
+    const description =
+      "推荐设置会在上下文达到 80% 时压缩，并将触发上限限制在 400K Token。";
+
+    expect(wrapper.getComponent(Badge).props("variant")).toBe("outline");
+    expect(helpBadge.text()).toBe("帮助");
+    expect(
+      wrapper
+        .findAll('[data-slot="field-description"]')
+        .some((fieldDescription) => fieldDescription.text() === description),
+    ).toBe(false);
+
+    await helpBadge.trigger("focus");
+    await vi.waitFor(() => {
+      expect(
+        document.querySelector('[data-slot="tooltip-content"]')?.textContent,
+      ).toContain(description);
+    });
   });
 
   it("toggles the macOS sidebar vibrancy effect", async () => {

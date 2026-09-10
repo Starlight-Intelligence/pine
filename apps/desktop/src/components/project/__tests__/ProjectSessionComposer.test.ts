@@ -2,7 +2,10 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { describe, expect, it, vi } from "vitest";
 import { createAppI18n, type AppLocale } from "@/app/i18n";
-import type { PineAttachment } from "@/shared/attachments";
+import {
+  PASTED_TEXT_ATTACHMENT_THRESHOLD_BYTES,
+  type PineAttachment,
+} from "@/shared/attachments";
 import type { PineThinkingLevel } from "@/shared/models";
 import { useModelsStore } from "@/stores/models";
 import type { PinePendingApproval } from "@/stores/session";
@@ -401,6 +404,82 @@ describe("ProjectSessionComposer", () => {
 
     expect(inspectAttachments).not.toHaveBeenCalled();
     expect(savePastedAttachment).not.toHaveBeenCalled();
+    expect(wrapper.emitted("update:attachments")).toBeUndefined();
+  });
+
+  it("turns a large plain-text paste into a project attachment", async () => {
+    const wrapper = mountComposer();
+    const pastedText = "a".repeat(PASTED_TEXT_ATTACHMENT_THRESHOLD_BYTES);
+    const savedAttachment: PineAttachment = {
+      extension: "txt",
+      kind: "file",
+      modifiedAt: "2026-09-09T12:00:00.000Z",
+      name: "pasted-text.txt",
+      path: "/pine/projects/p1/attachments/uuid.txt",
+      size: pastedText.length,
+    };
+    const savePastedAttachment = vi.fn(() =>
+      Promise.resolve({ attachment: savedAttachment }),
+    );
+    window.pine.savePastedAttachment = savePastedAttachment;
+
+    await wrapper.get("textarea").trigger("paste", {
+      clipboardData: {
+        files: [],
+        getData: () => pastedText,
+      },
+    });
+    await flushPromises();
+
+    expect(savePastedAttachment).toHaveBeenCalledWith({
+      mimeType: "text/plain",
+      name: "pasted-text.txt",
+      text: pastedText,
+    });
+    expect(wrapper.emitted("update:attachments")).toContainEqual([
+      [savedAttachment],
+    ]);
+    expect(wrapper.get("textarea").element.value).toBe("");
+  });
+
+  it("leaves text below the large-paste threshold to the native paste path", async () => {
+    const wrapper = mountComposer();
+    const savePastedAttachment = vi.fn();
+    window.pine.savePastedAttachment = savePastedAttachment;
+
+    await wrapper.get("textarea").trigger("paste", {
+      clipboardData: {
+        files: [],
+        getData: () => "short paste",
+      },
+    });
+    await flushPromises();
+
+    expect(savePastedAttachment).not.toHaveBeenCalled();
+    expect(wrapper.emitted("update:attachments")).toBeUndefined();
+  });
+
+  it("restores a large paste to the message when attachment saving fails", async () => {
+    const wrapper = mountComposer();
+    const pastedText = "a".repeat(PASTED_TEXT_ATTACHMENT_THRESHOLD_BYTES);
+    window.pine.savePastedAttachment = vi
+      .fn()
+      .mockRejectedValue(new Error("disk full"));
+    await wrapper.get("textarea").setValue("before after");
+    const textarea = wrapper.get("textarea").element;
+    textarea.setSelectionRange(7, 7);
+
+    await wrapper.get("textarea").trigger("paste", {
+      clipboardData: {
+        files: [],
+        getData: () => pastedText,
+      },
+    });
+    await flushPromises();
+
+    expect(wrapper.get("textarea").element.value).toBe(
+      `before ${pastedText}after`,
+    );
     expect(wrapper.emitted("update:attachments")).toBeUndefined();
   });
 });

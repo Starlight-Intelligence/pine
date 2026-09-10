@@ -4,6 +4,7 @@ export default {
     delete: "Delete",
     edit: "Edit",
     done: "Done",
+    help: "Help",
     save: "Save",
     saving: "Saving",
   },
@@ -25,6 +26,7 @@ export default {
     themeLight: "Light",
     themeDark: "Dark",
     contextCompactionStrategy: "Context compaction strategy",
+    contextCompactionStrategyHelp: "About context compaction strategy",
     contextCompactionStrategyDescription:
       "Recommended settings compact at 80% context usage, capped at 400K tokens.",
     contextCompactionPassive: "Passive compaction",
@@ -280,7 +282,7 @@ export default {
       removeAttachment: "Remove attachment {name}",
       attachmentPickerFailed: "Could not open or inspect the selected items",
       attachmentDropFailed: "Could not inspect the dropped files or folders",
-      attachmentPasteFailed: "Could not read the pasted image or file",
+      attachmentPasteFailed: "Could not save the pasted text, image, or file",
       dropAttachmentsTitle: "Drop to add attachments",
       dropAttachmentsDescription:
         "You can add multiple files or folders at once",

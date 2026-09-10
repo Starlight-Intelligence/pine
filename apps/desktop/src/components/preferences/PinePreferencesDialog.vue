@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { handleError } from "@/app/errors/errorHandler";
-import { PencilIcon, SettingsIcon } from "@lucide/vue";
+import { CircleHelpIcon, PencilIcon, SettingsIcon } from "@lucide/vue";
 import { storeToRefs } from "pinia";
 import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { isAppLocale, persistAppLocale } from "@/app/i18n";
 import ModelPickerDialog from "@/components/models/ModelPickerDialog.vue";
 import UserProfileDialog from "@/components/preferences/UserProfileDialog.vue";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -26,6 +27,12 @@ import {
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useModelsStore } from "@/stores/models";
 import { isThemePreference, useAppearanceStore } from "@/stores/appearance";
 import {
@@ -230,13 +237,28 @@ function updateSidebarVibrancy(value: boolean): void {
         </Field>
 
         <Field orientation="horizontal">
-          <div class="flex min-w-0 flex-1 flex-col gap-1">
+          <div class="flex min-w-0 flex-1 items-center gap-2">
             <FieldTitle id="pine-context-compaction-strategy-setting">
               {{ t("preferences.contextCompactionStrategy") }}
             </FieldTitle>
-            <FieldDescription>
-              {{ t("preferences.contextCompactionStrategyDescription") }}
-            </FieldDescription>
+            <TooltipProvider :delay-duration="300">
+              <Tooltip>
+                <TooltipTrigger as-child>
+                  <Badge
+                    as="button"
+                    type="button"
+                    variant="outline"
+                    :aria-label="t('preferences.contextCompactionStrategyHelp')"
+                  >
+                    <CircleHelpIcon data-icon="inline-start" />
+                    {{ t("common.help") }}
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent side="top" :side-offset="4">
+                  {{ t("preferences.contextCompactionStrategyDescription") }}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
           <ToggleGroup
             type="single"
