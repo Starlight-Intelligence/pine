@@ -25,6 +25,33 @@ describe("systemPromptWithCurrentMonth", () => {
   });
 });
 
+describe("PINE_SYSTEM_PROMPT local tool guidance", () => {
+  it("selects privileged bash before calling ordinary bash for known external access", () => {
+    expect(PINE_SYSTEM_PROMPT).toContain(
+      "do not use ordinary bash to probe a capability",
+    );
+    expect(PINE_SYSTEM_PROMPT).toContain(
+      "If the required path or capability is already known to be external, call privileged_bash first",
+    );
+    expect(PINE_SYSTEM_PROMPT).toContain(
+      "These rules apply to read-only commands too, including ls, find, and cat",
+    );
+  });
+
+  it("distinguishes sandbox evidence, OS errors, and approval rejection", () => {
+    expect(PINE_SYSTEM_PROMPT).toContain(
+      "an explicit Pine sandbox-denial marker means the sandbox blocked the call",
+    );
+    expect(PINE_SYSTEM_PROMPT).toContain(
+      'EPERM, EACCES, "permission denied," or "operation not permitted" is only a diagnostic hint',
+    );
+    expect(PINE_SYSTEM_PROMPT).toContain(
+      "an approval rejection means the privileged command never ran",
+    );
+    expect(PINE_SYSTEM_PROMPT).toContain("it is not root or sudo");
+  });
+});
+
 describe("systemPromptWithUserProfile", () => {
   it("adds the selected style, technical background, and user-authored context", () => {
     const prompt = systemPromptWithUserProfile("base prompt", {
