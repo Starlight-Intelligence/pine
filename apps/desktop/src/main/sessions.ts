@@ -18,7 +18,10 @@ import type {
 import { PINE_APPROVAL_MODE_ENTRY } from "../shared/sessions";
 import type { PineApprovalMode } from "../shared/agent";
 import { formatSessionAsMarkdown } from "../shared/sessionExport";
-import { attachmentMessagePreview } from "../shared/attachments";
+import {
+  attachmentMessagePreview,
+  type PineAttachment,
+} from "../shared/attachments";
 import { parseMessageBlocks } from "../shared/sessions";
 
 const SEARCH_RESULT_LIMIT = 50;
@@ -258,13 +261,20 @@ function modelsFromEntries(entries: SessionTreeEntry[]): PineSessionModel[] {
   return [...models.values()];
 }
 
-function exportFileName(summary: PineSessionSummary): string {
+function sessionDisplayName(
+  summary: PineSessionSummary,
+  extension: string,
+): string {
   const base = (summary.name || summary.preview || `conversation-${summary.id}`)
     .replace(/[<>:"/\\|?*\u0000-\u001f]/gu, "-")
     .replace(/\s+/gu, " ")
     .trim()
     .slice(0, 100);
-  return `${base || `conversation-${summary.id}`}.md`;
+  return `${base || `conversation-${summary.id}`}.${extension}`;
+}
+
+function exportFileName(summary: PineSessionSummary): string {
+  return sessionDisplayName(summary, "md");
 }
 
 function firstUserMessage(entries: SessionTreeEntry[]): string | undefined {
@@ -457,6 +467,22 @@ export class ProjectSessionService {
     return {
       sessionFile: metadata.path,
       summary: await this.readSessionDocument(metadata),
+    };
+  }
+
+  async attachmentForSession(sessionId: string): Promise<PineAttachment> {
+    const descriptor = await this.describeSession(sessionId);
+    const metadata = await stat(descriptor.sessionFile);
+    if (!metadata.isFile()) throw new Error("Session document is not a file.");
+    const extension =
+      path.extname(descriptor.sessionFile).slice(1).toLowerCase() || "jsonl";
+    return {
+      extension,
+      kind: "file",
+      modifiedAt: metadata.mtime.toISOString(),
+      name: sessionDisplayName(descriptor.summary, extension),
+      path: descriptor.sessionFile,
+      size: metadata.size,
     };
   }
 

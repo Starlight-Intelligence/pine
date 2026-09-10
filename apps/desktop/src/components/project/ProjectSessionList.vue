@@ -27,6 +27,7 @@ import { useContentTabNavigation } from "@/composables/useContentTabNavigation";
 import { useFileToSession } from "@/composables/useFileToSession";
 import { useSessionExport } from "@/composables/useSessionExport";
 import { FILE_TAB_DRAG_TYPE, hasFileTabDrag } from "@/lib/contentTabDrag";
+import { writeSessionDrag } from "@/lib/sessionDrag";
 import type { PineSessionSummary } from "@/shared/sessions";
 import { useContentTabsStore } from "@/stores/contentTabs";
 import { useProjectStore } from "@/stores/project";
@@ -135,6 +136,10 @@ function openSession(session: PineSessionSummary): void {
   tabNavigation.openSession(session);
 }
 
+function startSessionDrag(event: DragEvent, session: PineSessionSummary): void {
+  if (event.dataTransfer) writeSessionDrag(event.dataTransfer, session);
+}
+
 function requestSessionDeletion(session: PineSessionSummary): void {
   sessionPendingDelete.value = session;
   isDeleteDialogOpen.value = true;
@@ -227,6 +232,7 @@ watch(
                 <SidebarMenuButton
                   class="min-w-0"
                   :data-session-id="recentSessions[virtualRow.index].id"
+                  :draggable="true"
                   :class="{
                     'bg-sidebar-accent ring-1 ring-sidebar-ring':
                       dropSessionId === recentSessions[virtualRow.index].id,
@@ -244,6 +250,9 @@ watch(
                       activeSessionTab.sessionId
                   "
                   @click="openSession(recentSessions[virtualRow.index])"
+                  @dragstart="
+                    startSessionDrag($event, recentSessions[virtualRow.index])
+                  "
                 >
                   <span class="min-w-0 flex-1 truncate">
                     {{ sessionTitle(recentSessions[virtualRow.index]) }}

@@ -38,7 +38,10 @@ import {
 } from "./sessions";
 import type { AgentHost } from "./agentProcessHost";
 import type { GateDecision } from "../agent/protocol";
-import { parseAttachmentMessage } from "../shared/attachments";
+import {
+  parseAttachmentMessage,
+  type PineAttachment,
+} from "../shared/attachments";
 import path from "node:path";
 
 function pathContains(parentPath: string, candidatePath: string): boolean {
@@ -169,6 +172,13 @@ export class ProjectRuntimeRegistry {
       before,
       limit,
     );
+  }
+
+  async attachmentForSession(
+    webContentsId: number,
+    sessionId: string,
+  ): Promise<PineAttachment> {
+    return this.get(webContentsId).sessions.attachmentForSession(sessionId);
   }
 
   async exportSession(

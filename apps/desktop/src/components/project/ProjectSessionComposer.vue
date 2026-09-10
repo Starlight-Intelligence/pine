@@ -6,6 +6,7 @@ import {
   CornerDownRightIcon,
   FileIcon,
   FolderIcon,
+  HistoryIcon,
   PlusIcon,
   SearchIcon,
   ShieldCheckIcon,
@@ -23,6 +24,7 @@ import ModelPickerDialog from "@/components/models/ModelPickerDialog.vue";
 import ProviderIcon from "@/components/models/ProviderIcon.vue";
 import ProjectApprovalCard from "@/components/project/ProjectApprovalCard.vue";
 import ProjectAttachmentList from "@/components/project/ProjectAttachmentList.vue";
+import SessionSearchOverlay from "@/components/sessions/SessionSearchOverlay.vue";
 import ContextUsageIndicator from "@/components/project/ContextUsageIndicator.vue";
 import {
   AlertDialog,
@@ -72,6 +74,7 @@ import {
   type PastedImageMimeType,
 } from "@/shared/attachments";
 import type { PineThinkingLevel } from "@/shared/models";
+import type { SessionSearchResult } from "@/shared/sessions";
 import type { PinePendingApproval } from "@/stores/session";
 import { pineModelKey, useModelsStore } from "@/stores/models";
 
@@ -118,6 +121,7 @@ const { favoriteModels, featuredModels, selectedModel, selection } =
   storeToRefs(modelsStore);
 const messageId = useId();
 const isModelPickerOpen = ref(false);
+const isSessionPickerOpen = ref(false);
 const isYoloConfirmationOpen = ref(false);
 const attachments = defineModel<PineAttachment[]>("attachments", {
   default: () => [],
@@ -224,6 +228,21 @@ async function pickAttachments(kind: "directory" | "file"): Promise<void> {
     mergeAttachments(result.attachments);
   } catch {
     toast.error(t("project.composer.attachmentPickerFailed"));
+  }
+}
+
+function openSessionPicker(): void {
+  window.setTimeout(() => {
+    isSessionPickerOpen.value = true;
+  });
+}
+
+async function attachSession(session: SessionSearchResult): Promise<void> {
+  try {
+    const result = await window.pine.attachSession({ sessionId: session.id });
+    mergeAttachments([result.attachment]);
+  } catch {
+    toast.error(t("project.composer.sessionAttachmentFailed"));
   }
 }
 
@@ -437,6 +456,10 @@ function openModelPicker(): void {
                     <FolderIcon />
                     {{ t("project.composer.addFolder") }}
                   </DropdownMenuItem>
+                  <DropdownMenuItem @select="openSessionPicker">
+                    <HistoryIcon />
+                    {{ t("project.composer.addSession") }}
+                  </DropdownMenuItem>
                 </DropdownMenuGroup>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -491,6 +514,12 @@ function openModelPicker(): void {
         </div>
       </InputGroup>
     </template>
+
+    <SessionSearchOverlay
+      v-model:open="isSessionPickerOpen"
+      purpose="attach"
+      @select="attachSession"
+    />
 
     <!-- While an approval is pending the card owns the whole composer area:
          the mode selector, context ring, and model picker are all moot

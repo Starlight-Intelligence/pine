@@ -80,12 +80,15 @@ import {
   type UpdateProjectRequest,
 } from "./shared/projects";
 import {
+  ATTACH_SESSION_CHANNEL,
   DELETE_SESSION_CHANNEL,
   EXPORT_SESSION_CHANNEL,
   LOAD_SESSION_MESSAGES_CHANNEL,
   RENAME_SESSION_CHANNEL,
   RESUME_SESSION_CHANNEL,
   SEARCH_SESSIONS_CHANNEL,
+  type AttachSessionRequest,
+  type AttachSessionResult,
   type DeleteSessionRequest,
   type DeleteSessionResult,
   type ExportSessionRequest,
@@ -161,6 +164,10 @@ const pineApi: PineDesktopApi = {
     ipcRenderer.invoke(SET_SIDEBAR_VIBRANCY_CHANNEL, request),
   abortSession: (): Promise<AbortSessionResult> =>
     ipcRenderer.invoke(ABORT_SESSION_CHANNEL),
+  attachSession: (
+    request: AttachSessionRequest,
+  ): Promise<AttachSessionResult> =>
+    ipcRenderer.invoke(ATTACH_SESSION_CHANNEL, request),
   compactSession: (): Promise<CompactSessionResult> =>
     ipcRenderer.invoke(COMPACT_SESSION_CHANNEL),
   dequeueSteering: (

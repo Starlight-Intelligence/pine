@@ -159,6 +159,41 @@ describe("ProjectSessionService", () => {
     }
   });
 
+  it("resolves a session JSONL document as a regular file attachment", async () => {
+    const rootPath = await createTemporaryProjectData();
+    const options = serviceOptions(rootPath);
+    await mkdir(options.cwd, { recursive: true });
+    const environment = new NodeExecutionEnv({ cwd: options.cwd });
+    const repository = new JsonlSessionRepo({
+      fs: environment,
+      sessionsRoot: options.sessionsRoot,
+    });
+    const session = await repository.create({ cwd: options.cwd });
+    await session.appendSessionName("Architecture review");
+    await session.appendMessage({
+      role: "user",
+      content: "Review the event flow",
+      timestamp: Date.now(),
+    });
+    const metadata = await session.getMetadata();
+    const service = await ProjectSessionService.create(options);
+
+    try {
+      await expect(service.attachmentForSession(metadata.id)).resolves.toEqual(
+        expect.objectContaining({
+          extension: "jsonl",
+          kind: "file",
+          name: "Architecture review.jsonl",
+          path: metadata.path,
+          size: expect.any(Number),
+        }),
+      );
+    } finally {
+      await service.dispose();
+      await environment.cleanup();
+    }
+  });
+
   it("loads text messages backwards with a stable cursor", async () => {
     const rootPath = await createTemporaryProjectData();
     const options = serviceOptions(rootPath);

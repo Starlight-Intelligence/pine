@@ -4,6 +4,7 @@ import {
   externalFilePaths,
   readProjectEntryDrag,
 } from "@/lib/projectFileDrag";
+import { hasSessionDrag, readSessionDrag } from "@/lib/sessionDrag";
 import { FilesIcon } from "@lucide/vue";
 import { storeToRefs } from "pinia";
 import { computed, onMounted, ref, watch, type Ref } from "vue";
@@ -179,19 +180,21 @@ function loadEarlierMessages(): void {
   });
 }
 
-function dragContainsFiles(event: DragEvent): boolean {
-  return containsFileDrag(event.dataTransfer);
+function dragContainsAttachments(event: DragEvent): boolean {
+  return (
+    containsFileDrag(event.dataTransfer) || hasSessionDrag(event.dataTransfer)
+  );
 }
 
 function handleDragEnter(event: DragEvent): void {
-  if (!dragContainsFiles(event)) return;
+  if (!dragContainsAttachments(event)) return;
   event.preventDefault();
   fileDragDepth += 1;
   isDraggingFiles.value = true;
 }
 
 function handleDragOver(event: DragEvent): void {
-  if (!dragContainsFiles(event)) return;
+  if (!dragContainsAttachments(event)) return;
   event.preventDefault();
   if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
 }
@@ -204,7 +207,7 @@ function handleDragLeave(event: DragEvent): void {
 }
 
 async function handleDrop(event: DragEvent): Promise<void> {
-  if (!dragContainsFiles(event)) return;
+  if (!dragContainsAttachments(event)) return;
   event.preventDefault();
   fileDragDepth = 0;
   isDraggingFiles.value = false;
@@ -212,6 +215,16 @@ async function handleDrop(event: DragEvent): Promise<void> {
   try {
     const transfer = event.dataTransfer;
     if (!transfer) return;
+    const sessionId = readSessionDrag(transfer);
+    if (sessionId) {
+      const result = await window.pine.attachSession({ sessionId });
+      const byPath = new Map(
+        attachments.value.map((attachment) => [attachment.path, attachment]),
+      );
+      byPath.set(result.attachment.path, result.attachment);
+      attachments.value = [...byPath.values()];
+      return;
+    }
     const entries = readProjectEntryDrag(transfer);
     const paths = entries ? [] : externalFilePaths(transfer);
     if (!entries && !paths.length) return;

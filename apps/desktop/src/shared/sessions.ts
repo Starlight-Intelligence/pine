@@ -6,6 +6,7 @@ export const LOAD_SESSION_MESSAGES_CHANNEL = "sessions:messages" as const;
 export const DELETE_SESSION_CHANNEL = "sessions:delete" as const;
 export const RENAME_SESSION_CHANNEL = "sessions:rename" as const;
 export const EXPORT_SESSION_CHANNEL = "sessions:export" as const;
+export const ATTACH_SESSION_CHANNEL = "sessions:attach" as const;
 
 /** Custom session entry used to preserve the approval mode for exports. */
 export const PINE_APPROVAL_MODE_ENTRY = "pine.approval-mode" as const;
@@ -238,4 +239,12 @@ export interface ExportSessionRequest {
 export interface ExportSessionResult {
   path?: string;
   saved: boolean;
+}
+
+export interface AttachSessionRequest {
+  sessionId: string;
+}
+
+export interface AttachSessionResult {
+  attachment: PineAttachment;
 }

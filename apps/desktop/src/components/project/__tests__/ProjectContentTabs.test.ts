@@ -17,6 +17,7 @@ import {
   CONTENT_TAB_DRAG_TYPE,
   FILE_TAB_DRAG_TYPE,
 } from "@/lib/contentTabDrag";
+import { SESSION_DRAG_TYPE } from "@/lib/sessionDrag";
 import ProjectContentTabs from "../ProjectContentTabs.vue";
 
 const sidebar = vi.hoisted(() => ({
@@ -195,6 +196,25 @@ describe("ProjectContentTabs", () => {
     ]);
     expect(router.currentRoute.value.query.tab).toBe("session-1");
     expect(wrapper.get('[role="tablist"]').classes()).toContain("window-drag");
+    wrapper.unmount();
+  });
+
+  it("marks bound session tabs for conversation attachment drops", async () => {
+    const { wrapper } = await mountTabs();
+    useContentTabsStore().bindSession("session-1", firstSession);
+    await flushPromises();
+    const data = new Map<string, string>();
+    const transfer = {
+      setData: (type: string, value: string) => data.set(type, value),
+      effectAllowed: "none",
+    };
+
+    await wrapper
+      .get('[data-tab-id="session-1"]')
+      .trigger("dragstart", { dataTransfer: transfer });
+
+    expect(data.get(SESSION_DRAG_TYPE)).toBe(firstSession.id);
+    expect(transfer.effectAllowed).toBe("copyMove");
     wrapper.unmount();
   });
 

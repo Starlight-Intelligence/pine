@@ -116,12 +116,14 @@ import {
   type SetUserProfileResult,
 } from "./shared/userProfile";
 import {
+  ATTACH_SESSION_CHANNEL,
   DELETE_SESSION_CHANNEL,
   EXPORT_SESSION_CHANNEL,
   LOAD_SESSION_MESSAGES_CHANNEL,
   RENAME_SESSION_CHANNEL,
   RESUME_SESSION_CHANNEL,
   SEARCH_SESSIONS_CHANNEL,
+  type AttachSessionResult,
   type DeleteSessionResult,
   type ExportSessionResult,
   type LoadSessionMessagesResult,
@@ -1113,6 +1115,19 @@ ipcMain.handle(
     return {
       sessions: await getProjectRuntimes().search(event.sender.id, query),
     };
+  },
+);
+
+ipcMain.handle(
+  ATTACH_SESSION_CHANNEL,
+  async (event, request: unknown): Promise<AttachSessionResult> => {
+    const { sessionId } = SessionIdRequestSchema.parse(request);
+    const attachment = await getProjectRuntimes().attachmentForSession(
+      event.sender.id,
+      sessionId,
+    );
+    registerAttachmentPreviewPaths(event.sender.id, [attachment.path]);
+    return { attachment };
   },
 );
 

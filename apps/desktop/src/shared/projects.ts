@@ -44,6 +44,8 @@ import type {
   SetWatchedProjectDirectoriesRequest,
 } from "./projectFiles";
 import type {
+  AttachSessionRequest,
+  AttachSessionResult,
   DeleteSessionRequest,
   DeleteSessionResult,
   ExportSessionRequest,
@@ -145,6 +147,9 @@ export interface PineDesktopApi extends PineWindowApi {
     request: ProjectFilePreviewRequest,
   ) => Promise<ProjectFilePreview>;
   abortSession: () => Promise<AbortSessionResult>;
+  attachSession: (
+    request: AttachSessionRequest,
+  ) => Promise<AttachSessionResult>;
   compactSession: () => Promise<CompactSessionResult>;
   dequeueSteering: (
     request: DequeueSteeringRequest,

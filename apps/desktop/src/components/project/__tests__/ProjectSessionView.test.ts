@@ -1,4 +1,5 @@
 import { PROJECT_ENTRY_DRAG_TYPE } from "@/lib/projectFileDrag";
+import { SESSION_DRAG_TYPE } from "@/lib/sessionDrag";
 import { flushPromises, mount } from "@vue/test-utils";
 import { computed, ref } from "vue";
 import { useSessionStore } from "@/stores/session";
@@ -298,6 +299,45 @@ describe("ProjectSessionView file drop", () => {
     expect(wrapper.find('[data-slot="attachment-drop-overlay"]').exists()).toBe(
       false,
     );
+  });
+
+  it("resolves an internally dragged conversation as a JSONL attachment and deduplicates it", async () => {
+    const { wrapper } = mountView();
+    const attachment = {
+      extension: "jsonl",
+      kind: "file" as const,
+      modifiedAt: "2026-09-02T12:00:00.000Z",
+      name: "Architecture review.jsonl",
+      path: "/pine/projects/p1/sessions/session.jsonl",
+      size: 2_048,
+    };
+    const attachSession = vi.fn().mockResolvedValue({ attachment });
+    window.pine.attachSession = attachSession;
+    const transfer = {
+      types: [SESSION_DRAG_TYPE],
+      files: [],
+      getData: () => "019cfe51-7166-79b9-a5b9-c652fcca9eab",
+      dropEffect: "none",
+    };
+    const layout = wrapper.get(".session-layout");
+
+    await layout.trigger("dragenter", { dataTransfer: transfer });
+    expect(wrapper.find('[data-slot="attachment-drop-overlay"]').exists()).toBe(
+      true,
+    );
+    await layout.trigger("drop", { dataTransfer: transfer });
+    await flushPromises();
+    await layout.trigger("drop", { dataTransfer: transfer });
+    await flushPromises();
+
+    expect(attachSession).toHaveBeenCalledWith({
+      sessionId: "019cfe51-7166-79b9-a5b9-c652fcca9eab",
+    });
+    expect(
+      wrapper
+        .get('[data-slot="composer-stub"]')
+        .attributes("data-attachment-count"),
+    ).toBe("1");
   });
 
   it("rejects malformed internal drags without inspecting arbitrary paths", async () => {

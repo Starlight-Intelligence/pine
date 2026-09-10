@@ -66,6 +66,7 @@ function mountComposer(
       getModelCatalog: () => Promise.resolve(catalog),
       pickAttachmentFolders: () => Promise.resolve({ attachments: [] }),
       pickAttachments: () => Promise.resolve({ attachments: [] }),
+      attachSession: () => Promise.reject(new Error("Not configured")),
     },
   });
   useModelsStore().catalog = catalog;
@@ -78,6 +79,12 @@ function mountComposer(
         TooltipContent: { template: "<div><slot /></div>" },
         TooltipTrigger: {
           template: '<div data-slot="tooltip-trigger"><slot /></div>',
+        },
+        SessionSearchOverlay: {
+          props: ["open", "purpose"],
+          emits: ["select", "update:open"],
+          template:
+            '<button v-if="open" type="button" data-slot="session-picker-stub" :data-purpose="purpose" @click="$emit(\'select\', { id: \'019cfe51-7166-79b9-a5b9-c652fcca9eab\' })">Select session</button>',
         },
       },
     },
@@ -217,6 +224,42 @@ describe("ProjectSessionComposer", () => {
     expect(wrapper.emitted("submit")?.[0]?.[0]).toMatch(
       /<\/pine_attachments>$/,
     );
+  });
+
+  it("selects a conversation from the reused session palette and attaches its JSONL file", async () => {
+    const wrapper = mountComposer();
+    const attachment: PineAttachment = {
+      extension: "jsonl",
+      kind: "file",
+      modifiedAt: "2026-09-02T12:00:00.000Z",
+      name: "Architecture review.jsonl",
+      path: "/pine/projects/p1/sessions/session.jsonl",
+      size: 2_048,
+    };
+    const attachSession = vi.fn().mockResolvedValue({ attachment });
+    window.pine.attachSession = attachSession;
+
+    await wrapper.get('button[aria-label="添加附件"]').trigger("click");
+    await flushPromises();
+    Array.from(document.querySelectorAll<HTMLElement>('[role="menuitem"]'))
+      .find((item) => item.textContent?.includes("会话"))
+      ?.click();
+    await vi.waitFor(() => {
+      expect(wrapper.get('[data-slot="session-picker-stub"]')).toBeDefined();
+    });
+
+    const picker = wrapper.get('[data-slot="session-picker-stub"]');
+    expect(picker.attributes("data-purpose")).toBe("attach");
+    await picker.trigger("click");
+    await flushPromises();
+
+    expect(attachSession).toHaveBeenCalledWith({
+      sessionId: "019cfe51-7166-79b9-a5b9-c652fcca9eab",
+    });
+    expect(wrapper.text()).toContain("Architecture review.jsonl");
+    expect(wrapper.emitted("update:attachments")).toContainEqual([
+      [attachment],
+    ]);
   });
 
   it("selects a folder as one read-only path attachment", async () => {

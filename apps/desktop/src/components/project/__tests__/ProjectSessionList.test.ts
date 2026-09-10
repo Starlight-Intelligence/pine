@@ -1,4 +1,5 @@
 import { FILE_TAB_DRAG_TYPE } from "@/lib/contentTabDrag";
+import { SESSION_DRAG_TYPE } from "@/lib/sessionDrag";
 import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { createMemoryHistory, createRouter } from "vue-router";
@@ -49,6 +50,52 @@ const project: PineProject = {
 };
 
 describe("ProjectSessionList", () => {
+  it("exposes sidebar conversations as internal attachment drags", async () => {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [{ path: "/", component: { template: "<div />" } }],
+    });
+    await router.push("/");
+    Object.defineProperty(window, "pine", {
+      configurable: true,
+      value: {
+        searchSessions: vi.fn().mockResolvedValue({ sessions: [session] }),
+      },
+    });
+    useProjectStore().activeProject = project;
+    const wrapper = mount(ProjectSessionList, {
+      global: {
+        plugins: [pinia, router, createAppI18n("en-US")],
+        stubs: {
+          SidebarGroup: { template: "<div><slot /></div>" },
+          SidebarGroupContent: { template: "<div><slot /></div>" },
+          SidebarMenu: { template: "<div><slot /></div>" },
+          SidebarMenuButton: {
+            template: '<button v-bind="$attrs"><slot /></button>',
+          },
+          SidebarMenuItem: { template: "<div><slot /></div>" },
+          SidebarMenuSkeleton: true,
+        },
+      },
+    });
+    await flushPromises();
+    const data = new Map<string, string>();
+    const transfer = {
+      setData: (type: string, value: string) => data.set(type, value),
+      effectAllowed: "none",
+    };
+
+    const item = wrapper.get(`[data-session-id="${session.id}"]`);
+    expect(item.attributes("draggable")).toBe("true");
+    await item.trigger("dragstart", { dataTransfer: transfer });
+
+    expect(data.get(SESSION_DRAG_TYPE)).toBe(session.id);
+    expect(transfer.effectAllowed).toBe("copy");
+    wrapper.unmount();
+  });
+
   it("accepts a file tab drop, opens the target session, and adds its attachment", async () => {
     const pinia = createPinia();
     setActivePinia(pinia);

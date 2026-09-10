@@ -22,9 +22,11 @@ import SessionSnippet from "./SessionSnippet.vue";
 
 const props = defineProps<{
   open: boolean;
+  purpose?: "attach" | "open";
 }>();
 
 const emit = defineEmits<{
+  select: [session: SessionSearchResult];
   "update:open": [open: boolean];
 }>();
 
@@ -80,8 +82,9 @@ function sessionSnippet(session: SessionSearchResult): string | undefined {
   return snippet?.replaceAll(/\s+/g, " ").trim();
 }
 
-function openSession(session: SessionSearchResult): void {
-  tabNavigation.openSession(session);
+function selectSession(session: SessionSearchResult): void {
+  if (props.purpose !== "attach") tabNavigation.openSession(session);
+  emit("select", session);
   emit("update:open", false);
 }
 </script>
@@ -89,8 +92,16 @@ function openSession(session: SessionSearchResult): void {
 <template>
   <CommandDialog
     :open="open"
-    :title="t('sessions.searchTitle')"
-    :description="t('sessions.searchDescription')"
+    :title="
+      props.purpose === 'attach'
+        ? t('sessions.attachTitle')
+        : t('sessions.searchTitle')
+    "
+    :description="
+      props.purpose === 'attach'
+        ? t('sessions.attachDescription')
+        : t('sessions.searchDescription')
+    "
     @update:open="emit('update:open', $event)"
   >
     <SessionCommandInput
@@ -117,7 +128,7 @@ function openSession(session: SessionSearchResult): void {
           :key="session.id"
           :value="session.id"
           class="data-[highlighted]:bg-muted data-[highlighted]:text-foreground data-[highlighted]:*:[svg]:text-foreground"
-          @select="openSession(session)"
+          @select="selectSession(session)"
         >
           <History aria-hidden="true" />
           <div class="min-w-0 flex-1">
