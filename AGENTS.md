@@ -31,7 +31,7 @@
     bun install --network-concurrency 8
   ```
 
-- 直接依赖使用精确版本，不使用 `latest`、`*`、`^` 或 `~`；新增依赖由 `bunfig.toml` 的 `install.exact = true` 默认保存精确版本。升级依赖时显式指定版本，并同步提交 `package.json` 和 `bun.lock`。
+- 直接依赖使用精确版本，不使用 `latest`、`*`、`^` 或 `~`；新增依赖由 `bunfig.toml` 的 `install.exact = true` 默认保存精确版本。唯一例外是 `@earendil-works/pi-ai`：它因依赖稳定 API 并高频更新内置模型目录，故意使用 `latest`，以免反复手动修改 manifest。依赖升级仍必须同步提交 `package.json` 和 `bun.lock`，并通过完整检查。
 - Bun 版本以根目录 `package.json` 的 `packageManager` 为准；首次安装、CI 和复现构建使用 `bun install --frozen-lockfile`。
 - 依赖安装默认不使用 `--force`；强制安装会重新解析并可能更新无关传递依赖。仅在确认需要完整重建依赖时使用。
 

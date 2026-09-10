@@ -28,7 +28,7 @@
   "dependencies": {
     "@anthropic-ai/sandbox-runtime": "0.0.75",
     "@earendil-works/pi-agent-core": "0.85.1",
-    "@earendil-works/pi-ai": "0.85.1",
+    "@earendil-works/pi-ai": "latest",
     "@earendil-works/pi-coding-agent": "0.85.1",
     "@fontsource-variable/jetbrains-mono": "5.3.0",
     "@lobehub/icons-static-svg": "1.95.0",
