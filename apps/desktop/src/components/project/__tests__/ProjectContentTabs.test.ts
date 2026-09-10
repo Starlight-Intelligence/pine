@@ -218,7 +218,7 @@ describe("ProjectContentTabs", () => {
     wrapper.unmount();
   });
 
-  it("keeps the tab titlebar draggable while making separators scrollable", async () => {
+  it("keeps the tab titlebar draggable while making the complete tab strip scrollable", async () => {
     const { wrapper } = await mountTabs(true);
 
     expect(
@@ -227,6 +227,9 @@ describe("ProjectContentTabs", () => {
     expect(
       wrapper.get('[data-slot="project-content-tabs-titlebar"]').classes(),
     ).not.toContain("pointer-events-none");
+    expect(
+      wrapper.get('[data-slot="project-content-tab-items"]').classes(),
+    ).toContain("window-no-drag");
     expect(wrapper.get(".project-content-tab-separator").classes()).toContain(
       "window-no-drag",
     );

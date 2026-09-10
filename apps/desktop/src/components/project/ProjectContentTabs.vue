@@ -320,7 +320,7 @@ watch(activeSession, (session) => {
       >
         <div
           data-slot="project-content-tab-items"
-          class="flex min-w-max shrink-0 items-center gap-1 py-1"
+          class="window-no-drag flex min-w-max shrink-0 items-center gap-1 py-1"
         >
           <template v-for="(tab, index) in tabs" :key="tab.id">
             <Separator
