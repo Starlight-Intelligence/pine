@@ -110,6 +110,54 @@ describe("session store", () => {
     expect(store.isLoadingMessages).toBe(false);
   });
 
+  it("loads the earlier page with the cursor returned by the initial page", async () => {
+    const newerMessage = {
+      id: "newer-message",
+      blocks: [],
+      createdAt: "2026-01-02T00:00:00.000Z",
+      role: "assistant" as const,
+    };
+    const earlierMessage = {
+      id: "earlier-message",
+      blocks: [],
+      createdAt: "2026-01-01T00:00:00.000Z",
+      role: "user" as const,
+    };
+    const loadSessionMessages = vi
+      .fn()
+      .mockResolvedValueOnce({
+        hasMore: true,
+        messages: [newerMessage],
+        nextBefore: "newer-message",
+      })
+      .mockResolvedValueOnce({
+        hasMore: false,
+        messages: [earlierMessage],
+      });
+    Object.defineProperty(window, "pine", {
+      configurable: true,
+      value: {
+        loadSessionMessages,
+        resumeSession: vi.fn().mockResolvedValue({ session }),
+      },
+    });
+    const store = useSessionStore();
+
+    await store.resume(session.id);
+    await store.loadEarlierMessages();
+
+    expect(loadSessionMessages).toHaveBeenNthCalledWith(2, {
+      before: "newer-message",
+      sessionId: session.id,
+      limit: 50,
+    });
+    expect(store.messages.map((message) => message.id)).toEqual([
+      "earlier-message",
+      "newer-message",
+    ]);
+    expect(store.hasEarlierMessages).toBe(false);
+  });
+
   it("evicts a session from the cache when it is deleted", async () => {
     Object.defineProperty(window, "pine", {
       configurable: true,

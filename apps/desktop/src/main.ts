@@ -398,8 +398,8 @@ const RenameSessionRequestSchema = SessionIdRequestSchema.extend({
   name: z.string().trim().min(1).max(200),
 });
 const LoadSessionMessagesRequestSchema = z.object({
-  // Pi entry cursors are opaque IDs: normally 8 hex characters, with a full
-  // UUID only as a collision fallback.
+  // History cursors are opaque, versioned strings derived from stable entry
+  // sequence numbers; entry-ID cursors remain accepted for compatibility.
   before: z.string().min(1).max(128).optional(),
   limit: z.number().int().min(1).max(100).optional(),
   sessionId: z.uuid(),

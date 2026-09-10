@@ -14,7 +14,7 @@ import {
   fauxThinking,
   fauxToolCall,
 } from "@earendil-works/pi-ai/providers/faux";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -303,6 +303,70 @@ describe("ProjectSessionService", () => {
     } finally {
       await service.dispose();
       await environment.cleanup(BACKGROUND_CONTEXT);
+    }
+  });
+
+  it("keeps history cursors stable when a legacy session is reopened", async () => {
+    const rootPath = await createTemporaryProjectData();
+    const options = serviceOptions(rootPath);
+    const sessionId = "019cfe51-7166-79b9-a5b9-c652fcca9eab";
+    const sessionDirectory = path.join(
+      options.sessionsRoot,
+      `--${options.cwd.replace(/^[/\\]/u, "").replace(/[/\\:]/gu, "-")}--`,
+    );
+    await Promise.all([
+      mkdir(options.cwd, { recursive: true }),
+      mkdir(sessionDirectory, { recursive: true }),
+    ]);
+    const records = [
+      {
+        type: "session",
+        version: 3,
+        id: sessionId,
+        timestamp: "2026-01-01T00:00:00.000Z",
+        cwd: options.cwd,
+      },
+      ...["one", "two", "three", "four"].map((content, index) => ({
+        type: "message",
+        id: `legacy0${index + 1}`,
+        parentId: index === 0 ? null : `legacy0${index}`,
+        timestamp: `2026-01-01T00:00:0${index + 1}.000Z`,
+        message: {
+          role: "user",
+          content,
+          timestamp: Date.UTC(2026, 0, 1, 0, 0, index + 1),
+        },
+      })),
+    ];
+    await writeFile(
+      path.join(sessionDirectory, `legacy_${sessionId}.jsonl`),
+      `${records.map((record) => JSON.stringify(record)).join("\n")}\n`,
+      "utf8",
+    );
+    const service = await ProjectSessionService.create(options);
+
+    try {
+      const newest = await service.loadMessages(sessionId, undefined, 2);
+      expect(newest.messages.map((message) => textOf(message))).toEqual([
+        "three",
+        "four",
+      ]);
+      expect(newest.nextBefore).toBe("seq:3");
+
+      // loadMessages intentionally reopens closed sessions. Legacy imports
+      // remint entry IDs on every open, but their sequence numbers are stable.
+      const earlier = await service.loadMessages(
+        sessionId,
+        newest.nextBefore,
+        2,
+      );
+      expect(earlier.messages.map((message) => textOf(message))).toEqual([
+        "one",
+        "two",
+      ]);
+      expect(earlier.hasMore).toBe(false);
+    } finally {
+      await service.dispose();
     }
   });
 

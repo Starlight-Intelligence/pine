@@ -75,6 +75,11 @@ interface IndexedSessionRow {
   source_mtime_ms: number;
 }
 
+interface IndexedTextMessage {
+  cursor: number;
+  message: PineTextMessage;
+}
+
 function textFromContent(content: unknown): string {
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "";
@@ -111,25 +116,28 @@ function textFromMessage(entry: Extract<Entry, { type: "message" }>): string {
   return "";
 }
 
-function textMessages(entries: Entry[]): PineTextMessage[] {
-  const messages: PineTextMessage[] = [];
+function indexedTextMessages(entries: Entry[]): IndexedTextMessage[] {
+  const messages: IndexedTextMessage[] = [];
   const toolOwners = new Map<string, PineTextMessage>();
 
   for (const entry of entries) {
     if (entry.type === "compaction") {
       messages.push({
-        createdAt: new Date(entry.timestamp).toISOString(),
-        id: `compaction-${entry.id}`,
-        role: "assistant",
-        blocks: [
-          {
-            type: "compaction",
-            compaction: {
-              id: entry.id,
-              status: "complete",
+        cursor: entry.seq,
+        message: {
+          createdAt: new Date(entry.timestamp).toISOString(),
+          id: `compaction-${entry.id}`,
+          role: "assistant",
+          blocks: [
+            {
+              type: "compaction",
+              compaction: {
+                id: entry.id,
+                status: "complete",
+              },
             },
-          },
-        ],
+          ],
+        },
       });
       continue;
     }
@@ -183,13 +191,13 @@ function textMessages(entries: Entry[]): PineTextMessage[] {
       blocks,
       ...(hasThinking ? { thinkingDurationMs: thinkingDurationMs(entry) } : {}),
     };
-    messages.push(message);
+    messages.push({ cursor: entry.seq, message });
     for (const block of blocks) {
       if (block.type === "toolCall") toolOwners.set(block.toolCall.id, message);
     }
   }
 
-  for (const message of messages) {
+  for (const { message } of messages) {
     message.blocks = message.blocks.map((block) =>
       block.type === "toolCall" && block.toolCall.status === "pending"
         ? {
@@ -201,6 +209,29 @@ function textMessages(entries: Entry[]): PineTextMessage[] {
   }
 
   return messages;
+}
+
+function textMessages(entries: Entry[]): PineTextMessage[] {
+  return indexedTextMessages(entries).map(({ message }) => message);
+}
+
+function messageCursor(sequence: number): string {
+  return `seq:${sequence}`;
+}
+
+function messageCursorIndex(
+  messages: IndexedTextMessage[],
+  cursor: string,
+): number {
+  if (cursor.startsWith("seq:")) {
+    const sequence = Number(cursor.slice(4));
+    if (!Number.isSafeInteger(sequence) || sequence < 1) return -1;
+    return messages.findIndex((message) => message.cursor === sequence);
+  }
+
+  // Accept entry-ID cursors returned by Pine before sequence cursors were
+  // introduced. These remain stable for native v4 sessions.
+  return messages.findIndex((message) => message.message.id === cursor);
 }
 
 function isPineApprovalMode(value: unknown): value is PineApprovalMode {
@@ -481,9 +512,9 @@ export class ProjectSessionService {
     if (!metadata) throw new Error("Session not found in the active project.");
 
     return this.withSession(metadata, async (session) => {
-      const messages = textMessages(await entriesForSession(session));
+      const messages = indexedTextMessages(await entriesForSession(session));
       const end = before
-        ? messages.findIndex((message) => message.id === before)
+        ? messageCursorIndex(messages, before)
         : messages.length;
       if (end < 0) throw new Error("Session message cursor not found.");
 
@@ -491,8 +522,10 @@ export class ProjectSessionService {
       const page = messages.slice(start, end);
       return {
         hasMore: start > 0,
-        messages: page,
-        ...(start > 0 && page[0] ? { nextBefore: page[0].id } : {}),
+        messages: page.map(({ message }) => message),
+        ...(start > 0 && page[0]
+          ? { nextBefore: messageCursor(page[0].cursor) }
+          : {}),
       };
     });
   }
