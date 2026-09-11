@@ -31,13 +31,13 @@ Pine 是这些人的桌面 harness：
 
 ## 当前状态
 
-| 项目     | 当前情况                                                                                                       |
-| -------- | -------------------------------------------------------------------------------------------------------------- |
-| 版本     | `0.1.0`，开发者预览版                                                                                          |
-| 核心闭环 | Project Library → 文件夹授权 → 持久化会话 → Agent 工具调用 → 结果回显                                          |
-| 已验证   | `bun run check` 通过；57 个测试文件、395 个测试通过，14 个跳过                                                 |
-| 打包     | `bun run build` 已在 macOS arm64 完成 Electron Forge 打包流程                                                  |
-| 发行     | CI 当前发布 macOS Apple Silicon / Intel nightly snapshot；Windows/Linux maker 已配置但尚未作为验证过的发布渠道 |
+| 项目     | 当前情况                                                                                      |
+| -------- | --------------------------------------------------------------------------------------------- |
+| 版本     | `0.1.0`，开发者预览版                                                                         |
+| 核心闭环 | Project Library → 文件夹授权 → 持久化会话 → Agent 工具调用 → 结果回显                         |
+| 已验证   | `bun run check` 通过；57 个测试文件、395 个测试通过，14 个跳过                                |
+| 打包     | `bun run build` 已在 macOS arm64 完成 Electron Forge 打包流程                                 |
+| 发行     | `main` 每次 push 构建 macOS Apple Silicon / Intel artifacts；正式版本仅通过手动 workflow 发布 |
 
 ## 现在能做什么
 
@@ -80,6 +80,23 @@ bun run dev
 | `bun run test:coverage`          | 生成测试覆盖率报告                     |
 | `bun run typecheck`              | 运行 TypeScript / Vue 类型检查         |
 | `bun run shadcn:add <component>` | 使用固定版本的 shadcn-vue CLI 添加组件 |
+
+### 发布
+
+正式版本以 `apps/desktop/package.json` 的 SemVer 版本为准。发布前在
+[`CHANGELOG.md`](./CHANGELOG.md) 添加同版本、带日期的章节，然后手动运行 GitHub
+Actions 的 `release` workflow。预检会拒绝已被任一 GitHub Release 使用的版本；
+安装包名称同时包含外部版本和构建 commit 的七位短 hash。
+
+可选的 Cloudflare R2 latest 镜像在 [`.pine/release.json`](./.pine/release.json)
+配置，其中 `publicBaseUrl` 应使用绑定到 R2 bucket 的生产自定义域名。启用后需在仓库 Secrets 中设置 `R2_ACCESS_KEY_ID` 和
+`R2_SECRET_ACCESS_KEY`。每次正式发布会覆盖配置 prefix 下的
+`latest/Pine-darwin-arm64.dmg`、`latest/Pine-darwin-x64.dmg`、
+`latest/SHA256SUMS` 和 `latest/update.json`；首次发布时会直接创建这些对象。
+自动更新检查和安装包下载完全通过这个 R2 域名，不依赖 GitHub 可用性。
+发布 workflow 会对 `latest/update.json` 设置 `no-store`，对固定 latest 安装包设置
+`no-cache`，并让 manifest 指向长期缓存的不可变版本文件。Cloudflare Cache Rule 也应
+明确 bypass `*/latest/update.json`；生产分发应使用 R2 自定义域名而非 `r2.dev`。
 
 ## 架构要点
 
