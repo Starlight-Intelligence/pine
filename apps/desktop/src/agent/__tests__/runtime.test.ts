@@ -6,6 +6,8 @@ import type { Api, AssistantMessage, Model } from "@earendil-works/pi-ai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   attachedPathsFromSessionEntries,
+  authorizationGrantsFromSessionEntries,
+  buildGateTurnContext,
   judgeStreamOptions,
   normalizeGeneratedTitle,
   parseJudgeRulings,
@@ -49,6 +51,126 @@ describe("attachedPathsFromSessionEntries", () => {
         },
       ]),
     ).toEqual(["/tmp/context.txt"]);
+  });
+});
+
+describe("approval context", () => {
+  it("keeps user authority and causal events without exposing raw thinking", () => {
+    const entries = [
+      {
+        type: "message",
+        id: "user-root",
+        message: { role: "user", content: "Refactor the approval flow." },
+      },
+      {
+        type: "message",
+        id: "assistant-1",
+        message: {
+          role: "assistant",
+          content: [
+            { type: "thinking", thinking: "private chain of thought" },
+            { type: "text", text: "I will inspect the gate." },
+            {
+              type: "toolCall",
+              id: "tool-1",
+              name: "bash",
+              arguments: { command: "bun test" },
+            },
+          ],
+        },
+      },
+      {
+        type: "message",
+        id: "tool-result-1",
+        message: {
+          role: "toolResult",
+          toolCallId: "tool-1",
+          toolName: "bash",
+          content: [{ type: "text", text: "permission denied" }],
+          isError: true,
+        },
+      },
+      {
+        type: "message",
+        id: "user-latest",
+        message: { role: "user", content: "Proceed with steps one to four." },
+      },
+    ] as never[];
+
+    const context = buildGateTurnContext(entries, []);
+
+    expect(context.rootGoal).toEqual({
+      id: "user-root",
+      text: "Refactor the approval flow.",
+    });
+    expect(context.recentUserStatements).toEqual([
+      { id: "user-latest", text: "Proceed with steps one to four." },
+    ]);
+    expect(JSON.stringify(context)).toContain("I will inspect the gate");
+    expect(JSON.stringify(context)).toContain("permission denied");
+    expect(JSON.stringify(context)).not.toContain("private chain of thought");
+  });
+
+  it("restores only validated authorization grant entries", () => {
+    const grant = {
+      id: "grant-1",
+      source: "user" as const,
+      scope: "once" as const,
+      toolName: "privileged_bash",
+      subject: "open -a Finder",
+      actionDigest: "abc123",
+      createdAt: "2026-09-11T00:00:00.000Z",
+    };
+    expect(
+      authorizationGrantsFromSessionEntries([
+        {
+          type: "custom",
+          customType: "pine.authorization-grant",
+          data: grant,
+        },
+        {
+          type: "custom",
+          customType: "pine.authorization-grant",
+          data: { subject: "incomplete" },
+        },
+      ]),
+    ).toEqual([grant]);
+  });
+
+  it("keeps older events that match the reviewed subject", () => {
+    const entries = [
+      {
+        type: "message",
+        id: "root",
+        message: { role: "user", content: "Diagnose the build." },
+      },
+      {
+        type: "message",
+        id: "relevant-old-event",
+        message: {
+          role: "assistant",
+          content: [
+            { type: "text", text: "The failing target is packages/compiler." },
+          ],
+        },
+      },
+      ...Array.from({ length: 9 }, (_, index) => ({
+        type: "message",
+        id: `recent-${index}`,
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: `Unrelated event ${index}` }],
+        },
+      })),
+    ] as never[];
+
+    const context = buildGateTurnContext(entries, [], undefined, [
+      "rm -rf packages/compiler",
+    ]);
+
+    expect(context.recentEvents.map((event) => event.id)).toContain(
+      "relevant-old-event",
+    );
   });
 });
 
@@ -191,7 +313,7 @@ describe("parseJudgeRulings", () => {
             },
             {
               toolCallId: "p1",
-              verdict: "allow",
+              verdict: "needs_user",
               reason: " expected ",
               scope: "once",
             },
@@ -203,7 +325,7 @@ describe("parseJudgeRulings", () => {
       { toolCallId: "p2", verdict: "deny", reason: "unsafe" },
       {
         toolCallId: "p1",
-        verdict: "allow",
+        verdict: "needs_user",
         reason: "expected",
         scope: "once",
       },

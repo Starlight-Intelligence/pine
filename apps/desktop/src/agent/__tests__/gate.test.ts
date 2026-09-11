@@ -29,7 +29,17 @@ function createHost(
   const host: GateHost = {
     sessionId: "session-1",
     emit,
-    turnContext: () => ({}),
+    authorizationGrants: () => [],
+    turnContext: () => ({
+      recentUserStatements: [],
+      recentEvents: [],
+      grants: [],
+    }),
+    recordGrant: (grant) => ({
+      ...grant,
+      id: "grant-1",
+      createdAt: "2026-09-11T00:00:00.000Z",
+    }),
     judge,
     requestUserApproval,
   };
@@ -279,6 +289,42 @@ describe("AutoReviewGate", () => {
       { kind: "deny", reason: "unsafe target" },
       { kind: "allow", scope: "once" },
     ]);
+  });
+
+  it("routes needs_user directly to the bound approval UI", async () => {
+    const { host, mocks } = createHost(
+      () =>
+        Promise.resolve({
+          verdict: "needs_user",
+          reason: "Publishing needs explicit authorization.",
+        }),
+      () => Promise.resolve({ kind: "allow" }),
+    );
+    const gate = new AutoReviewGate(host);
+
+    await expect(
+      gate.reviewBashCommand({
+        toolCallId: "publish-1",
+        command: "bun publish",
+        description: "Publish the package",
+      }),
+    ).resolves.toEqual({ kind: "allow" });
+    expect(mocks.requestUserApproval).toHaveBeenCalledWith(
+      expect.objectContaining({
+        trigger: "destructive-pattern",
+        toolCallId: "publish-1",
+        subject: "bun publish",
+        description: "Publish the package",
+        evidence: expect.stringContaining("explicit authorization"),
+      }),
+    );
+    expect(mocks.emit).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "approval-decided",
+        decidedBy: "judge",
+        verdict: "denied",
+      }),
+    );
   });
 
   it("fails closed when the judge errors", async () => {

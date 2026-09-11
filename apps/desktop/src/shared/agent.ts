@@ -166,6 +166,8 @@ export type PineAgentEvent =
       input?: PineJsonValue;
       /** Why the gate escalated (sandbox stderr excerpt, policy error, …). */
       evidence?: string;
+      /** Binds the approval card to the immutable worker-side call snapshot. */
+      actionDigest?: string;
     }
   | {
       type: "approval-decided";

@@ -1,14 +1,38 @@
 import { Type } from "typebox";
 import type { Tool } from "@earendil-works/pi-ai";
+import { createHash } from "node:crypto";
 import type { PineAgentEvent } from "../shared/agent";
 import type { GateDecision } from "./protocol";
 import { matchDestructive } from "./destructive";
 
-/** Mutable per-turn conversation context the reviewer can see. */
+export interface AuthorizationStatement {
+  id: string;
+  text: string;
+}
+
+export interface AuthorizationGrant {
+  id: string;
+  source: "judge" | "user";
+  scope: "once" | "session";
+  toolName: string;
+  subject: string;
+  description?: string;
+  actionDigest: string;
+  createdAt: string;
+}
+
+export interface ApprovalCausalEvent {
+  id: string;
+  kind: "assistant" | "tool-result";
+  summary: string;
+}
+
+/** Compact, authority-aware context supplied to automatic reviews. */
 export interface GateTurnContext {
-  lastUserPrompt?: string;
-  lastAssistantText?: string;
-  lastThinking?: string;
+  rootGoal?: AuthorizationStatement;
+  recentUserStatements: AuthorizationStatement[];
+  recentEvents: ApprovalCausalEvent[];
+  grants: AuthorizationGrant[];
 }
 
 export interface JudgeRequest {
@@ -21,6 +45,8 @@ export interface JudgeRequest {
     | "privileged-execution";
   /** Primary subject of the review (bash command or file path). */
   subject: string;
+  /** Public action intent written for the user; never treated as authorization. */
+  description?: string;
   /** Evidence for the escalation (sandbox stderr excerpt, policy error, …). */
   evidence?: string;
   signal?: AbortSignal;
@@ -31,7 +57,7 @@ export interface JudgeRequest {
 
 export interface JudgeRuling {
   toolCallId: string;
-  verdict: "allow" | "deny";
+  verdict: "allow" | "deny" | "needs_user";
   reason?: string;
   scope?: "once" | "session";
 }
@@ -41,6 +67,7 @@ export interface UserApprovalRequest {
     | "pre-execution"
     | "sandbox-denied"
     | "authorize-denied"
+    | "destructive-pattern"
     | "privileged-execution";
   toolCallId: string;
   toolName: string;
@@ -58,7 +85,11 @@ export interface UserApprovalRequest {
 export interface GateHost {
   sessionId: string;
   emit(event: PineAgentEvent): void;
-  turnContext(): GateTurnContext;
+  authorizationGrants(): readonly AuthorizationGrant[];
+  turnContext(subjects?: readonly string[]): GateTurnContext;
+  recordGrant(
+    grant: Omit<AuthorizationGrant, "id" | "createdAt">,
+  ): AuthorizationGrant;
   judge(requests: JudgeRequest[]): Promise<JudgeRuling[]>;
   /**
    * Route a review to the renderer. Resolves with the user's decision; the
@@ -222,6 +253,7 @@ export class AutoReviewGate implements ToolGate {
       toolCallId: input.toolCallId,
       toolName: "bash",
       subject: input.command,
+      description: input.description,
       evidence: `Matched destructive-command heuristic "${match.name}": ${match.description}`,
       signal: input.signal,
     });
@@ -246,6 +278,7 @@ export class AutoReviewGate implements ToolGate {
         toolCallId: input.toolCallId,
         toolName: input.toolName,
         subject: input.subject,
+        description: input.description,
         evidence: input.evidence,
         signal: input.signal,
       },
@@ -262,7 +295,18 @@ export class AutoReviewGate implements ToolGate {
   }
 
   isApprovedCommand(command: string): boolean {
-    return this.approvedCommands.has(normalizeCommand(command));
+    const normalized = normalizeCommand(command);
+    return (
+      this.approvedCommands.has(normalized) ||
+      this.host
+        .authorizationGrants()
+        .some(
+          (grant) =>
+            grant.scope === "session" &&
+            grant.toolName === "bash" &&
+            normalizeCommand(grant.subject) === normalized,
+        )
+    );
   }
 
   resetTurn(): void {
@@ -279,6 +323,7 @@ export class AutoReviewGate implements ToolGate {
       toolCallId: string;
       toolName: string;
       subject: string;
+      description?: string;
       evidence: string;
       signal?: AbortSignal;
     },
@@ -321,6 +366,9 @@ export class AutoReviewGate implements ToolGate {
       input: DenialReviewInput;
       allowSessionScope: boolean;
     }> = [];
+    const sharedTurn = this.host.turnContext(
+      reviews.map((review) => review.input.subject),
+    );
 
     reviews.forEach((review, index) => {
       const sequence = ++this.sequence;
@@ -350,9 +398,10 @@ export class AutoReviewGate implements ToolGate {
           toolName: review.input.toolName,
           trigger: review.trigger,
           subject: review.input.subject,
+          description: review.input.description,
           evidence: review.input.evidence,
           signal: review.input.signal,
-          turn: this.host.turnContext(),
+          turn: sharedTurn,
           allowSessionScope: review.allowSessionScope,
         },
       });
@@ -378,31 +427,61 @@ export class AutoReviewGate implements ToolGate {
       rulings.map((ruling) => [ruling.toolCallId, ruling]),
     );
     let allowed = false;
-    pending.forEach(({ index, input, sequence, allowSessionScope }) => {
+    for (const {
+      index,
+      input,
+      sequence,
+      allowSessionScope,
+      request,
+    } of pending) {
       const ruling = rulingsById.get(input.toolCallId);
       if (!ruling) {
         const reason =
           "Auto-review unavailable: The reviewer omitted this tool call from its rulings.";
         this.emitDecided(sequence, input.toolCallId, "denied", reason);
         decisions[index] = { kind: "deny", reason };
-        return;
+        continue;
       }
       if (ruling.verdict === "allow") {
         allowed = true;
         if (allowSessionScope && ruling.scope === "session") {
           this.approvedCommands.add(normalizeCommand(input.subject));
+          this.host.recordGrant({
+            source: "judge",
+            scope: "session",
+            toolName: input.toolName,
+            subject: input.subject,
+            description: input.description,
+            actionDigest: approvalActionDigest(input),
+          });
         }
         this.emitDecided(sequence, input.toolCallId, "approved", ruling.reason);
         decisions[index] = {
           kind: "allow",
           scope: allowSessionScope ? ruling.scope : "once",
         };
-        return;
+        continue;
+      }
+      if (ruling.verdict === "needs_user") {
+        const decision = await this.host.requestUserApproval({
+          trigger: request.trigger,
+          toolCallId: input.toolCallId,
+          toolName: input.toolName,
+          subject: input.subject,
+          description: input.description,
+          evidence: [input.evidence, ruling.reason]
+            .filter(Boolean)
+            .join("\n\n"),
+          signal: input.signal,
+        });
+        decisions[index] = decision;
+        if (decision.kind === "allow") allowed = true;
+        continue;
       }
       const reason = ruling.reason ?? "The auto-reviewer denied this call.";
       this.emitDecided(sequence, input.toolCallId, "denied", reason);
       decisions[index] = { kind: "deny", reason };
-    });
+    }
     if (allowed) this.consecutiveEscalations = 0;
     return decisions as GateDecision[];
   }
@@ -436,12 +515,20 @@ export const RULING_TOOL: Tool = {
         toolCallId: Type.String({
           description: "The exact toolCallId from the review request.",
         }),
-        verdict: Type.Union([Type.Literal("allow"), Type.Literal("deny")], {
-          description: "Whether the agent may proceed with this call.",
-        }),
+        verdict: Type.Union(
+          [
+            Type.Literal("allow"),
+            Type.Literal("deny"),
+            Type.Literal("needs_user"),
+          ],
+          {
+            description:
+              "allow when current authority covers the action; deny when it must not run; needs_user when the action may be reasonable but requires a fresh, exact user decision.",
+          },
+        ),
         reason: Type.String({
           description:
-            "Short explanation of this verdict. For denials, make it actionable: tell the agent what safer alternative to use. Write it in the same language as the user's messages.",
+            "Short explanation of this verdict. For deny, name a safer alternative. For needs_user, state the exact missing authorization or concrete risk Pine should show on the approval card; do not tell the agent to ask in prose. Write it in the same language as the user's messages.",
         }),
         scope: Type.Optional(
           Type.Union([Type.Literal("once"), Type.Literal("session")], {
@@ -462,4 +549,18 @@ export const RULING_TOOL: Tool = {
 export function normalizeCommand(command: string): string {
   // Shell whitespace is syntax and may also be quoted data or heredoc content.
   return command;
+}
+
+function approvalActionDigest(input: {
+  toolName: string;
+  subject: string;
+  description?: string;
+}): string {
+  // This stable in-memory key is only for matching an already reviewed action.
+  // The runtime persists a cryptographic digest for user-facing approval grants.
+  return createHash("sha256")
+    .update(
+      JSON.stringify([input.toolName, input.subject, input.description ?? ""]),
+    )
+    .digest("hex");
 }

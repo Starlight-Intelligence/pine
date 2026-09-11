@@ -11,6 +11,10 @@ export const ATTACH_SESSION_CHANNEL = "sessions:attach" as const;
 /** Custom session entry used to preserve the approval mode for exports. */
 export const PINE_APPROVAL_MODE_ENTRY = "pine.approval-mode" as const;
 
+/** Audit/authorization records used by the automatic approval context. */
+export const PINE_AUTHORIZATION_GRANT_ENTRY =
+  "pine.authorization-grant" as const;
+
 export type PineToolCallStatus = "pending" | "running" | "complete" | "error";
 
 export interface PineToolCallApproval {
