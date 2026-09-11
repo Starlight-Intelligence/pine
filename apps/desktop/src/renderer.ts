@@ -8,6 +8,7 @@ import {
 } from "./app/i18n";
 import { createAppRouter } from "./router";
 import { useAppearanceStore } from "./stores/appearance";
+import { useUpdaterStore } from "./stores/updater";
 import "./index.css";
 import "vue-sonner/style.css";
 
@@ -27,6 +28,7 @@ const router = createAppRouter(pinia);
 
 document.documentElement.lang = locale;
 useAppearanceStore(pinia).initialize();
+useUpdaterStore(pinia).initialize();
 
 app.use(pinia);
 app.use(i18n);

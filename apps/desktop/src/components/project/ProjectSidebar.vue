@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Files, MessagesSquare, Settings2 } from "@lucide/vue";
+import { Files, Info, MessagesSquare, Settings2 } from "@lucide/vue";
 import { storeToRefs } from "pinia";
 import { computed, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useProjectStore } from "@/stores/project";
+import { useUpdaterStore } from "@/stores/updater";
 import ProjectFileTree from "./ProjectFileTree.vue";
 import ProjectSessionList from "./ProjectSessionList.vue";
 import RetainedPanel from "./RetainedPanel.vue";
@@ -28,9 +29,11 @@ const { t } = useI18n();
 const emit = defineEmits<{
   editProject: [];
   searchSessions: [];
+  showUpdate: [];
 }>();
 const projectStore = useProjectStore();
 const { activeProject } = storeToRefs(projectStore);
+const { isAvailable } = storeToRefs(useUpdaterStore());
 const sidebarStore = useProjectSidebarStore();
 const route = useRoute();
 const router = useRouter();
@@ -105,6 +108,15 @@ watch(
 
     <SidebarFooter>
       <SidebarMenu>
+        <SidebarMenuItem v-if="isAvailable">
+          <SidebarMenuButton
+            class="text-info hover:text-info"
+            @click="emit('showUpdate')"
+          >
+            <Info aria-hidden="true" />
+            <span>{{ t("updater.sidebar") }}</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
         <SidebarMenuItem>
           <SidebarMenuButton @click="emit('editProject')">
             <Settings2 aria-hidden="true" />

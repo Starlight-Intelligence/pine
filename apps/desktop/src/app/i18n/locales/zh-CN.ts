@@ -14,6 +14,18 @@ export default {
     openExternalLink: "打开链接",
     externalLinkOpenFailed: "无法在浏览器中打开该链接。",
   },
+  updater: {
+    sidebar: "新版本 Pine 可用",
+    title: "要更新 Pine 吗？",
+    description: "Pine {version} 已可用。更新前可先查看版本变化。",
+    download: "下载更新",
+    downloading: "正在下载更新",
+    ready: "更新已准备好。Pine 将重新启动以完成安装。",
+    restart: "重新启动并安装",
+    installing: "正在启动安装程序",
+    later: "稍后",
+    failed: "无法安装更新。",
+  },
   preferences: {
     title: "Pine 设置",
     open: "打开 Pine 设置",

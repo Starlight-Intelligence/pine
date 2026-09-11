@@ -15,6 +15,19 @@ export default {
     openExternalLink: "Open link",
     externalLinkOpenFailed: "Could not open the link in your browser.",
   },
+  updater: {
+    sidebar: "New Pine version available",
+    title: "Update Pine?",
+    description:
+      "Pine {version} is available. Review the changes before updating.",
+    download: "Download update",
+    downloading: "Downloading update",
+    ready: "The update is ready. Pine will restart to finish installing it.",
+    restart: "Restart and install",
+    installing: "Starting installer",
+    later: "Later",
+    failed: "The update could not be installed.",
+  },
   preferences: {
     title: "Pine Settings",
     open: "Open Pine settings",

@@ -1,0 +1,86 @@
+import { describe, expect, it, vi } from "vitest";
+import {
+  AppUpdater,
+  compareVersions,
+  parseUpdateManifest,
+  resolveCurrentAppPath,
+} from "../appUpdater";
+
+const manifestUrl = "https://downloads.example.com/pine/latest/update.json";
+const manifest = {
+  schemaVersion: 1,
+  version: "1.2.0",
+  internalVersion: "abc1234",
+  publishedAt: "2026-09-10T12:00:00.000Z",
+  changelog: "### Added\n\n- Updates.",
+  assets: {
+    "darwin-arm64": {
+      url: "https://downloads.example.com/pine/releases/v1.2.0/Pine-arm64.dmg",
+      sha256: "a".repeat(64),
+      size: 100,
+    },
+  },
+};
+
+describe("app updater", () => {
+  it("compares stable and prerelease semantic versions", () => {
+    expect(compareVersions("1.2.0", "1.1.9")).toBeGreaterThan(0);
+    expect(compareVersions("1.2.0", "1.2.0-rc.1")).toBeGreaterThan(0);
+    expect(compareVersions("1.2.0-rc.2", "1.2.0-rc.10")).toBeLessThan(0);
+    expect(compareVersions("1.2.0+build.2", "1.2.0+build.1")).toBe(0);
+  });
+
+  it("resolves only an application bundle executable", () => {
+    expect(
+      resolveCurrentAppPath("/Applications/Pine.app/Contents/MacOS/Pine"),
+    ).toBe("/Applications/Pine.app");
+    expect(resolveCurrentAppPath("/usr/local/bin/pine")).toBeNull();
+  });
+
+  it("accepts assets on the configured R2 origin and prefix", () => {
+    expect(parseUpdateManifest(manifest, manifestUrl).version).toBe("1.2.0");
+    expect(() =>
+      parseUpdateManifest(
+        {
+          ...manifest,
+          assets: {
+            "darwin-arm64": {
+              ...manifest.assets["darwin-arm64"],
+              url: "https://example.org/Pine.dmg",
+            },
+          },
+        },
+        manifestUrl,
+      ),
+    ).toThrow("configured R2 origin");
+  });
+
+  it("reports a newer compatible release", async () => {
+    const updater = new AppUpdater({
+      arch: "arm64",
+      currentExecutable: "/Applications/Pine.app/Contents/MacOS/Pine",
+      currentVersion: "1.1.0",
+      emit: vi.fn(),
+      fetch: vi.fn().mockResolvedValue(
+        new Response(JSON.stringify(manifest), {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        }),
+      ),
+      manifestUrl,
+      platform: "darwin",
+      quit: vi.fn(),
+      tempDirectory: "/tmp",
+    });
+
+    await expect(updater.check()).resolves.toEqual({
+      status: "available",
+      update: {
+        changelog: manifest.changelog,
+        internalVersion: "abc1234",
+        publishedAt: manifest.publishedAt,
+        version: "1.2.0",
+      },
+    });
+  });
+});

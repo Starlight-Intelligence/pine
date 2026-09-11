@@ -1,0 +1,9 @@
+{
+  "r2": {
+    "enabled": false,
+    "accountId": "",
+    "bucket": "",
+    "prefix": "pine",
+    "publicBaseUrl": ""
+  }
+}

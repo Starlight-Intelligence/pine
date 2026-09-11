@@ -130,6 +130,17 @@ import {
   type SetSidebarVibrancyResult,
 } from "./shared/window";
 import {
+  CHECK_FOR_UPDATE_CHANNEL,
+  DOWNLOAD_UPDATE_CHANNEL,
+  INSTALL_UPDATE_CHANNEL,
+  UPDATE_EVENT_CHANNEL,
+  type DownloadUpdateResult,
+  type InstallUpdateResult,
+  type PineUpdateEvent,
+  type UpdateCheckResult,
+  type UpdateEventListener,
+} from "./shared/updates";
+import {
   GET_TINYFISH_CREDENTIAL_STATUS_CHANNEL,
   SET_TINYFISH_API_KEY_CHANNEL,
   type SetTinyFishApiKeyRequest,
@@ -144,11 +155,17 @@ import {
 } from "./shared/userProfile";
 
 const pineApi: PineDesktopApi = {
+  checkForUpdate: (): Promise<UpdateCheckResult> =>
+    ipcRenderer.invoke(CHECK_FOR_UPDATE_CHANNEL),
   readProjectFilePreview: (request) =>
     ipcRenderer.invoke(READ_PROJECT_FILE_PREVIEW_CHANNEL, request),
   closeWindow: () => ipcRenderer.invoke(CLOSE_WINDOW_CHANNEL),
   getAppVersion: (): Promise<string> =>
     ipcRenderer.invoke(GET_APP_VERSION_CHANNEL),
+  downloadUpdate: (): Promise<DownloadUpdateResult> =>
+    ipcRenderer.invoke(DOWNLOAD_UPDATE_CHANNEL),
+  installUpdate: (): Promise<InstallUpdateResult> =>
+    ipcRenderer.invoke(INSTALL_UPDATE_CHANNEL),
   openExternalUrl: (url: string): Promise<void> =>
     ipcRenderer.invoke(OPEN_EXTERNAL_URL_CHANNEL, url),
   onCloseTabRequested: (listener) => {
@@ -161,6 +178,14 @@ const pineApi: PineDesktopApi = {
     const handler = () => listener();
     ipcRenderer.on(NEW_TAB_REQUESTED_CHANNEL, handler);
     return () => ipcRenderer.removeListener(NEW_TAB_REQUESTED_CHANNEL, handler);
+  },
+  onUpdateEvent: (listener: UpdateEventListener) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      event: PineUpdateEvent,
+    ) => listener(event);
+    ipcRenderer.on(UPDATE_EVENT_CHANNEL, handler);
+    return () => ipcRenderer.removeListener(UPDATE_EVENT_CHANNEL, handler);
   },
   platform: process.platform,
   setSidebarVibrancy: (

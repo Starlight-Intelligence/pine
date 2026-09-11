@@ -96,7 +96,15 @@ const config: ForgeConfig = {
     // Packager discovers icon.icon and compiles its native Assets.car on macOS;
     // icon.icns is Apple's generated legacy fallback, icon.ico is for Windows.
     icon: path.join(__dirname, "resources/icon"),
-    extraResource: [path.join(__dirname, "resources/icon.png")],
+    // Seal the app bundle and nested helpers consistently while releases do
+    // not yet have a Developer ID identity. This is not trusted notarization.
+    osxSign: {
+      identity: "-",
+    },
+    extraResource: [
+      path.join(__dirname, "resources/icon.png"),
+      path.join(__dirname, "../../.pine/release.json"),
+    ],
     afterPrune: [
       (
         buildPath: string,

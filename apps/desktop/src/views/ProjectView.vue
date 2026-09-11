@@ -6,6 +6,7 @@ import SessionSearchOverlay from "@/components/sessions/SessionSearchOverlay.vue
 import ProjectContentTabs from "@/components/project/ProjectContentTabs.vue";
 import ProjectDialog from "@/components/project/ProjectDialog.vue";
 import ProjectSidebar from "@/components/project/ProjectSidebar.vue";
+import PineUpdateDialog from "@/components/updates/PineUpdateDialog.vue";
 import WindowTitleBar from "@/components/window/WindowTitleBar.vue";
 import {
   SidebarInset,
@@ -16,6 +17,7 @@ import { useProjectStore } from "@/stores/project";
 
 const isSessionSearchOpen = ref(false);
 const isProjectSettingsOpen = ref(false);
+const isUpdateOpen = ref(false);
 const projectStore = useProjectStore();
 
 onKeyStroke("k", (event) => {
@@ -33,6 +35,7 @@ onKeyStroke("k", (event) => {
     <ProjectSidebar
       @edit-project="isProjectSettingsOpen = true"
       @search-sessions="isSessionSearchOpen = true"
+      @show-update="isUpdateOpen = true"
     />
 
     <SidebarInset class="min-h-0 overflow-hidden">
@@ -51,6 +54,7 @@ onKeyStroke("k", (event) => {
     </WindowTitleBar>
 
     <SessionSearchOverlay v-model:open="isSessionSearchOpen" />
+    <PineUpdateDialog v-model:open="isUpdateOpen" />
     <ProjectDialog
       v-if="projectStore.activeProject"
       v-model:open="isProjectSettingsOpen"

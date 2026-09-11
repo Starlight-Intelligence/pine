@@ -31,10 +31,16 @@ export interface SetSidebarVibrancyResult {
  * offering the toggle.
  */
 export interface PineWindowApi {
+  checkForUpdate?: () => Promise<import("./updates").UpdateCheckResult>;
   onCloseTabRequested: (listener: () => void) => () => void;
   onNewTabRequested: (listener: () => void) => () => void;
+  onUpdateEvent?: (
+    listener: import("./updates").UpdateEventListener,
+  ) => () => void;
   closeWindow: () => Promise<void>;
+  downloadUpdate?: () => Promise<import("./updates").DownloadUpdateResult>;
   getAppVersion: () => Promise<string>;
+  installUpdate?: () => Promise<import("./updates").InstallUpdateResult>;
   openExternalUrl: (url: string) => Promise<void>;
   platform: PinePlatform;
   setSidebarVibrancy: (
